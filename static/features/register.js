@@ -1,6 +1,6 @@
-const SUPABASE_URL = "https://rvbnresadttfmbqtcxlj.supabase.co";
+const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
 const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Ym5yZXNhZHR0Zm1icXRjeGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0OTAwMzQsImV4cCI6MjA5NzA2NjAzNH0.zbKSpNn-UaPP8lobXOJc8tM7DMQSO3rt9w0JNW97dRI";
+  window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
 
 const form = document.getElementById("register-form");
 const stages = Array.from(document.querySelectorAll(".stage"));
@@ -265,6 +265,10 @@ function setResendState(seconds) {
   }, 1000);
 }
 
+function resetResendState() {
+  setResendState(0);
+}
+
 document.querySelectorAll("[data-password-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     togglePasswordVisibility(button.getAttribute("data-password-toggle"), button);
@@ -317,13 +321,14 @@ otpResendButton?.addEventListener("click", async () => {
     setStatus("Verification code resent.");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Resend failed.", true);
-    otpResendButton.disabled = false;
+    setResendState(Math.max(resendCountdownSeconds, 1));
   }
 });
 
 otpChangeEmailButton?.addEventListener("click", () => {
   setStage(2);
   setStatus("");
+  resetResendState();
 });
 
 otpContinueButton?.addEventListener("click", () => {

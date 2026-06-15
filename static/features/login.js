@@ -1,6 +1,6 @@
-const SUPABASE_URL = "https://rvbnresadttfmbqtcxlj.supabase.co";
+const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
 const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Ym5yZXNhZHR0Zm1icXRjeGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0OTAwMzQsImV4cCI6MjA5NzA2NjAzNH0.zbKSpNn-UaPP8lobXOJc8tM7DMQSO3rt9w0JNW97dRI";
+  window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
 
 const form = document.querySelector(".login-card");
 const statusNode = document.querySelector("[data-login-status]");

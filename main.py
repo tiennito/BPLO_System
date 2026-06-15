@@ -1,11 +1,30 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import os
 
 
-HOST = "127.0.0.1"
-PORT = 8000
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+ENV_FILE = BASE_DIR / ".env"
+
+
+def load_env():
+    if not ENV_FILE.exists():
+        return
+
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+load_env()
+
+HOST = os.getenv("APP_HOST", "127.0.0.1")
+PORT = int(os.getenv("APP_PORT", "8000"))
 PAGE_ROUTES = {
     "/": "/templates/index.html",
     "/login": "/templates/index.html",
@@ -21,6 +40,22 @@ class AppHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
     def do_GET(self):
+        if self.path == "/config.js":
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+            supabase_publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+            payload = (
+                "window.APP_CONFIG = "
+                f"{{supabaseUrl: {supabase_url!r}, supabaseAnonKey: {supabase_anon_key!r}, "
+                f"supabasePublishableKey: {supabase_publishable_key!r}}};"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload.encode("utf-8"))))
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
         self.path = PAGE_ROUTES.get(self.path, self.path)
         super().do_GET()
 
