@@ -8,6 +8,7 @@ const indicators = Array.from(document.querySelectorAll("[data-step-indicator]")
 const confirmEmail = document.getElementById("confirm-email");
 const otpInputs = Array.from(document.querySelectorAll(".code-boxes input"));
 const otpConfirmButton = document.querySelector("[data-otp-confirm]");
+const otpResendButton = document.querySelector("[data-otp-resend]");
 const otpContinueButton = document.querySelector("[data-otp-continue]");
 const otpChangeEmailButton = document.querySelector(".text-button");
 const statusNode = document.querySelector(".register-card .auth-status");
@@ -21,6 +22,8 @@ const passwordRuleNodes = {
 
 let supabaseClient = null;
 let registeredEmail = "";
+let resendCountdownTimer = null;
+let resendCountdownSeconds = 0;
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -130,6 +133,26 @@ async function registerWithSupabase(values) {
   }
 }
 
+async function resendVerificationCode() {
+  const client = initSupabase();
+  if (!client) {
+    throw new Error("Supabase client is unavailable in this browser.");
+  }
+
+  if (!registeredEmail) {
+    throw new Error("Register an email first.");
+  }
+
+  const { error } = await client.auth.resend({
+    type: "signup",
+    email: registeredEmail,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 async function verifyRegistrationOtp() {
   const client = initSupabase();
   if (!client) {
@@ -207,6 +230,41 @@ function clearOtpInputs() {
   otpInputs[0]?.focus();
 }
 
+function setResendState(seconds) {
+  resendCountdownSeconds = seconds;
+
+  if (!otpResendButton) {
+    return;
+  }
+
+  if (resendCountdownTimer) {
+    window.clearInterval(resendCountdownTimer);
+    resendCountdownTimer = null;
+  }
+
+  if (seconds <= 0) {
+    otpResendButton.disabled = false;
+    otpResendButton.textContent = "Resend";
+    return;
+  }
+
+  otpResendButton.disabled = true;
+  otpResendButton.textContent = `Resend in ${seconds}s`;
+
+  resendCountdownTimer = window.setInterval(() => {
+    resendCountdownSeconds -= 1;
+    if (resendCountdownSeconds <= 0) {
+      window.clearInterval(resendCountdownTimer);
+      resendCountdownTimer = null;
+      otpResendButton.disabled = false;
+      otpResendButton.textContent = "Resend";
+      return;
+    }
+
+    otpResendButton.textContent = `Resend in ${resendCountdownSeconds}s`;
+  }, 1000);
+}
+
 document.querySelectorAll("[data-password-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     togglePasswordVisibility(button.getAttribute("data-password-toggle"), button);
@@ -249,6 +307,20 @@ otpConfirmButton?.addEventListener("click", async () => {
   }
 });
 
+otpResendButton?.addEventListener("click", async () => {
+  try {
+    otpResendButton.disabled = true;
+    setStatus("Resending code...");
+    await resendVerificationCode();
+    clearOtpInputs();
+    setResendState(60);
+    setStatus("Verification code resent.");
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Resend failed.", true);
+    otpResendButton.disabled = false;
+  }
+});
+
 otpChangeEmailButton?.addEventListener("click", () => {
   setStage(2);
   setStatus("");
@@ -272,6 +344,7 @@ form?.addEventListener("submit", async (event) => {
     clearOtpInputs();
     setStage("confirm");
     setStatus("Enter the 6-digit code sent to your email.");
+    setResendState(60);
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Registration failed.", true);
   }

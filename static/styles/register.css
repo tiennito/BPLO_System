@@ -369,6 +369,27 @@ select:focus {
   color: #8a8a8a;
 }
 
+.code-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.resend-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 7px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resend-link:disabled {
+  color: #9bb8a5;
+  cursor: not-allowed;
+}
+
 .code-boxes {
   display: grid;
   grid-template-columns: repeat(6, 26px);
