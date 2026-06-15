@@ -189,6 +189,8 @@
               </span>
             </label>
 
+            <p class="auth-status" aria-live="polite"></p>
+
             <div class="actions actions--split">
               <button class="secondary-button" type="button" data-prev>Previous</button>
               <button class="primary-button" type="submit">Create Account</button>
@@ -211,7 +213,7 @@
               </div>
               <p class="code-note">Didn&apos;t receive a code? <span>Resend in 60s</span></p>
               <button class="text-button" type="button">&larr; Change email</button>
-              <button class="primary-button primary-button--wide" type="button">Confirm</button>
+              <button class="primary-button primary-button--wide" type="button" data-otp-confirm>Confirm</button>
             </div>
           </section>
 
@@ -221,7 +223,7 @@
               <strong>Your Registration is Complete!</strong>
               <h3>Thank You!</h3>
               <p>You can now continue using your account.</p>
-              <button class="primary-button primary-button--wide" type="button">Continue</button>
+              <button class="primary-button primary-button--wide" type="button" data-otp-continue>Continue</button>
             </div>
           </section>
         </form>

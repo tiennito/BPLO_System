@@ -6,8 +6,12 @@ const form = document.getElementById("register-form");
 const stages = Array.from(document.querySelectorAll(".stage"));
 const indicators = Array.from(document.querySelectorAll("[data-step-indicator]"));
 const confirmEmail = document.getElementById("confirm-email");
+const otpInputs = Array.from(document.querySelectorAll(".code-boxes input"));
+const otpConfirmButton = document.querySelector("[data-otp-confirm]");
+const otpContinueButton = document.querySelector("[data-otp-continue]");
+const otpChangeEmailButton = document.querySelector(".text-button");
+const statusNode = document.querySelector(".register-card .auth-status");
 const passwordInput = document.getElementById("password");
-const confirmPasswordInput = document.getElementById("confirm_password");
 const passwordRuleNodes = {
   length: document.querySelector('[data-rule="length"]'),
   uppercase: document.querySelector('[data-rule="uppercase"]'),
@@ -16,6 +20,7 @@ const passwordRuleNodes = {
 };
 
 let supabaseClient = null;
+let registeredEmail = "";
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -27,6 +32,15 @@ function initSupabase() {
   }
 
   return supabaseClient;
+}
+
+function setStatus(message, isError = false) {
+  if (!statusNode) {
+    return;
+  }
+
+  statusNode.textContent = message;
+  statusNode.style.color = isError ? "#b42318" : "#0c8c36";
 }
 
 function setStage(stage) {
@@ -103,7 +117,7 @@ async function registerWithSupabase(values) {
     postal_code: values.postal_code,
   };
 
-  const { data, error } = await client.auth.signUp({
+  const { error } = await client.auth.signUp({
     email: values.email,
     password: values.password,
     options: {
@@ -114,17 +128,32 @@ async function registerWithSupabase(values) {
   if (error) {
     throw error;
   }
-
-  return data;
 }
 
-document.querySelector("[data-next]")?.addEventListener("click", () => {
-  setStage(2);
-});
+async function verifyRegistrationOtp() {
+  const client = initSupabase();
+  if (!client) {
+    throw new Error("Supabase client is unavailable in this browser.");
+  }
 
-document.querySelector("[data-prev]")?.addEventListener("click", () => {
-  setStage(1);
-});
+  const token = otpInputs.map((input) => input.value.trim()).join("");
+  if (token.length !== 6) {
+    throw new Error("Enter the 6-digit verification code.");
+  }
+
+  const { error } = await client.auth.verifyOtp({
+    email: registeredEmail,
+    token,
+    type: "email",
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  setStatus("Email verified successfully.");
+  setStage("success");
+}
 
 function getPasswordStatus(value) {
   return {
@@ -165,7 +194,17 @@ function togglePasswordVisibility(targetId, button) {
   const visible = input.type === "text";
   input.type = visible ? "password" : "text";
   button.textContent = visible ? "Show" : "Hide";
-  button.setAttribute("aria-label", visible ? `Show ${targetId.replace("_", " ")}` : `Hide ${targetId.replace("_", " ")}`);
+  button.setAttribute(
+    "aria-label",
+    visible ? `Show ${targetId.replace("_", " ")}` : `Hide ${targetId.replace("_", " ")}`
+  );
+}
+
+function clearOtpInputs() {
+  otpInputs.forEach((input) => {
+    input.value = "";
+  });
+  otpInputs[0]?.focus();
 }
 
 document.querySelectorAll("[data-password-toggle]").forEach((button) => {
@@ -177,6 +216,48 @@ document.querySelectorAll("[data-password-toggle]").forEach((button) => {
 passwordInput?.addEventListener("input", syncPasswordRules);
 syncPasswordRules();
 
+otpInputs.forEach((input, index) => {
+  input.addEventListener("input", () => {
+    input.value = input.value.replace(/\D/g, "").slice(0, 1);
+    if (input.value && index < otpInputs.length - 1) {
+      otpInputs[index + 1]?.focus();
+    }
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Backspace" && !input.value && index > 0) {
+      otpInputs[index - 1]?.focus();
+    }
+  });
+});
+
+document.querySelector("[data-next]")?.addEventListener("click", () => {
+  setStage(2);
+});
+
+document.querySelector("[data-prev]")?.addEventListener("click", () => {
+  setStage(1);
+});
+
+otpConfirmButton?.addEventListener("click", async () => {
+  setStatus("Verifying code...");
+
+  try {
+    await verifyRegistrationOtp();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Verification failed.", true);
+  }
+});
+
+otpChangeEmailButton?.addEventListener("click", () => {
+  setStage(2);
+  setStatus("");
+});
+
+otpContinueButton?.addEventListener("click", () => {
+  window.location.href = "/";
+});
+
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -184,11 +265,15 @@ form?.addEventListener("submit", async (event) => {
     const values = getFormData();
     validateStep2(values);
     syncPasswordRules();
+    registeredEmail = values.email;
     confirmEmail.textContent = values.email || "your email";
+    setStatus("Sending verification code...");
     await registerWithSupabase(values);
+    clearOtpInputs();
     setStage("confirm");
+    setStatus("Enter the 6-digit code sent to your email.");
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : "Registration failed.");
+    setStatus(error instanceof Error ? error.message : "Registration failed.", true);
   }
 });
 

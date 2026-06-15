@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Login</title>
     <link rel="stylesheet" href="../styles/login.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="../features/login.js"></script>
   </head>
   <body>
     <main class="login-page">
@@ -48,6 +50,7 @@
 
           <button class="login-button" type="submit">Log in</button>
           <a class="forgot-link" href="#">Forgot Password?</a>
+          <p class="auth-status" data-login-status aria-live="polite"></p>
 
           <a class="create-account" href="/register">Create Account</a>
         </form>

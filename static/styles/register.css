@@ -392,6 +392,14 @@ select:focus {
   cursor: pointer;
 }
 
+.auth-status {
+  min-height: 12px;
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 8px;
+  color: #0c8c36;
+}
+
 .success-panel {
   width: 216px;
   padding: 26px 18px;
