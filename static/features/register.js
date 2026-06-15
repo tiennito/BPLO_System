@@ -6,6 +6,14 @@ const form = document.getElementById("register-form");
 const stages = Array.from(document.querySelectorAll(".stage"));
 const indicators = Array.from(document.querySelectorAll("[data-step-indicator]"));
 const confirmEmail = document.getElementById("confirm-email");
+const passwordInput = document.getElementById("password");
+const confirmPasswordInput = document.getElementById("confirm_password");
+const passwordRuleNodes = {
+  length: document.querySelector('[data-rule="length"]'),
+  uppercase: document.querySelector('[data-rule="uppercase"]'),
+  lowercase: document.querySelector('[data-rule="lowercase"]'),
+  number: document.querySelector('[data-rule="number"]'),
+};
 
 let supabaseClient = null;
 
@@ -118,12 +126,64 @@ document.querySelector("[data-prev]")?.addEventListener("click", () => {
   setStage(1);
 });
 
+function getPasswordStatus(value) {
+  return {
+    length: value.length >= 8,
+    uppercase: /[A-Z]/.test(value),
+    lowercase: /[a-z]/.test(value),
+    number: /\d/.test(value),
+  };
+}
+
+function syncPasswordRules() {
+  if (!passwordInput) {
+    return;
+  }
+
+  const status = getPasswordStatus(passwordInput.value);
+
+  Object.entries(passwordRuleNodes).forEach(([key, node]) => {
+    if (!node) {
+      return;
+    }
+
+    const input = node.querySelector("input");
+    const met = Boolean(status[key]);
+    node.classList.toggle("is-met", met);
+    if (input) {
+      input.checked = met;
+    }
+  });
+}
+
+function togglePasswordVisibility(targetId, button) {
+  const input = document.getElementById(targetId);
+  if (!input || !(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const visible = input.type === "text";
+  input.type = visible ? "password" : "text";
+  button.textContent = visible ? "Show" : "Hide";
+  button.setAttribute("aria-label", visible ? `Show ${targetId.replace("_", " ")}` : `Hide ${targetId.replace("_", " ")}`);
+}
+
+document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    togglePasswordVisibility(button.getAttribute("data-password-toggle"), button);
+  });
+});
+
+passwordInput?.addEventListener("input", syncPasswordRules);
+syncPasswordRules();
+
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   try {
     const values = getFormData();
     validateStep2(values);
+    syncPasswordRules();
     confirmEmail.textContent = values.email || "your email";
     await registerWithSupabase(values);
     setStage("confirm");

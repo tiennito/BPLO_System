@@ -199,6 +199,34 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(0, 150, 60, 0.12);
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 54px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  height: 20px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #0c8c36;
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  text-decoration: underline;
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -265,13 +293,38 @@ select:focus {
   margin: 6px auto 0;
 }
 
-.password-hints {
+.password-rules {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  margin: 4px 0 10px;
+  margin: 2px 0 10px;
+}
+
+.password-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
   font-size: 5px;
   color: #8b8b8b;
+}
+
+.password-rule input {
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  border: 1px solid #b8b8b8;
+  border-radius: 2px;
+  accent-color: var(--green);
+}
+
+.password-rule.is-met {
+  color: #0c8c36;
+  font-weight: 700;
+}
+
+.password-rule.is-met input {
+  border-color: var(--green);
 }
 
 .consent {
@@ -383,7 +436,7 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
-  .password-hints {
+  .password-rules {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

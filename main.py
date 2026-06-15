@@ -28,8 +28,6 @@ class AppHandler(SimpleHTTPRequestHandler):
 def main():
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
     print(f"BPLO app running at http://{HOST}:{PORT}")
-    print(f"Login:    http://{HOST}:{PORT}/")
-    print(f"Register: http://{HOST}:{PORT}/register")
     print("Static assets, CSS, and JS are all served from the same port.")
     print("Press Ctrl+C to stop the server.")
 

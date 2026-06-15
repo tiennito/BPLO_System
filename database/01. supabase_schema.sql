@@ -4,7 +4,7 @@ create table if not exists public.applicants (
   id uuid primary key default gen_random_uuid(),
   user_id uuid unique,
   email text not null,
-  first_name_01 text not null,
+  first_name text not null,
   first_name_raw text not null,
   last_name text not null,
   middle_name text,
@@ -32,7 +32,7 @@ begin
   insert into public.applicants (
     user_id,
     email,
-    first_name_01,
+    first_name,
     first_name_raw,
     last_name,
     middle_name,
@@ -48,7 +48,7 @@ begin
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'first_name_01', ''),
+    coalesce(new.raw_user_meta_data->>'first_name', ''),
     coalesce(new.raw_user_meta_data->>'first_name', ''),
     coalesce(new.raw_user_meta_data->>'last_name', ''),
     nullif(new.raw_user_meta_data->>'middle_name', ''),
@@ -63,7 +63,7 @@ begin
   )
   on conflict (user_id) do update set
     email = excluded.email,
-    first_name_01 = excluded.first_name_01,
+    first_name = excluded.first_name,
     first_name_raw = excluded.first_name_raw,
     last_name = excluded.last_name,
     middle_name = excluded.middle_name,
