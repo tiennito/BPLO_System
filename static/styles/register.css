@@ -131,7 +131,7 @@ a {
   display: none;
 }
 
-.stage--active {
+.stage.stage--active {
   display: block;
 }
 
@@ -221,9 +221,12 @@ select:focus {
   font-size: 8px;
   font-weight: 700;
   cursor: pointer;
+  transition: color 160ms ease, transform 160ms ease;
 }
 
 .password-toggle:hover {
+  color: var(--green-dark);
+  transform: translateY(-50%) translateY(-1px);
   text-decoration: underline;
 }
 
@@ -259,6 +262,7 @@ select:focus {
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
+  transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
 .primary-button {
@@ -269,6 +273,21 @@ select:focus {
 .secondary-button {
   background: var(--green);
   color: #ffffff;
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+  background: var(--green-dark);
+  box-shadow: 0 6px 12px rgba(0, 150, 60, 0.18);
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  background: #84c99d;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .primary-button--wide {
@@ -286,11 +305,19 @@ select:focus {
   color: var(--green);
   font-size: 10px;
   background: transparent;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .outline-link--center {
   width: 214px;
   margin: 6px auto 0;
+}
+
+.outline-link:hover {
+  background: rgba(0, 150, 60, 0.08);
+  border-color: var(--green);
+  color: var(--green-dark);
+  transform: translateY(-1px);
 }
 
 .password-rules {
@@ -349,12 +376,33 @@ select:focus {
   text-align: center;
 }
 
+.confirmation-stage.stage--active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+}
+
 .confirmation-shell,
 .success-panel {
   display: grid;
   justify-items: center;
   gap: 10px;
   margin-top: 30px;
+}
+
+.confirmation-shell {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 0;
+}
+
+.confirmation-shell > * {
+  transition: opacity 160ms ease;
+}
+
+.confirmation-shell.is-verifying > :not(.verification-status) {
+  opacity: 0.45;
 }
 
 .confirmation-shell h3 {
@@ -383,6 +431,7 @@ select:focus {
   font-size: 7px;
   font-weight: 700;
   cursor: pointer;
+  transition: color 160ms ease, transform 160ms ease;
 }
 
 .resend-link:disabled {
@@ -390,10 +439,20 @@ select:focus {
   cursor: not-allowed;
 }
 
+.resend-link:hover:not(:disabled) {
+  color: var(--green-dark);
+  transform: translateY(-1px);
+  text-decoration: underline;
+}
+
 .code-boxes {
   display: grid;
   grid-template-columns: repeat(6, 26px);
   gap: 0;
+}
+
+.code-boxes--8 {
+  grid-template-columns: repeat(8, 26px);
 }
 
 .code-boxes input {
@@ -411,6 +470,12 @@ select:focus {
   color: #444444;
   font-size: 7px;
   cursor: pointer;
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.text-button:hover {
+  color: #0c8c36;
+  transform: translateY(-1px);
 }
 
 .auth-status {
@@ -419,6 +484,18 @@ select:focus {
   text-align: center;
   font-size: 8px;
   color: #0c8c36;
+}
+
+.verification-status {
+  min-height: 18px;
+  margin: 76px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.verification-status:empty {
+  margin-top: 0;
 }
 
 .success-panel {
@@ -467,5 +544,14 @@ select:focus {
 
   .password-rules {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .confirmation-stage {
+    min-height: 320px;
+  }
+
+  .code-boxes--8 {
+    grid-template-columns: repeat(4, 26px);
+    justify-content: center;
   }
 }

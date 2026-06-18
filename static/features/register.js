@@ -11,6 +11,8 @@ const otpConfirmButton = document.querySelector("[data-otp-confirm]");
 const otpResendButton = document.querySelector("[data-otp-resend]");
 const otpContinueButton = document.querySelector("[data-otp-continue]");
 const otpChangeEmailButton = document.querySelector(".text-button");
+const otpStatusNode = document.querySelector("[data-otp-status]");
+const confirmationShell = document.querySelector(".confirmation-shell");
 const statusNode = document.querySelector(".register-card .auth-status");
 const passwordInput = document.getElementById("password");
 const passwordRuleNodes = {
@@ -24,6 +26,7 @@ let supabaseClient = null;
 let registeredEmail = "";
 let resendCountdownTimer = null;
 let resendCountdownSeconds = 0;
+let otpIsVerifying = false;
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -44,6 +47,36 @@ function setStatus(message, isError = false) {
 
   statusNode.textContent = message;
   statusNode.style.color = isError ? "#b42318" : "#0c8c36";
+}
+
+function setOtpStatus(message, isError = false) {
+  if (!otpStatusNode) {
+    return;
+  }
+
+  otpStatusNode.textContent = message;
+  otpStatusNode.style.color = isError ? "#b42318" : "#00963c";
+}
+
+function setOtpVerifying(isVerifying) {
+  otpIsVerifying = isVerifying;
+  confirmationShell?.classList.toggle("is-verifying", isVerifying);
+
+  otpInputs.forEach((input) => {
+    input.disabled = isVerifying;
+  });
+
+  if (otpConfirmButton) {
+    otpConfirmButton.disabled = isVerifying;
+  }
+
+  if (otpResendButton) {
+    otpResendButton.disabled = otpIsVerifying || resendCountdownSeconds > 0;
+  }
+
+  if (otpChangeEmailButton) {
+    otpChangeEmailButton.disabled = isVerifying;
+  }
 }
 
 function setStage(stage) {
@@ -160,8 +193,8 @@ async function verifyRegistrationOtp() {
   }
 
   const token = otpInputs.map((input) => input.value.trim()).join("");
-  if (token.length !== 6) {
-    throw new Error("Enter the 6-digit verification code.");
+  if (token.length !== 8) {
+    throw new Error("Enter the 8-digit verification code.");
   }
 
   const { error } = await client.auth.verifyOtp({
@@ -174,7 +207,7 @@ async function verifyRegistrationOtp() {
     throw error;
   }
 
-  setStatus("Email verified successfully.");
+  setOtpStatus("");
   setStage("success");
 }
 
@@ -243,7 +276,7 @@ function setResendState(seconds) {
   }
 
   if (seconds <= 0) {
-    otpResendButton.disabled = false;
+    otpResendButton.disabled = otpIsVerifying;
     otpResendButton.textContent = "Resend";
     return;
   }
@@ -256,7 +289,7 @@ function setResendState(seconds) {
     if (resendCountdownSeconds <= 0) {
       window.clearInterval(resendCountdownTimer);
       resendCountdownTimer = null;
-      otpResendButton.disabled = false;
+      otpResendButton.disabled = otpIsVerifying;
       otpResendButton.textContent = "Resend";
       return;
     }
@@ -302,12 +335,15 @@ document.querySelector("[data-prev]")?.addEventListener("click", () => {
 });
 
 otpConfirmButton?.addEventListener("click", async () => {
-  setStatus("Verifying code...");
+  setStatus("");
+  setOtpStatus("Verifying...");
+  setOtpVerifying(true);
 
   try {
     await verifyRegistrationOtp();
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Verification failed.", true);
+    setOtpStatus(error instanceof Error ? error.message : "Verification failed.", true);
+    setOtpVerifying(false);
   }
 });
 
@@ -315,6 +351,7 @@ otpResendButton?.addEventListener("click", async () => {
   try {
     otpResendButton.disabled = true;
     setStatus("Resending code...");
+    setOtpStatus("");
     await resendVerificationCode();
     clearOtpInputs();
     setResendState(60);
@@ -328,11 +365,13 @@ otpResendButton?.addEventListener("click", async () => {
 otpChangeEmailButton?.addEventListener("click", () => {
   setStage(2);
   setStatus("");
+  setOtpStatus("");
+  setOtpVerifying(false);
   resetResendState();
 });
 
 otpContinueButton?.addEventListener("click", () => {
-  window.location.href = "/";
+  window.location.href = "/login";
 });
 
 form?.addEventListener("submit", async (event) => {
@@ -348,7 +387,9 @@ form?.addEventListener("submit", async (event) => {
     await registerWithSupabase(values);
     clearOtpInputs();
     setStage("confirm");
-    setStatus("Enter the 6-digit code sent to your email.");
+    setStatus("Enter the 8-digit code sent to your email.");
+    setOtpStatus("");
+    setOtpVerifying(false);
     setResendState(60);
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Registration failed.", true);

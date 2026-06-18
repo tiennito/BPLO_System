@@ -144,6 +144,8 @@ select:focus {
 
 .login-button:hover {
   background: var(--green-dark);
+  box-shadow: 0 6px 12px rgba(0, 150, 60, 0.18);
+  transform: translateY(-1px);
 }
 
 .login-button:active {
@@ -166,10 +168,6 @@ select:focus {
 }
 
 .forgot-link:hover,
-.create-account:hover {
-  text-decoration: underline;
-}
-
 .create-account {
   width: 100%;
   height: 15px;
@@ -181,6 +179,14 @@ select:focus {
   border-radius: 999px;
   color: var(--green);
   font-size: 10px;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.create-account:hover {
+  background: rgba(0, 150, 60, 0.08);
+  border-color: var(--green);
+  color: var(--green-dark);
+  transform: translateY(-1px);
 }
 
 .sr-only {

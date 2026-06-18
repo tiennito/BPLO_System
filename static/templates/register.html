@@ -200,11 +200,13 @@
           </section>
 
           <section class="stage confirmation-stage" data-stage="confirm">
-            <h2>Email Confirmation</h2>
             <div class="confirmation-shell">
-              <h3>Enter the 6-digit code</h3>
+              <h2>Email Confirmation</h2>
+              <h3>Enter the 8-digit code</h3>
               <p>We&apos;ve sent a verification code to <span id="confirm-email">your email</span></p>
-              <div class="code-boxes" aria-label="Verification code">
+              <div class="code-boxes code-boxes--8" aria-label="Verification code">
+                <input maxlength="1" inputmode="numeric" />
+                <input maxlength="1" inputmode="numeric" />
                 <input maxlength="1" inputmode="numeric" />
                 <input maxlength="1" inputmode="numeric" />
                 <input maxlength="1" inputmode="numeric" />
@@ -217,7 +219,10 @@
                 <button class="resend-link" type="button" data-otp-resend disabled>Resend in 60s</button>
               </p>
               <button class="text-button" type="button">&larr; Change email</button>
-              <button class="primary-button primary-button--wide" type="button" data-otp-confirm>Confirm</button>
+              <button class="primary-button primary-button--wide" type="button" data-otp-confirm>
+                Confirm
+              </button>
+              <p class="verification-status" data-otp-status aria-live="polite"></p>
             </div>
           </section>
 

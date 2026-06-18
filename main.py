@@ -26,12 +26,15 @@ load_env()
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 PORT = int(os.getenv("APP_PORT", "8000"))
 PAGE_ROUTES = {
-    "/": "/templates/index.html",
-    "/login": "/templates/index.html",
-    "/index.html": "/templates/index.html",
+    "/": "/templates/login.html",
+    "/login": "/templates/login.html",
+    "/login.html": "/templates/login.html",
     "/register": "/templates/register.html",
     "/signup": "/templates/register.html",
     "/register.html": "/templates/register.html",
+    "/applicant": "/templates/applicant/dashboard.html",
+    "/applicant/dashboard": "/templates/applicant/dashboard.html",
+    "/applicant/dashboard.html": "/templates/applicant/dashboard.html",
 }
 
 

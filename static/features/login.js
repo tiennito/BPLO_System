@@ -50,7 +50,8 @@ form?.addEventListener("submit", async (event) => {
       throw error;
     }
 
-    setStatus("Signed in successfully.");
+    setStatus("Signed in successfully. Redirecting...");
+    window.location.href = "/applicant";
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Login failed.", true);
   }
