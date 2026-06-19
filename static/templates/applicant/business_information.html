@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Business Information</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/applicant.css?v=8" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/applicant.js?v=8"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+        </a>
+
+        <nav class="topnav" aria-label="Applicant navigation">
+          <a href="/applicant">Home</a>
+          <a href="#">My Application</a>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" data-profile-toggle>
+              Profile
+              <i data-lucide="chevron-down" aria-hidden="true"></i>
+            </button>
+            <div class="profile-dropdown" data-profile-dropdown>
+              <strong data-profile-name>Applicant</strong>
+              <button type="button" data-logout>Log out</button>
+            </div>
+          </div>
+          <button class="icon-button" type="button" aria-label="Notifications">
+            <i data-lucide="bell" aria-hidden="true"></i>
+          </button>
+          <span class="avatar" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <section class="business-form-page">
+        <a class="back-link" href="/applicant/new-application">
+          <i data-lucide="arrow-left" aria-hidden="true"></i>
+          <span>Back</span>
+        </a>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/applicant">My Application</a>
+          <span>Business Permit Application</span>
+        </nav>
+
+        <div class="checklist-header-row">
+          <div>
+            <h1 class="checklist-title">Business Permit Application</h1>
+            <p class="checklist-subtitle">Upload all required documents</p>
+          </div>
+
+          <div class="permit-tag">
+            <strong>Business Permit</strong>
+            <span>BPLO 01</span>
+          </div>
+        </div>
+
+        <nav class="progress-stepper progress-stepper--business" aria-label="Application progress">
+          <div class="progress-step progress-step--done">
+            <span>1</span>
+            <small>Requirements</small>
+          </div>
+          <div class="progress-line" aria-hidden="true"></div>
+          <div class="progress-step progress-step--current">
+            <span>2</span>
+            <small>Business Information</small>
+          </div>
+          <div class="progress-line" aria-hidden="true"></div>
+          <div class="progress-step">
+            <span>3</span>
+            <small>Review Documents</small>
+          </div>
+        </nav>
+
+        <section class="business-form-shell" aria-label="Business permit form" data-business-form-shell>
+          <section class="business-step-panel" data-business-step-panel="form">
+            <section class="business-section business-section--tight">
+              <h2>I. BASIC INFORMATION</h2>
+
+              <article class="subsection-card">
+                <h3>A. APPLICATION DETAILS</h3>
+                <div class="field-grid field-grid--2">
+                  <label class="field">
+                    <span>Date of Application <em>*</em></span>
+                    <input type="date" placeholder="mm/dd/yyyy" data-business-field="application_date" />
+                  </label>
+                  <label class="field">
+                    <span>DTI/SEC/CDA Registration No. <em>*</em></span>
+                    <input type="text" placeholder="e.g. CN123456789" data-business-field="registration_number" />
+                  </label>
+                </div>
+                <div class="field-group">
+                  <span class="choice-label">Mode of Payment <em>*</em></span>
+                  <div class="radio-row">
+                    <label><input type="radio" name="mode_of_payment" value="ANNUALLY" data-business-field="mode_of_payment" /> <span>ANNUALLY</span></label>
+                    <label><input type="radio" name="mode_of_payment" value="SEMI-ANNUALLY" data-business-field="mode_of_payment" /> <span>SEMI-ANNUALLY</span></label>
+                    <label><input type="radio" name="mode_of_payment" value="QUARTERLY" data-business-field="mode_of_payment" /> <span>QUARTERLY</span></label>
+                  </div>
+                </div>
+              </article>
+
+              <article class="subsection-card">
+                <h3>B. NAME OF TAXPAYER / APPLICANT</h3>
+                <p class="section-note">
+                  Applicant details are automatically filled from your registration profile. You may update them for this application.
+                </p>
+                <div class="field-grid field-grid--3">
+                  <label class="field">
+                    <span>LAST NAME <em>*</em></span>
+                    <input type="text" placeholder="Family name" data-business-field="last_name" />
+                  </label>
+                  <label class="field">
+                    <span>FIRST NAME <em>*</em></span>
+                    <input type="text" placeholder="Given name" data-business-field="first_name" />
+                  </label>
+                  <label class="field">
+                    <span>MIDDLE NAME <em>*</em></span>
+                    <input type="text" placeholder="Middle name or initial" data-business-field="middle_name" />
+                  </label>
+                </div>
+                <div class="field-grid field-grid--2">
+                  <label class="field">
+                    <span>Registered Email Address <em>*</em></span>
+                    <input type="email" placeholder="Registered email" data-business-field="email" />
+                  </label>
+                  <label class="field">
+                    <span>Registered Contact Number <em>*</em></span>
+                    <input type="tel" placeholder="Registered contact number" data-business-field="contact_number" />
+                  </label>
+                </div>
+                <label class="field field--full">
+                  <span>Home Address <em>*</em></span>
+                  <input type="text" placeholder="Home address" data-business-field="home_address" />
+                </label>
+              </article>
+
+              <section class="business-section">
+                <h2>II. BUSINESS INFORMATION</h2>
+
+                <article class="subsection-card">
+                  <h3>A. BUSINESS DETAILS</h3>
+                  <p class="section-note">Enter accurate business details for identification.</p>
+                  <div class="field-grid field-grid--2">
+                    <label class="field field--full">
+                      <span>Business Name <em>*</em></span>
+                      <input type="text" placeholder="Enter your registered business name" data-business-field="business_name" />
+                    </label>
+                    <label class="field field--full">
+                      <span>Trade Name / Franchise (if applicable)</span>
+                      <input type="text" placeholder="e.g. ABN, INK, etc." data-business-field="trade_name" />
+                    </label>
+                  </div>
+                  <div class="field-grid field-grid--2">
+                    <div class="field-group">
+                      <span class="choice-label">Type of Business <em>*</em></span>
+                      <div class="checkbox-row">
+                        <label><input type="checkbox" data-business-field="type_of_business" value="SINGLE" /> <span>SINGLE</span></label>
+                        <label><input type="checkbox" data-business-field="type_of_business" value="PARTNERSHIP" /> <span>PARTNERSHIP</span></label>
+                        <label><input type="checkbox" data-business-field="type_of_business" value="CORPORATION" /> <span>CORPORATION</span></label>
+                        <label><input type="checkbox" data-business-field="type_of_business" value="COOPERATIVE" /> <span>COOPERATIVE</span></label>
+                      </div>
+                    </div>
+                    <label class="field">
+                      <span>Business Classification <em>*</em></span>
+                      <select data-business-field="business_classification">
+                        <option>Select Business Line</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="field field--half">
+                    <span>TIN (Tax Identification Number)</span>
+                    <input type="text" placeholder="Example: 123-456-789" data-business-field="tin" />
+                  </label>
+                </article>
+
+                <article class="subsection-card">
+                  <h3>B. BUSINESS LOCATION</h3>
+                  <p class="section-note">Provide complete business address and location details.</p>
+                  <label class="field field--full">
+                    <span>Business Address <em>*</em></span>
+                    <textarea rows="3" placeholder="Complete business address (Street, Barangay, City)" data-business-field="business_address"></textarea>
+                  </label>
+                  <div class="field-grid field-grid--2">
+                    <label class="field">
+                      <span>Unit / Street / Lot / Location</span>
+                      <input type="text" placeholder="e.g. Lot 1, Garden Ave" data-business-field="location_detail" />
+                    </label>
+                    <label class="field">
+                      <span>Business Barangay <em>*</em></span>
+                      <select data-business-field="business_barangay">
+                        <option>Select Barangay</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Business Premise <em>*</em></span>
+                      <select data-business-field="business_premise">
+                        <option>Select Business Premise</option>
+                      </select>
+                    </label>
+                  </div>
+                </article>
+
+                <article class="subsection-card">
+                  <h3>C. BUSINESS CONTACT INFORMATION</h3>
+                  <p class="section-note">Provide contact details for business communication.</p>
+                  <div class="field-grid field-grid--2">
+                    <label class="field">
+                      <span>Business Telephone</span>
+                      <input type="tel" placeholder="(047) 222-3333" data-business-field="business_telephone" />
+                    </label>
+                    <label class="field">
+                      <span>Business Mobile Number <em>*</em></span>
+                      <input type="tel" placeholder="+63 912-123-1231" data-business-field="business_mobile" />
+                    </label>
+                    <label class="field">
+                      <span>Business Email <em>*</em></span>
+                      <input type="email" placeholder="business@example.com" data-business-field="business_email" />
+                    </label>
+                    <label class="field">
+                      <span>Owner/Proprietor Contact Number <em>*</em></span>
+                      <input type="tel" placeholder="+63 912-312-3131" data-business-field="owner_contact_number" />
+                    </label>
+                    <label class="field">
+                      <span>In Case of Emergency Contact Person</span>
+                      <input type="text" placeholder="Name of contact person" data-business-field="emergency_contact_person" />
+                    </label>
+                    <label class="field">
+                      <span>Emergency Contact Number / Email</span>
+                      <input type="text" placeholder="Phone number or email" data-business-field="emergency_contact" />
+                    </label>
+                  </div>
+                </article>
+              </section>
+
+              <section class="business-section">
+                <h2>III. NEW BUSINESS DETAILS</h2>
+
+                <article class="subsection-card">
+                  <h3>A. BUSINESS AREA & CAPITALIZATION</h3>
+                  <p class="section-note">Provide information about your business size and investment.</p>
+                  <div class="field-grid field-grid--2">
+                    <label class="field">
+                      <span>Business Area (in sq. m.)</span>
+                      <input type="text" placeholder="0.00" data-business-field="business_area" />
+                    </label>
+                    <label class="field">
+                      <span>Total No. of Employees in Establishment</span>
+                      <input type="number" placeholder="0" data-business-field="employees_total" />
+                    </label>
+                    <label class="field">
+                      <span>No. of Employees Residing within LGU</span>
+                      <input type="number" placeholder="0" data-business-field="employees_lgu" />
+                    </label>
+                  </div>
+                </article>
+
+                <article class="subsection-card">
+                  <h3>B. BUSINESS ACTIVITY</h3>
+                  <label class="field field--full">
+                    <span>Description of Business / Main Activity</span>
+                    <input type="text" placeholder="e.g. Retail grocery, hardware sales, etc." data-business-field="business_activity" />
+                  </label>
+                  <div class="field-grid field-grid--2">
+                    <label class="field">
+                      <span>Capitalization (For New Business)</span>
+                      <input type="text" placeholder="PHP" data-business-field="capitalization" />
+                    </label>
+                    <label class="field">
+                      <span>Goods Value</span>
+                      <input type="text" placeholder="PHP" data-business-field="goods_value" />
+                    </label>
+                  </div>
+                </article>
+
+                <article class="subsection-card">
+                  <h3>D. TAX INCENTIVE</h3>
+                  <p class="section-note">Indicate if your business enjoys any government incentives.</p>
+                  <div class="field-group">
+                    <span class="choice-label">Are you enjoying a tax incentive from any government entity?</span>
+                    <div class="radio-row">
+                      <label><input type="radio" name="tax_incentive" value="YES" data-business-field="tax_incentive" /> <span>YES</span></label>
+                      <label><input type="radio" name="tax_incentive" value="NO" data-business-field="tax_incentive" /> <span>NO</span></label>
+                      <label><input type="radio" name="tax_incentive" value="PLEASE SPECIFY THE ENTITY" data-business-field="tax_incentive" /> <span>PLEASE SPECIFY THE ENTITY</span></label>
+                    </div>
+                  </div>
+                  <label class="field field--full">
+                    <span>Tax Incentive Issuing Entity (if applicable)</span>
+                    <input type="text" placeholder="e.g. Board of Investments, PEZA" data-business-field="tax_incentive_entity" />
+                  </label>
+                </article>
+              </section>
+
+              <div class="autosave-bar">
+                <div class="autosave-dot"></div>
+                <div>
+                  <strong>Auto-Save Enabled</strong>
+                  <p>Your form is automatically saving as you type. Your information will be securely stored.</p>
+                </div>
+              </div>
+
+              <div class="checklist-actions">
+                <button class="next-step-button" type="button" data-business-continue>
+                  <span>Continue</span>
+                  <i data-lucide="arrow-right" aria-hidden="true"></i>
+                </button>
+              </div>
+            </section>
+          </section>
+
+          <section class="review-workspace review-workspace--floating is-hidden" data-review-strip aria-label="Review documents">
+            <div class="review-header">
+              <div>
+                <h2>Review Documents</h2>
+                <p>Review the details below while the full form stays visible above for quick edits.</p>
+              </div>
+              <div class="permit-tag permit-tag--review">
+                <strong>Business Permit</strong>
+                <span>BPLO 01</span>
+              </div>
+            </div>
+
+            <div class="review-grid">
+              <article class="review-card">
+                <h3>Application Summary</h3>
+                <dl class="review-list">
+                  <div><dt>Business Name</dt><dd data-review-value="business_name">Not filled in yet</dd></div>
+                  <div><dt>Business Address</dt><dd data-review-value="business_address">Not filled in yet</dd></div>
+                  <div><dt>Contact Number</dt><dd data-review-value="business_mobile">Not filled in yet</dd></div>
+                  <div><dt>Business Email</dt><dd data-review-value="business_email">Not filled in yet</dd></div>
+                  <div><dt>Mode of Payment</dt><dd data-review-value="mode_of_payment">Not selected</dd></div>
+                </dl>
+              </article>
+
+              <article class="review-card">
+                <h3>Documents for Review</h3>
+                <ul class="review-documents">
+                  <li><span>Unified Form / 2x2 Picture</span><strong>Ready</strong></li>
+                  <li><span>DTI / SEC / CDA Certificate</span><strong>Ready</strong></li>
+                  <li><span>Barangay Clearance</span><strong>Ready</strong></li>
+                  <li><span>Lease of Contract</span><strong>Optional</strong></li>
+                  <li><span>Statement of Capital Investment</span><strong>Ready</strong></li>
+                  <li><span>Audited Financial Statements</span><strong>Optional</strong></li>
+                  <li><span>Authorization Letter From the Owner</span><strong>Optional</strong></li>
+                  <li><span>Licenses / Clearance / Certificate</span><strong>Ready</strong></li>
+                </ul>
+              </article>
+            </div>
+
+            <div class="review-note">
+              <i data-lucide="file-search" aria-hidden="true"></i>
+              <div>
+                <strong>Final pass</strong>
+                <p>Please review the information you entered, then finish the application when you are ready.</p>
+              </div>
+            </div>
+
+            <div class="review-actions review-actions--end">
+              <button class="review-button review-button--primary" type="button" data-finish-application>
+                <span>Finish Application</span>
+                <i data-lucide="arrow-right" aria-hidden="true"></i>
+              </button>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <footer class="site-footer">
+        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

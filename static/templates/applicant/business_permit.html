@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Business Permit Application</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/applicant.css?v=8" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/applicant.js?v=8"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+        </a>
+
+        <nav class="topnav" aria-label="Applicant navigation">
+          <a href="/applicant">Home</a>
+          <a href="#">My Application</a>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" data-profile-toggle>
+              Profile
+              <i data-lucide="chevron-down" aria-hidden="true"></i>
+            </button>
+            <div class="profile-dropdown" data-profile-dropdown>
+              <strong data-profile-name>Applicant</strong>
+              <button type="button" data-logout>Log out</button>
+            </div>
+          </div>
+          <button class="icon-button" type="button" aria-label="Notifications">
+            <i data-lucide="bell" aria-hidden="true"></i>
+          </button>
+          <span class="avatar" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <section class="permit-page">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/applicant">My Application</a>
+          <span>Create Business Permit Application</span>
+        </nav>
+
+        <h1 class="page-title">Create Business Permit Application</h1>
+
+        <section class="permit-summary-card" aria-labelledby="permit-title">
+          <header>
+            <h2 id="permit-title">Business Permit</h2>
+            <span>Business Permit</span>
+          </header>
+          <p>This is the Business permit for application to the BPLO</p>
+          <dl>
+            <dt>Code:</dt>
+            <dd>BPLO 01</dd>
+          </dl>
+          <a class="start-application-button" href="/applicant/application-type">
+            <span>Start Application</span>
+            <i data-lucide="arrow-right" aria-hidden="true"></i>
+          </a>
+        </section>
+
+        <div class="permit-content-grid">
+          <section class="requirements-section" aria-labelledby="requirements-title">
+            <h2 id="requirements-title">REQUIRED DOCUMENTS</h2>
+            <article class="requirements-card">
+              <h3>Requirements for New / Renewal of Business Permit</h3>
+              <ol>
+                <li>Unified Form / 2x2 Picture</li>
+                <li>DTI (For Sole Proprietorship) Sec Certificate (For Corporation) CDA Corporation (For Cooperative)</li>
+                <li>Barangay Clearance For Business</li>
+                <li>Lease of Contract (For Leasing Property)</li>
+                <li>Statement of Capital Investment (NEW)</li>
+                <li>Audited Financial Statements/Sworn Statement of Gross Receipt Sale Income Tax Return / Annually / Quarterly / Semi Annual (Renewal)</li>
+                <li>Authorization Letter From the Owner (If the Applicant is not the Owner)</li>
+                <li>National Agency And Regulation Body / Licenses / Clearance / Certificate</li>
+              </ol>
+            </article>
+          </section>
+
+          <section class="offices-section" aria-labelledby="offices-title">
+            <h2 id="offices-title">REQUIRED OFFICES</h2>
+            <div class="offices-grid">
+              <div class="office-column">
+                <details class="office-card">
+                  <summary>Engineering Office</summary>
+                  <p>Occupancy / Annual Inspection</p>
+                </details>
+                <details class="office-card">
+                  <summary>Health Office</summary>
+                  <p>Sanitary Permit / Health Clearance</p>
+                </details>
+                <details class="office-card">
+                  <summary>Municipal Planning Development Coordinator</summary>
+                  <p>Zoning</p>
+                </details>
+                <details class="office-card">
+                  <summary>MENRO Office</summary>
+                  <p>Environmental</p>
+                </details>
+              </div>
+              <div class="office-column">
+                <details class="office-card">
+                  <summary>Office of the City Market Administrator</summary>
+                  <p>Market Clearance (For stall holders)</p>
+                </details>
+                <details class="office-card">
+                  <summary>Municipal Assessor Office</summary>
+                  <p>RPT / Assessor Office</p>
+                </details>
+                <details class="office-card">
+                  <summary>Bureau of Fire Protection</summary>
+                  <p>Valid Fire Safety Inspection Certificate</p>
+                </details>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

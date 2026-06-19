@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Requirements Checklist</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/applicant.css?v=8" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/applicant.js?v=8"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+        </a>
+
+        <nav class="topnav" aria-label="Applicant navigation">
+          <a href="/applicant">Home</a>
+          <a href="#">My Application</a>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" data-profile-toggle>
+              Profile
+              <i data-lucide="chevron-down" aria-hidden="true"></i>
+            </button>
+            <div class="profile-dropdown" data-profile-dropdown>
+              <strong data-profile-name>Applicant</strong>
+              <button type="button" data-logout>Log out</button>
+            </div>
+          </div>
+          <button class="icon-button" type="button" aria-label="Notifications">
+            <i data-lucide="bell" aria-hidden="true"></i>
+          </button>
+          <span class="avatar" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <section class="checklist-page">
+        <a class="back-link" href="/applicant/application-type">
+          <i data-lucide="arrow-left" aria-hidden="true"></i>
+          <span>Back</span>
+        </a>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/applicant">My Application</a>
+          <span>Requirements Checklist</span>
+        </nav>
+
+        <div class="checklist-header-row">
+          <div>
+            <h1 class="checklist-title">Requirements Checklist</h1>
+            <p class="checklist-subtitle">Upload all required documents</p>
+          </div>
+
+          <div class="permit-tag">
+            <strong>Business Permit</strong>
+            <span>BPLO 01</span>
+          </div>
+        </div>
+
+        <nav class="progress-stepper" aria-label="Application progress">
+          <div class="progress-step progress-step--active">
+            <span>1</span>
+            <small>Requirements</small>
+          </div>
+          <div class="progress-line" aria-hidden="true"></div>
+          <div class="progress-step">
+            <span>2</span>
+            <small>Business Information</small>
+          </div>
+          <div class="progress-line" aria-hidden="true"></div>
+          <div class="progress-step">
+            <span>3</span>
+            <small>Review Documents</small>
+          </div>
+        </nav>
+
+        <section class="requirements-workspace" aria-labelledby="upload-title">
+          <h2 id="upload-title">UPLOAD REQUIREMENTS</h2>
+
+          <div class="document-grid">
+            <article class="document-card">
+              <header>
+                <h3>1. Unified Form / 2x2 Picture</h3>
+                <span class="doc-badge doc-badge--required">Required</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>2. DTI (For Sole Proprietorship) Sec Certificate (For Corporation) CDA Corporation (For Cooperative)</h3>
+                <span class="doc-badge doc-badge--required">Required</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>3. Barangay Clearance For Business</h3>
+                <span class="doc-badge doc-badge--required">Required</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>4. Lease of Contract (For Leasing Property)</h3>
+                <span class="doc-badge doc-badge--optional">Optional</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>5. Statement of Capital Investment (NEW)</h3>
+                <span class="doc-badge doc-badge--required">Required</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>6. Audited Financial Statements / Sworn Statement of Gross Receipt Sale Income Tax Return / Annually / Quarterly / Semi Annual (Renewal)</h3>
+                <span class="doc-badge doc-badge--optional">Optional</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>7. Authorization Letter From the Owner (If the Applicant is not the Owner)</h3>
+                <span class="doc-badge doc-badge--optional">Optional</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+
+            <article class="document-card">
+              <header>
+                <h3>8. National Agency And Regulation Body / Licenses / Clearance / Certificate</h3>
+                <span class="doc-badge doc-badge--required">Required</span>
+              </header>
+              <button class="upload-slot" type="button">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span>Upload Document</span>
+                <small>JPG, PNG, PDF</small>
+              </button>
+            </article>
+          </div>
+
+          <div class="checklist-actions">
+            <a class="next-step-button" href="/applicant/business-information">
+              <span>Next Step</span>
+              <i data-lucide="arrow-right" aria-hidden="true"></i>
+            </a>
+          </div>
+        </section>
+      </section>
+
+      <footer class="site-footer">
+        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

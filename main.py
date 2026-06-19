@@ -38,6 +38,18 @@ PAGE_ROUTES = {
     "/applicant/dashboard": "/templates/applicant/dashboard.html",
     "/applicant/dashboard/": "/templates/applicant/dashboard.html",
     "/applicant/dashboard.html": "/templates/applicant/dashboard.html",
+    "/applicant/business-permit": "/templates/applicant/business_permit.html",
+    "/applicant/business-permit/": "/templates/applicant/business_permit.html",
+    "/applicant/business-permit.html": "/templates/applicant/business_permit.html",
+    "/applicant/application-type": "/templates/applicant/application_type.html",
+    "/applicant/application-type/": "/templates/applicant/application_type.html",
+    "/applicant/application-type.html": "/templates/applicant/application_type.html",
+    "/applicant/new-application": "/templates/applicant/new_application.html",
+    "/applicant/new-application/": "/templates/applicant/new_application.html",
+    "/applicant/new-application.html": "/templates/applicant/new_application.html",
+    "/applicant/business-information": "/templates/applicant/business_information.html",
+    "/applicant/business-information/": "/templates/applicant/business_information.html",
+    "/applicant/business-information.html": "/templates/applicant/business_information.html",
 }
 
 

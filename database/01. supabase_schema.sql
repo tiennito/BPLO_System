@@ -101,3 +101,38 @@ create policy "Applicants can update their own row"
   on public.applicants
   for update
   using (auth.uid() = user_id);
+
+create table if not exists public.business_permit_applications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  permit_id text not null unique,
+  business_name text not null,
+  status text not null default 'Submitted',
+  progress text not null default 'Review complete',
+  submitted_id text not null,
+  application_type text not null default 'New Application',
+  application_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists business_permit_applications_user_created_idx
+  on public.business_permit_applications (user_id, created_at desc);
+
+alter table public.business_permit_applications enable row level security;
+
+create policy "Applicants can read their own permit applications"
+  on public.business_permit_applications
+  for select
+  using (auth.uid() = user_id);
+
+create policy "Applicants can insert their own permit applications"
+  on public.business_permit_applications
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "Applicants can update their own permit applications"
+  on public.business_permit_applications
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
