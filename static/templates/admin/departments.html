@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Departments</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=7" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script defer src="/features/admin_departments.js?v=2"></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a class="is-active" href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+            <em>0</em>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>User Management</h1>
+            <p>View and manage all system users</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="users-page departments-page" aria-labelledby="departments-title">
+          <h2 id="departments-title" class="sr-only">Departments</h2>
+
+          <div class="users-toolbar departments-toolbar">
+            <label class="search-control">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <span class="sr-only">Search departments</span>
+              <input type="search" placeholder="Search by name or email..." data-department-search />
+            </label>
+
+            <select class="filter-control" data-department-status aria-label="Filter by status">
+              <option value="">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+
+            <button class="add-user-button department-add-button" type="button" data-open-department-dialog>
+              <i data-lucide="plus" aria-hidden="true"></i>
+              <span>Add Department</span>
+            </button>
+          </div>
+
+          <section class="users-table-card departments-table-card" aria-live="polite">
+            <div class="users-table-wrap">
+              <table class="users-table departments-table">
+                <thead>
+                  <tr>
+                    <th>Departments</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-departments-body>
+                  <tr>
+                    <td colspan="5">
+                      <div class="users-empty-state departments-empty-state">
+                        <strong>No departments loaded</strong>
+                        <p>Use Add Department or refresh after setting up the departments table.</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="admin-form-status users-status" data-departments-status></p>
+          </section>
+        </section>
+
+        <dialog class="department-dialog" data-department-dialog>
+          <form class="department-form" method="dialog" data-department-form>
+            <header class="form-card-heading">
+              <h2 data-department-dialog-title>Add Department</h2>
+              <p data-department-dialog-copy>Create a department record for system users.</p>
+            </header>
+
+            <label class="field">
+              <span>Department Name <em>*</em></span>
+              <input name="name" type="text" placeholder="Department name" required />
+            </label>
+
+            <label class="field">
+              <span>Description</span>
+              <textarea name="description" placeholder="Short description"></textarea>
+            </label>
+
+            <label class="field">
+              <span>Status</span>
+              <select name="status">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </label>
+
+            <p class="admin-form-status" data-department-form-status></p>
+
+            <footer class="form-actions">
+              <button class="primary-action" type="submit" data-department-submit>Create Department</button>
+              <button class="secondary-action" type="button" data-close-department-dialog>Cancel</button>
+            </footer>
+          </form>
+        </dialog>
+      </section>
+    </main>
+  </body>
+</html>

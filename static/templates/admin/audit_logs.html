@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Audit Logs</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=6" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script defer src="/features/admin_audit_logs.js?v=1"></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a class="is-active" href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+            <em data-audit-count>0</em>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>Audit Logs</h1>
+            <p>Track user activity across the system</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="users-page audit-page" aria-labelledby="audit-title">
+          <h2 id="audit-title" class="sr-only">Audit Logs</h2>
+
+          <div class="users-toolbar audit-toolbar">
+            <label class="search-control">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <span class="sr-only">Search audit logs</span>
+              <input type="search" placeholder="Search by user, action, or details..." data-audit-search />
+            </label>
+
+            <select class="filter-control" data-action-filter aria-label="Filter by action">
+              <option value="">All Actions</option>
+              <option value="account_created">Account created</option>
+              <option value="login">Login</option>
+              <option value="logout">Logout</option>
+              <option value="user_created_by_admin">Created user</option>
+              <option value="department_created">Created department</option>
+              <option value="page_view">Page view</option>
+            </select>
+
+            <button class="refresh-button" type="button" data-refresh-audit-logs>
+              <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <section class="users-table-card audit-table-card" aria-live="polite">
+            <div class="users-table-wrap">
+              <table class="users-table audit-table">
+                <thead>
+                  <tr>
+                    <th>Date / Time</th>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Action</th>
+                    <th>Target</th>
+                    <th>Details</th>
+                    <th>IP</th>
+                  </tr>
+                </thead>
+                <tbody data-audit-body>
+                  <tr>
+                    <td colspan="7">
+                      <div class="users-empty-state">
+                        <strong>No audit logs loaded</strong>
+                        <p>Refresh after applying the audit log table in Supabase.</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="admin-form-status users-status" data-audit-status></p>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

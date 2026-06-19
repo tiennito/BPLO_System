@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO User Management</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=5" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script defer src="/features/admin_users.js?v=2"></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a class="is-active" href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+            <em>0</em>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>User Management</h1>
+            <p>View and manage all system users</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="users-page" aria-labelledby="users-title">
+          <h2 id="users-title" class="sr-only">Users</h2>
+
+          <div class="users-toolbar">
+            <label class="search-control">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <span class="sr-only">Search users</span>
+              <input type="search" placeholder="Search by name or email..." data-user-search />
+            </label>
+
+            <select class="filter-control" data-role-filter aria-label="Filter by role">
+              <option value="">All Roles</option>
+              <option value="admin">Admin</option>
+              <option value="department">Department User</option>
+              <option value="client">Client</option>
+              <option value="employee">Employee</option>
+            </select>
+
+            <select class="filter-control" data-status-filter aria-label="Filter by status">
+              <option value="">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Pending">Pending</option>
+              <option value="Disabled">Disabled</option>
+            </select>
+
+            <button class="refresh-button" type="button" data-refresh-users>
+              <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              <span>Refresh</span>
+            </button>
+
+            <a class="add-user-button" href="/admin/create-user">
+              <i data-lucide="plus" aria-hidden="true"></i>
+              <span>Add new user</span>
+            </a>
+          </div>
+
+          <section class="users-table-card" aria-live="polite">
+            <div class="users-table-wrap">
+              <table class="users-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-users-body>
+                  <tr>
+                    <td colspan="7">
+                      <div class="users-empty-state">
+                        <strong>No user type selected</strong>
+                        <p>Please Select a user type before loading account data</p>
+                        <button type="button" data-select-user-type>Select User Type</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="admin-form-status users-status" data-users-status></p>
+          </section>
+        </section>
+
+        <dialog class="user-type-dialog" data-user-type-dialog>
+          <section class="user-type-panel" aria-labelledby="user-type-title">
+            <h2 id="user-type-title">Select User Type</h2>
+            <p>Choose which type of user you want to view first.</p>
+
+            <div class="user-type-grid">
+              <button type="button" data-user-type="admin">Admin</button>
+              <button type="button" data-user-type="department">Department</button>
+              <button type="button" data-user-type="client">Applicant</button>
+              <button type="button" data-user-type="employee">Employee</button>
+            </div>
+          </section>
+        </dialog>
+      </section>
+    </main>
+  </body>
+</html>

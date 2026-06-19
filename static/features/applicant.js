@@ -296,6 +296,34 @@ async function renderRecentPermits() {
   });
 }
 
+async function recordApplicantAudit(action, details = {}, entityType = "", entityId = "") {
+  try {
+    const client = initSupabase();
+    const { data } = await client.auth.getSession();
+    const session = data.session;
+
+    if (!session?.access_token) {
+      return;
+    }
+
+    await fetch("/api/audit-logs", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action,
+        details,
+        entityType,
+        entityId,
+      }),
+    });
+  } catch {
+    // Audit failures should not block applicant workflows.
+  }
+}
+
 function handleBusinessContinue() {
   if (!businessFormShell) {
     return;
@@ -323,6 +351,12 @@ async function handleFinishApplication() {
     }
   }
 
+  await recordApplicantAudit(
+    "business_permit_submitted",
+    { permitId: record.permit_id, businessName: record.business_name },
+    "business_permit_application",
+    record.permit_id
+  );
   window.location.href = "/applicant/dashboard";
 }
 
@@ -362,6 +396,12 @@ async function loadApplicantDashboard() {
   }
 
   await renderRecentPermits();
+  await recordApplicantAudit(
+    "page_view",
+    { path: window.location.pathname, title: document.title },
+    "page",
+    window.location.pathname
+  );
 }
 
 profileToggle?.addEventListener("click", () => {
@@ -381,6 +421,7 @@ document.addEventListener("click", (event) => {
 
 logoutButton?.addEventListener("click", async () => {
   const client = initSupabase();
+  await recordApplicantAudit("logout", { path: window.location.pathname }, "session");
   await client?.auth.signOut();
   window.location.href = "/login";
 });

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Admin Dashboard</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=1" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a class="is-active" href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+            <em>0</em>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p>System overview and user management</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="statistics" aria-labelledby="statistics-title">
+          <header class="section-heading">
+            <h2 id="statistics-title">System Statistics</h2>
+            <p>Overview of all users in the system</p>
+          </header>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <header>
+                <h3>Total Users</h3>
+                <i data-lucide="user-round" aria-hidden="true"></i>
+              </header>
+              <strong>0</strong>
+              <span>Active users</span>
+            </article>
+
+            <article class="stat-card">
+              <header>
+                <h3>Admin</h3>
+                <i data-lucide="shield" aria-hidden="true"></i>
+              </header>
+              <strong>0</strong>
+            </article>
+
+            <article class="stat-card">
+              <header>
+                <h3>Department Users</h3>
+                <i data-lucide="users-round" aria-hidden="true"></i>
+              </header>
+              <strong>0</strong>
+            </article>
+
+            <article class="stat-card">
+              <header>
+                <h3>Clients</h3>
+                <i data-lucide="clipboard-check" aria-hidden="true"></i>
+              </header>
+              <strong>0</strong>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

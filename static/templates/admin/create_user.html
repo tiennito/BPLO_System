@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Create User</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=2" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script defer src="/features/admin_create_user.js?v=1"></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a class="is-active" href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+            <em>0</em>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>Create User</h1>
+            <p>Add a new user account to the system</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="create-user-page" aria-labelledby="user-information-title">
+          <form class="user-form-card" id="admin-create-user-form" action="/admin/api/users" method="post">
+            <header class="form-card-heading">
+              <h2 id="user-information-title">User Information</h2>
+              <p>Personal and contact details</p>
+            </header>
+
+            <div class="field-grid field-grid--2">
+              <label class="field">
+                <span>Name <em>*</em></span>
+                <input name="firstName" type="text" placeholder="First name" autocomplete="given-name" required />
+              </label>
+              <label class="field field--no-title">
+                <span>Last name <em>*</em></span>
+                <input name="lastName" type="text" placeholder="Last name" autocomplete="family-name" required />
+              </label>
+              <label class="field">
+                <span>Middle name</span>
+                <input name="middleName" type="text" placeholder="Middle name" autocomplete="additional-name" />
+              </label>
+              <label class="field">
+                <span>Suffix</span>
+                <input name="suffix" type="text" placeholder="Suffix (Optional)" />
+              </label>
+              <label class="field field--full">
+                <span>Email Address <em>*</em></span>
+                <input name="email" type="email" placeholder="Email address" autocomplete="email" required />
+              </label>
+              <label class="field">
+                <span>Contact Number</span>
+                <input name="contactNumber" type="tel" placeholder="+63 9XX - XXXX - XXX" autocomplete="tel" />
+              </label>
+              <label class="field">
+                <span>User Role <em>*</em></span>
+                <select name="role" required>
+                  <option value="">--Select Role--</option>
+                  <option value="admin">Admin</option>
+                  <option value="department">Department User</option>
+                  <option value="client">Client</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Password <em>*</em></span>
+                <input
+                  name="password"
+                  type="password"
+                  placeholder="Create a strong password"
+                  autocomplete="new-password"
+                  minlength="8"
+                  required
+                />
+              </label>
+              <label class="field">
+                <span>Confirm Password <em>*</em></span>
+                <input
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="Confirm your password"
+                  autocomplete="new-password"
+                  minlength="8"
+                  required
+                />
+              </label>
+            </div>
+
+            <ul class="password-rules" aria-label="Password requirements">
+              <li data-rule="length">At least 8 characters</li>
+              <li data-rule="uppercase">Contains uppercase letter (A-Z)</li>
+              <li data-rule="lowercase">Contains lowercase letter (a-z)</li>
+              <li data-rule="number">Contains a number</li>
+            </ul>
+
+            <p class="admin-form-status" data-create-user-status aria-live="polite"></p>
+
+            <footer class="form-actions">
+              <button class="primary-action" type="submit">Create Account</button>
+              <button class="secondary-action" type="reset">X Cancel</button>
+            </footer>
+          </form>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

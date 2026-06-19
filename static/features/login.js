@@ -1,6 +1,7 @@
 const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
 const SUPABASE_ANON_KEY =
   window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
+const ADMIN_EMAIL = (window.APP_CONFIG?.adminEmail || "").toLowerCase();
 
 const form = document.querySelector(".login-card");
 const statusNode = document.querySelector("[data-login-status]");
@@ -26,6 +27,29 @@ function setStatus(message, isError = false) {
 
   statusNode.textContent = message;
   statusNode.style.color = isError ? "#b42318" : "#0c8c36";
+}
+
+async function recordAuditEvent(session, action, details = {}) {
+  try {
+    if (!session?.access_token) {
+      return;
+    }
+
+    await fetch("/api/audit-logs", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action,
+        details,
+        entityType: "session",
+      }),
+    });
+  } catch {
+    // Audit failures should not block login.
+  }
 }
 
 form?.addEventListener("submit", async (event) => {
@@ -59,8 +83,12 @@ form?.addEventListener("submit", async (event) => {
       throw new Error("Login succeeded, but no active session was saved. Please try again.");
     }
 
+    const signedInEmail = (session.user?.email || email).toLowerCase();
+    const redirectPath = ADMIN_EMAIL && signedInEmail === ADMIN_EMAIL ? "/admin/dashboard" : "/applicant/dashboard";
+
     setStatus("Signed in successfully. Redirecting...");
-    window.location.assign("/applicant/dashboard");
+    await recordAuditEvent(session, "login", { redirectPath });
+    window.location.assign(redirectPath);
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Login failed.", true);
     if (submitButton) {
