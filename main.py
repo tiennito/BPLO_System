@@ -1,5 +1,6 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 import os
 
 
@@ -33,7 +34,9 @@ PAGE_ROUTES = {
     "/signup": "/templates/register.html",
     "/register.html": "/templates/register.html",
     "/applicant": "/templates/applicant/dashboard.html",
+    "/applicant/": "/templates/applicant/dashboard.html",
     "/applicant/dashboard": "/templates/applicant/dashboard.html",
+    "/applicant/dashboard/": "/templates/applicant/dashboard.html",
     "/applicant/dashboard.html": "/templates/applicant/dashboard.html",
 }
 
@@ -42,8 +45,16 @@ class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def do_GET(self):
-        if self.path == "/config.js":
+        request_path = urlsplit(self.path).path
+
+        if request_path == "/config.js":
             supabase_url = os.getenv("SUPABASE_URL", "")
             supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
             supabase_publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
@@ -59,7 +70,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             return
 
-        self.path = PAGE_ROUTES.get(self.path, self.path)
+        self.path = PAGE_ROUTES.get(request_path, request_path)
         super().do_GET()
 
 

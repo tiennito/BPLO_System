@@ -4,6 +4,7 @@ const SUPABASE_ANON_KEY =
 
 const form = document.querySelector(".login-card");
 const statusNode = document.querySelector("[data-login-status]");
+const submitButton = form?.querySelector('button[type="submit"]');
 let supabaseClient = null;
 
 function initSupabase() {
@@ -30,6 +31,9 @@ function setStatus(message, isError = false) {
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
   setStatus("Signing in...");
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
 
   try {
     const client = initSupabase();
@@ -41,7 +45,7 @@ form?.addEventListener("submit", async (event) => {
     const email = (formData.get("email") || "").toString().trim();
     const password = (formData.get("password") || "").toString();
 
-    const { error } = await client.auth.signInWithPassword({
+    const { data, error } = await client.auth.signInWithPassword({
       email,
       password,
     });
@@ -50,9 +54,17 @@ form?.addEventListener("submit", async (event) => {
       throw error;
     }
 
+    const session = data.session || (await client.auth.getSession()).data.session;
+    if (!session) {
+      throw new Error("Login succeeded, but no active session was saved. Please try again.");
+    }
+
     setStatus("Signed in successfully. Redirecting...");
-    window.location.href = "/applicant";
+    window.location.assign("/applicant/dashboard");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Login failed.", true);
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
   }
 });
