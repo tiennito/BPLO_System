@@ -5,6 +5,7 @@ const ADMIN_EMAIL = (window.APP_CONFIG?.adminEmail || "").toLowerCase();
 
 const form = document.getElementById("admin-create-user-form");
 const statusNode = document.querySelector("[data-create-user-status]");
+const successModal = document.querySelector("[data-create-user-success-modal]");
 const submitButton = form?.querySelector('button[type="submit"]');
 const passwordInput = form?.querySelector('input[name="password"]');
 const confirmPasswordInput = form?.querySelector('input[name="confirmPassword"]');
@@ -36,6 +37,16 @@ function setStatus(message, isError = false) {
 
   statusNode.textContent = message;
   statusNode.style.color = isError ? "#b42318" : "#078d36";
+}
+
+function showSuccessModal() {
+  if (!successModal) {
+    return;
+  }
+
+  successModal.hidden = false;
+  document.body.classList.add("modal-open");
+  window.lucide?.createIcons();
 }
 
 function getPasswordStatus(value) {
@@ -135,7 +146,8 @@ form?.addEventListener("submit", async (event) => {
 
     form.reset();
     syncPasswordRules();
-    setStatus("User account created successfully.");
+    setStatus("");
+    showSuccessModal();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Unable to create user account.", true);
   } finally {

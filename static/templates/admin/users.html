@@ -8,8 +8,8 @@
     <link rel="stylesheet" href="/styles/admin.css?v=5" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/audit_logger.js?v=1"></script>
-    <script defer src="/features/admin_users.js?v=2"></script>
+    <script defer src="/features/audit_logger.js?v=2"></script>
+    <script defer src="/features/admin_users.js?v=5"></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -31,6 +31,10 @@
             <i data-lucide="user" aria-hidden="true"></i>
             <span>Create User</span>
           </a>
+          <a href="/admin/create-permit">
+            <i data-lucide="id-card" aria-hidden="true"></i>
+            <span>Create Permit</span>
+          </a>
           <a class="is-active" href="/admin/users">
             <i data-lucide="clipboard-list" aria-hidden="true"></i>
             <span>User list</span>
@@ -42,7 +46,6 @@
           <a href="/admin/audit-logs">
             <i data-lucide="clipboard-check" aria-hidden="true"></i>
             <span>Audit logs</span>
-            <em>0</em>
           </a>
         </nav>
 
@@ -78,7 +81,9 @@
               <option value="">All Roles</option>
               <option value="admin">Admin</option>
               <option value="department">Department User</option>
+              <option value="treasury">Treasury User</option>
               <option value="client">Client</option>
+              <option value="applicant">Applicant</option>
               <option value="employee">Employee</option>
             </select>
 
@@ -118,9 +123,8 @@
                   <tr>
                     <td colspan="7">
                       <div class="users-empty-state">
-                        <strong>No user type selected</strong>
-                        <p>Please Select a user type before loading account data</p>
-                        <button type="button" data-select-user-type>Select User Type</button>
+                        <strong>Loading users</strong>
+                        <p>Please wait while the system loads all project users.</p>
                       </div>
                     </td>
                   </tr>
@@ -131,17 +135,18 @@
           </section>
         </section>
 
-        <dialog class="user-type-dialog" data-user-type-dialog>
-          <section class="user-type-panel" aria-labelledby="user-type-title">
-            <h2 id="user-type-title">Select User Type</h2>
-            <p>Choose which type of user you want to view first.</p>
-
-            <div class="user-type-grid">
-              <button type="button" data-user-type="admin">Admin</button>
-              <button type="button" data-user-type="department">Department</button>
-              <button type="button" data-user-type="client">Applicant</button>
-              <button type="button" data-user-type="employee">Employee</button>
-            </div>
+        <dialog class="user-details-dialog" data-user-details-dialog>
+          <section class="user-details-panel" aria-labelledby="user-details-title">
+            <header>
+              <div>
+                <h2 id="user-details-title">User Details</h2>
+                <p>Complete account information from Supabase Auth</p>
+              </div>
+              <button type="button" data-close-user-details aria-label="Close user details">
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </header>
+            <div class="user-details-content" data-user-details-content></div>
           </section>
         </dialog>
       </section>

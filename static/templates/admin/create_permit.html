@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Create Permit</title>
+    <script defer src="/config.js?v=2"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=8" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/audit_logger.js?v=2"></script>
+    <script defer src="/features/admin_create_permit.js?v=1"></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar" aria-label="Admin navigation">
+        <a class="brand" href="/admin" aria-label="BPLO admin dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Administrator</small>
+          </span>
+        </a>
+
+        <nav class="side-nav">
+          <a href="/admin">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/create-user">
+            <i data-lucide="user" aria-hidden="true"></i>
+            <span>Create User</span>
+          </a>
+          <a class="is-active" href="/admin/create-permit">
+            <i data-lucide="id-card" aria-hidden="true"></i>
+            <span>Create Permit</span>
+          </a>
+          <a href="/admin/users">
+            <i data-lucide="clipboard-list" aria-hidden="true"></i>
+            <span>User list</span>
+          </a>
+          <a href="/admin/departments">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>Departments</span>
+          </a>
+          <a href="/admin/audit-logs">
+            <i data-lucide="clipboard-check" aria-hidden="true"></i>
+            <span>Audit logs</span>
+          </a>
+        </nav>
+
+        <a class="logout-link" href="/login" data-audit-logout>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="admin-content">
+        <header class="admin-header">
+          <div>
+            <h1>Create Permit</h1>
+            <p>Create a permit type and configure applicant document requirements</p>
+          </div>
+          <section class="welcome-card" aria-label="Signed in administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+          </section>
+        </header>
+
+        <section class="create-permit-page" aria-labelledby="create-permit-title">
+          <header class="permit-page-heading">
+            <h2 id="create-permit-title">Create Permit</h2>
+            <p>Create a permit type and configure applicant document requirements.</p>
+          </header>
+
+          <form class="permit-builder" data-permit-form>
+            <section class="permit-section permit-details-card">
+              <h3>Permit Details</h3>
+              <div class="permit-details-grid">
+                <label class="field">
+                  <span>Permit Name <em>*</em></span>
+                  <input name="permitName" value="Business Permit" required />
+                </label>
+                <label class="field">
+                  <span>Permit Code <em>*</em></span>
+                  <input name="permitCode" value="BP-001" required />
+                </label>
+                <fieldset class="permit-status">
+                  <legend>Status <em>*</em></legend>
+                  <label class="toggle-control">
+                    <input name="status" type="checkbox" checked />
+                    <span></span>
+                    <strong>Active</strong>
+                    <small>Inactive</small>
+                  </label>
+                </fieldset>
+                <label class="field">
+                  <span>Category / Permit Type <em>*</em></span>
+                  <select name="category" required>
+                    <option>Business Permits</option>
+                    <option>Special Permits</option>
+                    <option>Renewal Permits</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Description</span>
+                  <textarea name="description">Permit for operating a business within the municipality.</textarea>
+                </label>
+                <label class="field">
+                  <span>Processing Fee <small>(Optional)</small></span>
+                  <input name="processingFee" type="number" min="0" step="0.01" value="500.00" />
+                  <small>Leave blank if no processing fee.</small>
+                </label>
+              </div>
+            </section>
+
+            <section class="permit-section document-requirements-card">
+              <h3>Document Requirements</h3>
+              <div class="document-column-grid">
+                <article class="document-table-card">
+                  <header>
+                    <h4>Required Documents <span data-doc-count="required">0</span></h4>
+                    <button class="small-green-button" type="button" data-add-document="required">
+                      <i data-lucide="plus" aria-hidden="true"></i>
+                      Add Document
+                    </button>
+                  </header>
+                  <div class="permit-table-wrap">
+                    <table class="permit-doc-table">
+                      <thead>
+                        <tr>
+                          <th>Document Name</th>
+                          <th>Short Description</th>
+                          <th>Accepted File Types</th>
+                          <th>Max File Size</th>
+                          <th>Applicant Upload Required</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody data-document-body="required"></tbody>
+                    </table>
+                  </div>
+                </article>
+
+                <article class="document-table-card">
+                  <header>
+                    <h4>Optional Documents <span data-doc-count="optional">0</span></h4>
+                    <button class="small-green-button" type="button" data-add-document="optional">
+                      <i data-lucide="plus" aria-hidden="true"></i>
+                      Add Document
+                    </button>
+                  </header>
+                  <div class="permit-table-wrap">
+                    <table class="permit-doc-table">
+                      <thead>
+                        <tr>
+                          <th>Document Name</th>
+                          <th>Short Description</th>
+                          <th>Accepted File Types</th>
+                          <th>Max File Size</th>
+                          <th>Applicant Upload Required</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody data-document-body="optional"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="permit-section applicant-preview-card">
+              <article>
+                <i data-lucide="eye" aria-hidden="true"></i>
+                <div>
+                  <h3>Applicant View Preview / Upload Rules</h3>
+                  <p><i data-lucide="check" aria-hidden="true"></i> Applicants must upload one file per requirement.</p>
+                  <p><i data-lucide="check" aria-hidden="true"></i> Accepted file formats and maximum file size are shown on the upload page.</p>
+                  <p><i data-lucide="check" aria-hidden="true"></i> Optional documents appear separately from required documents.</p>
+                </div>
+              </article>
+              <label class="applicant-note">
+                <span><i data-lucide="info" aria-hidden="true"></i> Notes for Applicants (Optional)</span>
+                <textarea name="applicantNotes" placeholder="You may add additional notes or instructions that applicants will see on the upload page."></textarea>
+              </label>
+            </section>
+
+            <p class="admin-form-status permit-status-message" data-permit-status aria-live="polite"></p>
+
+            <footer class="permit-actions">
+              <a class="permit-button permit-button--plain" href="/admin">Cancel</a>
+              <button class="permit-button permit-button--outline" type="button" data-save-draft>Save as Draft</button>
+              <button class="permit-button permit-button--primary" type="submit">Create Permit</button>
+            </footer>
+          </form>
+        </section>
+
+        <dialog class="document-dialog" data-document-dialog>
+          <form class="document-form" method="dialog" data-document-form>
+            <header>
+              <h2 data-document-dialog-title>Add Document</h2>
+              <button type="button" data-close-document-dialog aria-label="Close document form">
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </header>
+            <input name="id" type="hidden" />
+            <input name="group" type="hidden" />
+            <label class="field">
+              <span>Document Name <em>*</em></span>
+              <input name="name" required />
+            </label>
+            <label class="field">
+              <span>Short Description</span>
+              <textarea name="description"></textarea>
+            </label>
+            <label class="field">
+              <span>Accepted File Types <em>*</em></span>
+              <input name="fileTypes" placeholder="PDF, JPG, PNG" required />
+            </label>
+            <label class="field">
+              <span>Max File Size <em>*</em></span>
+              <input name="maxSize" placeholder="10 MB" required />
+            </label>
+            <label class="checkbox-row">
+              <input name="uploadRequired" type="checkbox" />
+              <span>Applicant upload required</span>
+            </label>
+            <footer>
+              <button class="permit-button permit-button--plain" type="button" data-close-document-dialog>Cancel</button>
+              <button class="permit-button permit-button--primary" type="submit">Save Document</button>
+            </footer>
+          </form>
+        </dialog>
+      </section>
+    </main>
+  </body>
+</html>

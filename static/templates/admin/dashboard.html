@@ -5,17 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Admin Dashboard</title>
     <script defer src="/config.js?v=2"></script>
-    <link rel="stylesheet" href="/styles/admin.css?v=1" />
+    <link rel="stylesheet" href="/styles/admin.css?v=7" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/audit_logger.js?v=1"></script>
-    <script>
-      window.addEventListener("DOMContentLoaded", () => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      });
-    </script>
+    <script defer src="/features/audit_logger.js?v=2"></script>
+    <script defer src="/features/admin_dashboard.js?v=1"></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -37,6 +31,10 @@
             <i data-lucide="user" aria-hidden="true"></i>
             <span>Create User</span>
           </a>
+          <a href="/admin/create-permit">
+            <i data-lucide="id-card" aria-hidden="true"></i>
+            <span>Create Permit</span>
+          </a>
           <a href="/admin/users">
             <i data-lucide="clipboard-list" aria-hidden="true"></i>
             <span>User list</span>
@@ -48,7 +46,6 @@
           <a href="/admin/audit-logs">
             <i data-lucide="clipboard-check" aria-hidden="true"></i>
             <span>Audit logs</span>
-            <em>0</em>
           </a>
         </nav>
 
@@ -82,7 +79,7 @@
                 <h3>Total Users</h3>
                 <i data-lucide="user-round" aria-hidden="true"></i>
               </header>
-              <strong>0</strong>
+              <strong data-dashboard-count="totalUsers">0</strong>
               <span>Active users</span>
             </article>
 
@@ -91,7 +88,7 @@
                 <h3>Admin</h3>
                 <i data-lucide="shield" aria-hidden="true"></i>
               </header>
-              <strong>0</strong>
+              <strong data-dashboard-count="adminUsers">0</strong>
             </article>
 
             <article class="stat-card">
@@ -99,7 +96,7 @@
                 <h3>Department Users</h3>
                 <i data-lucide="users-round" aria-hidden="true"></i>
               </header>
-              <strong>0</strong>
+              <strong data-dashboard-count="departmentUsers">0</strong>
             </article>
 
             <article class="stat-card">
@@ -107,9 +104,10 @@
                 <h3>Clients</h3>
                 <i data-lucide="clipboard-check" aria-hidden="true"></i>
               </header>
-              <strong>0</strong>
+              <strong data-dashboard-count="clientUsers">0</strong>
             </article>
           </div>
+          <p class="admin-form-status dashboard-status" data-dashboard-status></p>
         </section>
       </section>
     </main>

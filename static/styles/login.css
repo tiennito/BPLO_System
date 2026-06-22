@@ -33,7 +33,7 @@ a {
 .login-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(380px, 1fr) minmax(420px, 1fr);
   background: var(--page-bg);
 }
 
@@ -52,35 +52,35 @@ a {
 
 .municipal-seal {
   display: block;
-  width: clamp(250px, 36vw, 330px);
+  width: clamp(300px, 42vw, 420px);
   height: auto;
   object-fit: contain;
 }
 
 .form-panel {
-  justify-content: flex-start;
-  padding: 48px 68px;
+  justify-content: center;
+  padding: clamp(32px, 5vw, 72px);
 }
 
 .login-card {
-  width: min(100%, 274px);
-  min-height: 378px;
+  width: min(100%, 420px);
+  min-height: clamp(460px, 58vh, 560px);
   display: flex;
   flex-direction: column;
-  padding: 24px 32px 32px;
+  padding: clamp(28px, 4vw, 40px);
   background: #ffffff;
   border-radius: 16px;
   box-shadow: var(--card-shadow);
 }
 
 .card-header {
-  margin-bottom: 58px;
+  margin-bottom: clamp(40px, 6vh, 70px);
   text-align: center;
 }
 
 .card-header h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: clamp(20px, 2vw, 28px);
   line-height: 1.16;
   font-weight: 700;
   letter-spacing: 0;
@@ -88,27 +88,27 @@ a {
 
 .form-group {
   display: grid;
-  gap: 9px;
+  gap: 10px;
 }
 
 .password-group {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 label {
-  font-size: 12px;
+  font-size: clamp(13px, 1vw, 15px);
   line-height: 1.2;
 }
 
 input,
 select {
   width: 100%;
-  height: 29px;
-  padding: 0 9px;
+  height: clamp(38px, 4.6vh, 48px);
+  padding: 0 12px;
   border: 1px solid var(--field);
   border-radius: 9px;
   color: var(--text);
-  font-size: 8px;
+  font-size: clamp(11px, 0.95vw, 14px);
   outline: none;
   background: #ffffff;
   transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -128,14 +128,14 @@ select:focus {
 
 .login-button {
   width: 100%;
-  height: 18px;
-  margin-top: 25px;
+  height: clamp(40px, 5vh, 50px);
+  margin-top: 22px;
   border: 0;
   border-radius: 999px;
   background: var(--green);
   color: #ffffff;
   cursor: pointer;
-  font-size: 10px;
+  font-size: clamp(12px, 1vw, 14px);
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
@@ -154,23 +154,23 @@ select:focus {
 
 .forgot-link {
   align-self: center;
-  margin-top: 10px;
+  margin-top: 12px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: clamp(11px, 0.9vw, 13px);
 }
 
 .auth-status {
-  min-height: 12px;
-  margin: 8px 0 0;
+  min-height: 18px;
+  margin: 10px 0 0;
   text-align: center;
-  font-size: 8px;
+  font-size: clamp(11px, 0.9vw, 13px);
   color: #0c8c36;
 }
 
 .forgot-link:hover,
 .create-account {
   width: 100%;
-  height: 15px;
+  height: clamp(38px, 4.8vh, 46px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,7 +178,7 @@ select:focus {
   border: 1px solid #50bf7d;
   border-radius: 999px;
   color: var(--green);
-  font-size: 10px;
+  font-size: clamp(12px, 1vw, 14px);
   transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
@@ -217,20 +217,33 @@ select:focus {
   }
 
   .municipal-seal {
-    width: min(64vw, 260px);
+    width: min(72vw, 320px);
   }
 
   .form-panel {
     justify-content: center;
-    padding: 20px 24px 40px;
+    padding: 18px 18px 36px;
   }
 
   .login-card {
-    min-height: 390px;
-    padding: 28px 32px 34px;
+    width: min(100%, 520px);
+    min-height: auto;
+    padding: 26px 24px 30px;
   }
 
   .card-header {
-    margin-bottom: 52px;
+    margin-bottom: 36px;
+  }
+
+  .card-header h1 {
+    font-size: 22px;
+  }
+
+  input,
+  select,
+  .login-button,
+  .forgot-link:hover,
+  .create-account {
+    height: 44px;
   }
 }

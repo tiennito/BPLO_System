@@ -9,9 +9,9 @@ const searchInput = document.querySelector("[data-user-search]");
 const roleFilter = document.querySelector("[data-role-filter]");
 const statusFilter = document.querySelector("[data-status-filter]");
 const refreshButton = document.querySelector("[data-refresh-users]");
-const selectTypeButton = document.querySelector("[data-select-user-type]");
-const userTypeDialog = document.querySelector("[data-user-type-dialog]");
-const userTypeButtons = Array.from(document.querySelectorAll("[data-user-type]"));
+const userDetailsDialog = document.querySelector("[data-user-details-dialog]");
+const userDetailsContent = document.querySelector("[data-user-details-content]");
+const closeUserDetailsButton = document.querySelector("[data-close-user-details]");
 
 let supabaseClient = null;
 let users = [];
@@ -78,11 +78,32 @@ function formatDate(value) {
   });
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatRole(value) {
   const roleLabels = {
     admin: "Admin",
     department: "Department User",
+    treasury: "Treasury User",
     client: "Client",
+    applicant: "Applicant",
     employee: "Employee",
   };
 
@@ -152,11 +173,62 @@ function renderUsers() {
           <td>${escapeHtml(user.department || "-")}</td>
           <td><span class="status-pill status-pill--${escapeHtml(user.status.toLowerCase())}">${escapeHtml(user.status)}</span></td>
           <td>${escapeHtml(formatDate(user.createdAt))}</td>
-          <td><button class="table-action" type="button">View</button></td>
+          <td><button class="table-action" type="button" data-view-user="${escapeHtml(user.id)}">View</button></td>
         </tr>
       `
     )
     .join("");
+}
+
+function detailItem(label, value) {
+  return `
+    <div class="user-detail-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+    </div>
+  `;
+}
+
+function getProviderLabel(user) {
+  const appMetadata = user.appMetadata || {};
+  const providers = Array.isArray(appMetadata.providers) ? appMetadata.providers : [];
+  return providers.length ? providers.join(", ") : appMetadata.provider || "Email";
+}
+
+function showUserDetails(userId) {
+  const user = users.find((item) => item.id === userId);
+  if (!user || !userDetailsDialog || !userDetailsContent) {
+    return;
+  }
+
+  userDetailsContent.innerHTML = `
+    <section class="user-details-summary">
+      <div class="user-avatar">${escapeHtml((user.name || user.email || "U").slice(0, 1).toUpperCase())}</div>
+      <div>
+        <h3>${escapeHtml(user.name || "Unnamed user")}</h3>
+        <p>${escapeHtml(user.email || "-")}</p>
+      </div>
+      <span class="status-pill status-pill--${escapeHtml(user.status.toLowerCase())}">${escapeHtml(user.status)}</span>
+    </section>
+    <section class="user-details-grid">
+      ${detailItem("User ID", user.id)}
+      ${detailItem("Role", formatRole(user.role))}
+      ${detailItem("Department", user.department)}
+      ${detailItem("Provider", getProviderLabel(user))}
+      ${detailItem("First Name", user.firstName)}
+      ${detailItem("Middle Name", user.middleName)}
+      ${detailItem("Last Name", user.lastName)}
+      ${detailItem("Suffix", user.suffix)}
+      ${detailItem("Contact Number", user.contactNumber)}
+      ${detailItem("Created", formatDateTime(user.createdAt))}
+      ${detailItem("Updated", formatDateTime(user.updatedAt))}
+      ${detailItem("Last Sign In", formatDateTime(user.lastSignInAt))}
+      ${detailItem("Email Confirmed", formatDateTime(user.emailConfirmedAt))}
+      ${detailItem("Banned Until", formatDateTime(user.bannedUntil))}
+    </section>
+  `;
+  userDetailsDialog.showModal();
+  window.lucide?.createIcons();
 }
 
 function escapeHtml(value) {
@@ -205,36 +277,29 @@ searchInput?.addEventListener("input", renderUsers);
 roleFilter?.addEventListener("change", renderUsers);
 statusFilter?.addEventListener("change", renderUsers);
 refreshButton?.addEventListener("click", loadUsers);
-selectTypeButton?.addEventListener("click", () => {
-  userTypeDialog?.showModal();
-});
-userTypeDialog?.addEventListener("click", (event) => {
-  if (event.target === userTypeDialog) {
-    userTypeDialog.close();
+usersBody?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
   }
+
+  const button = target.closest("[data-view-user]");
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+
+  showUserDetails(button.getAttribute("data-view-user") || "");
 });
-userTypeButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    const selectedType = button.getAttribute("data-user-type") || "";
-
-    if (roleFilter) {
-      roleFilter.value = selectedType;
-    }
-
-    userTypeDialog?.close();
-
-    if (!users.length) {
-      await loadUsers();
-      return;
-    }
-
-    renderUsers();
-    setStatus(`Showing ${button.textContent.trim()} users.`);
-  });
+closeUserDetailsButton?.addEventListener("click", () => userDetailsDialog?.close());
+userDetailsDialog?.addEventListener("click", (event) => {
+  if (event.target === userDetailsDialog) {
+    userDetailsDialog.close();
+  }
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {
     window.lucide.createIcons();
   }
+  void loadUsers();
 });

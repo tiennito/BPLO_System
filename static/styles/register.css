@@ -33,15 +33,15 @@ a {
 .register-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px minmax(360px, 1fr);
+  grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
   background: var(--page-bg);
 }
 
 .register-brand {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
-  padding: 34px 0 0 46px;
+  justify-content: center;
+  padding: 34px 16px 0;
 }
 
 .municipal-seal {
@@ -64,23 +64,23 @@ a {
 }
 
 .register-card {
-  width: min(100%, 358px);
-  min-height: 470px;
-  padding: 24px 24px 18px;
+  width: min(100%, 460px);
+  min-height: 560px;
+  padding: 30px 28px 22px;
   background: #ffffff;
-  border-radius: 0;
+  border-radius: 14px;
   box-shadow: var(--card-shadow);
 }
 
 .register-header h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 24px;
   line-height: 1.1;
 }
 
 .register-header p {
   margin: 4px 0 0;
-  font-size: 8px;
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -89,7 +89,7 @@ a {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin: 18px 0 24px;
+  margin: 22px 0 28px;
 }
 
 .stepper-line {
@@ -102,7 +102,7 @@ a {
   display: grid;
   justify-items: center;
   gap: 2px;
-  font-size: 8px;
+  font-size: 10px;
   color: #a8a8a8;
   text-align: center;
 }
@@ -137,20 +137,20 @@ a {
 
 .stage h2 {
   margin: 0;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 400;
 }
 
 .section-divider {
   height: 1px;
-  margin: 8px 0 12px;
+  margin: 10px 0 16px;
   background: #bfbfbf;
 }
 
 .field-row {
   display: grid;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .field-row--2 {
@@ -160,28 +160,28 @@ a {
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .form-group {
   display: grid;
-  gap: 9px;
+  gap: 10px;
 }
 
 label {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.2;
 }
 
 input,
 select {
   width: 100%;
-  height: 29px;
-  padding: 0 9px;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--field);
   border-radius: 9px;
   color: var(--text);
-  font-size: 8px;
+  font-size: 12px;
   outline: none;
   background: #ffffff;
   transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -212,13 +212,13 @@ select:focus {
   top: 50%;
   right: 6px;
   transform: translateY(-50%);
-  height: 20px;
+  height: 24px;
   padding: 0 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: #0c8c36;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   cursor: pointer;
   transition: color 160ms ease, transform 160ms ease;
@@ -234,7 +234,7 @@ select:focus {
   display: flex;
   gap: 10px;
   align-items: center;
-  margin-top: 18px;
+  margin-top: 22px;
 }
 
 .actions--stacked {
@@ -256,10 +256,10 @@ select:focus {
 
 .primary-button,
 .secondary-button {
-  height: 18px;
+  height: 40px;
   border-radius: 999px;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
   transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, color 160ms ease;
@@ -296,14 +296,14 @@ select:focus {
 }
 
 .outline-link {
-  height: 15px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid #50bf7d;
   border-radius: 999px;
   color: var(--green);
-  font-size: 10px;
+  font-size: 12px;
   background: transparent;
   transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
@@ -525,16 +525,19 @@ select:focus {
 
   .register-brand {
     justify-content: center;
-    padding: 20px;
+    padding: 24px 20px 8px;
   }
 
   .register-panel {
-    padding: 12px 20px 40px;
+    justify-content: center;
+    padding: 14px 18px 36px;
   }
 
   .register-card {
-    width: 100%;
-    max-width: 360px;
+    width: min(100%, 520px);
+    min-height: auto;
+    padding: 24px 20px 26px;
+    border-radius: 14px;
   }
 
   .field-row--2,
@@ -553,5 +556,17 @@ select:focus {
   .code-boxes--8 {
     grid-template-columns: repeat(4, 26px);
     justify-content: center;
+  }
+
+  .register-header h1 {
+    font-size: 22px;
+  }
+
+  input,
+  select,
+  .primary-button,
+  .secondary-button,
+  .outline-link {
+    height: 42px;
   }
 }

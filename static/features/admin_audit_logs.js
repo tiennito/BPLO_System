@@ -9,9 +9,16 @@ const auditSearchInput = document.querySelector("[data-audit-search]");
 const actionFilter = document.querySelector("[data-action-filter]");
 const refreshAuditButton = document.querySelector("[data-refresh-audit-logs]");
 const auditCount = document.querySelector("[data-audit-count]");
+const auditPagination = document.querySelector("[data-audit-pagination]");
+const auditPageSummary = document.querySelector("[data-audit-page-summary]");
+const auditPageLabel = document.querySelector("[data-audit-page-label]");
+const auditPrevButton = document.querySelector("[data-audit-prev]");
+const auditNextButton = document.querySelector("[data-audit-next]");
 
 let auditClient = null;
 let auditLogs = [];
+let auditPage = 1;
+const AUDIT_PAGE_SIZE = 10;
 
 function initAuditSupabase() {
   if (!window.supabase?.createClient) {
@@ -131,8 +138,13 @@ function renderAuditLogs() {
   }
 
   const filteredLogs = getFilteredAuditLogs();
+  const pageCount = Math.max(1, Math.ceil(filteredLogs.length / AUDIT_PAGE_SIZE));
+  auditPage = Math.min(Math.max(1, auditPage), pageCount);
+  const startIndex = (auditPage - 1) * AUDIT_PAGE_SIZE;
+  const pageLogs = filteredLogs.slice(startIndex, startIndex + AUDIT_PAGE_SIZE);
 
   if (!auditLogs.length) {
+    syncAuditPagination(0, 0, 0);
     auditBody.innerHTML = `
       <tr>
         <td colspan="7">
@@ -147,6 +159,7 @@ function renderAuditLogs() {
   }
 
   if (!filteredLogs.length) {
+    syncAuditPagination(0, 0, 0);
     auditBody.innerHTML = `
       <tr>
         <td colspan="7">
@@ -160,7 +173,7 @@ function renderAuditLogs() {
     return;
   }
 
-  auditBody.innerHTML = filteredLogs
+  auditBody.innerHTML = pageLogs
     .map(
       (log) => `
         <tr>
@@ -175,6 +188,33 @@ function renderAuditLogs() {
       `
     )
     .join("");
+  syncAuditPagination(filteredLogs.length, startIndex + 1, startIndex + pageLogs.length);
+}
+
+function syncAuditPagination(totalLogs, start, end) {
+  if (!auditPagination) {
+    return;
+  }
+
+  const hasLogs = totalLogs > 0;
+  const pageCount = Math.max(1, Math.ceil(totalLogs / AUDIT_PAGE_SIZE));
+  auditPagination.hidden = !hasLogs;
+
+  if (auditPageSummary) {
+    auditPageSummary.textContent = hasLogs ? `Showing ${start} to ${end} of ${totalLogs} logs` : "Showing 0 logs";
+  }
+
+  if (auditPageLabel) {
+    auditPageLabel.textContent = `Page ${auditPage} of ${pageCount}`;
+  }
+
+  if (auditPrevButton) {
+    auditPrevButton.disabled = auditPage <= 1;
+  }
+
+  if (auditNextButton) {
+    auditNextButton.disabled = auditPage >= pageCount;
+  }
 }
 
 async function loadAuditLogs() {
@@ -197,6 +237,7 @@ async function loadAuditLogs() {
     }
 
     auditLogs = Array.isArray(result.logs) ? result.logs : [];
+    auditPage = 1;
     if (auditCount) {
       auditCount.textContent = String(auditLogs.length);
     }
@@ -213,9 +254,23 @@ async function loadAuditLogs() {
   }
 }
 
-auditSearchInput?.addEventListener("input", renderAuditLogs);
-actionFilter?.addEventListener("change", renderAuditLogs);
+auditSearchInput?.addEventListener("input", () => {
+  auditPage = 1;
+  renderAuditLogs();
+});
+actionFilter?.addEventListener("change", () => {
+  auditPage = 1;
+  renderAuditLogs();
+});
 refreshAuditButton?.addEventListener("click", loadAuditLogs);
+auditPrevButton?.addEventListener("click", () => {
+  auditPage -= 1;
+  renderAuditLogs();
+});
+auditNextButton?.addEventListener("click", () => {
+  auditPage += 1;
+  renderAuditLogs();
+});
 
 window.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {

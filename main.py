@@ -66,6 +66,9 @@ PAGE_ROUTES = {
     "/admin/create-user": "/templates/admin/create_user.html",
     "/admin/create-user/": "/templates/admin/create_user.html",
     "/admin/create-user.html": "/templates/admin/create_user.html",
+    "/admin/create-permit": "/templates/admin/create_permit.html",
+    "/admin/create-permit/": "/templates/admin/create_permit.html",
+    "/admin/create-permit.html": "/templates/admin/create_permit.html",
     "/admin/users": "/templates/admin/users.html",
     "/admin/users/": "/templates/admin/users.html",
     "/admin/user-list": "/templates/admin/users.html",
@@ -391,8 +394,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             },
         )
 
-        with urlopen(request, timeout=10):
-            return
+        try:
+            with urlopen(request, timeout=10):
+                return True
+        except (HTTPError, URLError, TimeoutError):
+            return False
 
     def create_admin_user(self):
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
@@ -465,7 +471,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             with urlopen(request, timeout=15) as response:
                 response_payload = json.loads(response.read().decode("utf-8"))
 
-            self.create_service_audit_log(
+            audit_logged = self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
                 "user_created_by_admin",
@@ -480,6 +486,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                     "message": "User account created successfully.",
                     "userId": response_payload.get("id"),
                     "email": response_payload.get("email"),
+                    "auditLogged": audit_logged,
                 },
                 status=201,
             )
@@ -585,11 +592,22 @@ class AppHandler(SimpleHTTPRequestHandler):
         return {
             "id": user.get("id"),
             "name": full_name or user.get("email") or "Unnamed user",
+            "firstName": first_name,
+            "lastName": last_name,
+            "middleName": user_metadata.get("middle_name") or "",
+            "suffix": user_metadata.get("suffix") or "",
+            "contactNumber": user_metadata.get("contact_number") or "",
             "email": user.get("email") or "",
             "role": role,
             "department": department,
             "status": status,
             "createdAt": user.get("created_at") or "",
+            "updatedAt": user.get("updated_at") or "",
+            "lastSignInAt": user.get("last_sign_in_at") or "",
+            "emailConfirmedAt": user.get("email_confirmed_at") or user.get("confirmed_at") or "",
+            "bannedUntil": banned_until or "",
+            "appMetadata": app_metadata,
+            "userMetadata": user_metadata,
         }
 
     def list_admin_users(self):

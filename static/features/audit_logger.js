@@ -30,6 +30,35 @@ async function getAuditSession() {
   return data.session || null;
 }
 
+function setAuditBadgeCount(count) {
+  document.querySelectorAll("[data-audit-count]").forEach((node) => {
+    node.textContent = String(count);
+  });
+}
+
+async function refreshAuditBadge(session) {
+  const badges = document.querySelectorAll("[data-audit-count]");
+  if (!badges.length || !session?.access_token || !window.location.pathname.startsWith("/admin")) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/admin/api/audit-logs", {
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to load audit badge.");
+    }
+
+    setAuditBadgeCount(Array.isArray(result.logs) ? result.logs.length : 0);
+  } catch (_error) {
+    setAuditBadgeCount(0);
+  }
+}
+
 window.BPLOAudit = {
   async record(action, details = {}, entityType = "", entityId = "") {
     try {
@@ -63,16 +92,18 @@ window.addEventListener("DOMContentLoaded", () => {
     const role = session?.user?.app_metadata?.role || "";
     if (window.location.pathname.startsWith("/admin") && role === "department") {
       window.location.replace("/department/dashboard");
+      return;
     }
     if (window.location.pathname.startsWith("/admin") && role === "treasury") {
       window.location.replace("/treasury/dashboard");
+      return;
     }
+    await window.BPLOAudit.record("page_view", {
+      path: window.location.pathname,
+      title: document.title,
+    }, "page", window.location.pathname);
+    await refreshAuditBadge(session);
   })();
-
-  window.BPLOAudit.record("page_view", {
-    path: window.location.pathname,
-    title: document.title,
-  }, "page", window.location.pathname);
 
   document.querySelectorAll("[data-audit-logout]").forEach((link) => {
     link.addEventListener("click", async (event) => {

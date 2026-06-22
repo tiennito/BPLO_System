@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/styles/admin.css?v=7" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/audit_logger.js?v=1"></script>
+    <script defer src="/features/audit_logger.js?v=2"></script>
     <script defer src="/features/admin_departments.js?v=2"></script>
   </head>
   <body>
@@ -31,6 +31,10 @@
             <i data-lucide="user" aria-hidden="true"></i>
             <span>Create User</span>
           </a>
+          <a href="/admin/create-permit">
+            <i data-lucide="id-card" aria-hidden="true"></i>
+            <span>Create Permit</span>
+          </a>
           <a href="/admin/users">
             <i data-lucide="clipboard-list" aria-hidden="true"></i>
             <span>User list</span>
@@ -42,7 +46,6 @@
           <a href="/admin/audit-logs">
             <i data-lucide="clipboard-check" aria-hidden="true"></i>
             <span>Audit logs</span>
-            <em>0</em>
           </a>
         </nav>
 
