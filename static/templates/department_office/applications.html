@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Applications</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=2" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=2"></script>
+  </head>
+  <body data-page="applications">
+    <main class="department-shell">
+      <aside class="department-sidebar" aria-label="Department navigation">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a class="is-active" href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="department-content">
+        <header class="department-header">
+          <div>
+            <h1>Applications</h1>
+            <p data-department-name>Assigned department applications</p>
+          </div>
+          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+
+        <section class="department-page applications-workspace">
+          <p class="status-line" data-status>Loading applications...</p>
+
+          <section class="app-review-shell">
+            <div class="app-filter-row">
+              <label>
+                Application
+                <select data-application-picker>
+                  <option value="">Select application</option>
+                </select>
+              </label>
+              <label>
+                Reference #
+                <input type="search" data-search placeholder="Search reference or business name" />
+              </label>
+            </div>
+
+            <section class="app-card app-table-card">
+              <div class="staff-table-wrap">
+                <table class="staff-app-table">
+                  <thead>
+                    <tr>
+                      <th>Reference #</th>
+                      <th>Business</th>
+                      <th>Applicant</th>
+                      <th>Submit ICA</th>
+                      <th>Application Status</th>
+                    </tr>
+                  </thead>
+                  <tbody data-applications-table>
+                    <tr><td colspan="5" class="empty-state">Loading applications...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="app-card app-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="user"></i>
+                <span>Applicant Details</span>
+              </button>
+              <div class="app-detail-grid" data-review-applicant-details></div>
+            </section>
+
+            <section class="app-card app-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="briefcase-business"></i>
+                <span>Business Profile</span>
+              </button>
+              <div class="app-detail-grid" data-review-business-profile></div>
+            </section>
+
+            <section class="app-card app-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="receipt-text"></i>
+                <span>Department Assessment Fee</span>
+              </button>
+              <form class="assessment-panel" data-assessment-form>
+                <div class="assessment-head">
+                  <span>Fee Description</span>
+                  <span>Category</span>
+                  <span>Amount</span>
+                  <span>Penalty</span>
+                </div>
+                <div class="assessment-row">
+                  <input name="feeDescription" placeholder="Department fee" />
+                  <input name="category" placeholder="Code" />
+                  <input name="amount" type="number" min="0" step="0.01" placeholder="0.00" />
+                  <input name="penalty" type="number" min="0" step="0.01" placeholder="0.00" />
+                </div>
+                <label class="app-field app-field-full">
+                  Assessment Remarks
+                  <input name="assessmentRemarks" />
+                </label>
+                <div class="assessment-total-row">
+                  <label>Amount<input name="amountSummary" readonly placeholder="PHP 0.00" /></label>
+                  <label>Penalty<input name="penaltySummary" readonly placeholder="PHP 0.00" /></label>
+                  <label>Total<input name="totalSummary" readonly placeholder="PHP 0.00" /></label>
+                  <div class="app-actions">
+                    <button class="btn btn-blue" type="button" data-preview-assessment>Generate</button>
+                    <button class="btn btn-primary" type="submit">Submit</button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <section class="app-card app-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="calendar-check"></i>
+                <span>Inspection Scheduling</span>
+              </button>
+              <form class="inspection-panel" data-staff-inspection-form>
+                <label class="app-field">Inspection Date<input name="scheduledDate" type="date" required /></label>
+                <label class="app-field">Start Time<input name="scheduledTime" type="time" required /></label>
+                <label class="app-field">End Time<input name="endTime" type="time" /></label>
+                <label class="app-field">Inspection Type<select name="status"><option>Draft</option><option>Scheduled</option><option>Completed</option><option>Cancelled</option></select></label>
+                <label class="app-field app-field-full">Location Address<input name="locationAddress" data-location-address /></label>
+                <label class="app-field app-field-full">Remarks<input name="remarks" /></label>
+                <div class="upload-zone">
+                  <div class="upload-zone-head">
+                    <strong>Inspection Proof</strong>
+                    <button class="btn" type="button" data-upload-placeholder>Files</button>
+                  </div>
+                  <label class="drop-zone">
+                    <input type="file" name="inspectionProof" />
+                    <i data-lucide="upload"></i>
+                    <span>Drop files or browse</span>
+                    <small>PNG, JPG, PDF up to 10 MB</small>
+                  </label>
+                  <div class="app-actions">
+                    <button class="btn btn-blue" type="button" data-upload-placeholder>Upload Evidence</button>
+                    <button class="btn btn-primary" type="submit">Mark as Completed</button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <section class="app-card app-section slim-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="paperclip"></i>
+                <span>Uploaded Documents</span>
+                <em>0 files</em>
+              </button>
+              <div class="document-actions">
+                <button class="btn" type="button" data-upload-placeholder>View</button>
+                <button class="btn btn-blue" type="button" data-upload-placeholder>Download</button>
+              </div>
+            </section>
+
+            <section class="app-card app-section">
+              <button class="app-section-title" type="button">
+                <i data-lucide="pencil"></i>
+                <span>Upload Documents</span>
+              </button>
+              <form class="decision-panel" data-staff-evaluation-form>
+                <label class="app-field app-field-full">Remarks<textarea name="remarks" placeholder="Required when rejecting"></textarea></label>
+                <div class="app-actions">
+                  <button class="btn btn-primary" type="submit" data-evaluation-status="Approved">Mark as Approved</button>
+                  <button class="btn btn-danger-solid" type="submit" data-evaluation-status="Rejected">Reject Department</button>
+                  <button class="btn btn-blue" type="button" data-open-document-request>Request Additional Documents</button>
+                </div>
+              </form>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div class="modal-backdrop" data-document-request-modal hidden>
+      <section class="document-request-modal" role="dialog" aria-modal="true" aria-labelledby="document-request-title">
+        <header class="modal-header">
+          <h2 id="document-request-title"><i data-lucide="paperclip"></i> Request Additional Documents</h2>
+          <button type="button" aria-label="Close" data-close-document-request>
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+
+        <form class="document-request-form" data-document-request-form>
+          <label class="modal-field">
+            <span>Documents Needed <em>*</em></span>
+            <div class="document-select-row">
+              <select name="documentType" required>
+                <option value="">-- Select from list or enter custom --</option>
+                <option>Barangay Clearance</option>
+                <option>Valid ID</option>
+                <option>Lease Contract / Land Title</option>
+                <option>Sanitary Permit</option>
+                <option>Fire Safety Inspection Certificate</option>
+                <option>Zoning Clearance</option>
+                <option>Engineering Clearance</option>
+                <option>Other / Custom Document</option>
+              </select>
+              <button type="button" aria-label="Remove document row">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </div>
+            <input name="customDocumentName" placeholder="Or enter custom document name..." />
+            <textarea name="documentNotes" placeholder="Notes / special instructions for applicant..."></textarea>
+            <label class="checkbox-field">
+              <input name="applicantMustUpload" type="checkbox" checked />
+              <span>Applicant must upload this document</span>
+            </label>
+            <textarea name="municipalSource" placeholder="How to obtain this document from the municipal (optional)..."></textarea>
+          </label>
+
+          <button class="add-document-button" type="button" data-add-document-row>
+            <i data-lucide="plus"></i>
+            Add Document
+          </button>
+
+          <label class="modal-field">
+            <span>Reason / Instructions <em>*</em></span>
+            <textarea name="reason" required placeholder="Explain why these documents are needed and any special instructions for the applicant..."></textarea>
+          </label>
+
+          <label class="modal-field">
+            <span>Deadline <small>(Optional)</small></span>
+            <input name="deadline" type="date" />
+          </label>
+
+          <footer class="modal-actions">
+            <button class="btn" type="button" data-close-document-request>Cancel</button>
+            <button class="btn btn-blue" type="submit">
+              <i data-lucide="send"></i>
+              Send Request
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  </body>
+</html>

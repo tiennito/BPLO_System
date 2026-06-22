@@ -84,7 +84,13 @@ form?.addEventListener("submit", async (event) => {
     }
 
     const signedInEmail = (session.user?.email || email).toLowerCase();
-    const redirectPath = ADMIN_EMAIL && signedInEmail === ADMIN_EMAIL ? "/admin/dashboard" : "/applicant/dashboard";
+    const role = session.user?.app_metadata?.role || "";
+    let redirectPath = "/applicant/dashboard";
+    if (ADMIN_EMAIL && signedInEmail === ADMIN_EMAIL) {
+      redirectPath = "/admin/dashboard";
+    } else if (role === "department") {
+      redirectPath = "/department/dashboard";
+    }
 
     setStatus("Signed in successfully. Redirecting...");
     await recordAuditEvent(session, "login", { redirectPath });

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Office Dashboard</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=1" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=1"></script>
+  </head>
+  <body data-page="dashboard">
+    <main class="department-shell">
+      <aside class="department-sidebar" aria-label="Department navigation">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a class="is-active" href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+      <section class="department-content">
+        <header class="department-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p data-department-name>System overview and application management</p>
+          </div>
+          <section class="welcome-card"><span>Welcome back,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+        <section class="department-page">
+          <p class="status-line" data-status>Loading dashboard...</p>
+          <section class="stats-grid" aria-label="Dashboard counts">
+            <article class="stat-card"><header><h3>Pending</h3><i data-lucide="hourglass"></i></header><strong data-count="pending">0</strong></article>
+            <article class="stat-card"><header><h3>Approved</h3><i data-lucide="circle-check"></i></header><strong data-count="approved">0</strong></article>
+            <article class="stat-card"><header><h3>Rejected</h3><i data-lucide="circle-x"></i></header><strong data-count="rejected">0</strong></article>
+            <article class="stat-card"><header><h3>Total Applicants</h3><i data-lucide="clipboard-check"></i></header><strong data-count="totalApplicants">0</strong></article>
+          </section>
+          <section class="panel">
+            <header class="panel-header"><h2>All Applications</h2><a class="btn" href="/department/applications">View all</a></header>
+            <div class="table-wrap">
+              <table class="department-table">
+                <thead><tr><th>Ref No.</th><th>Business Name</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody data-applications-table><tr><td colspan="4" class="empty-state">Loading applications...</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

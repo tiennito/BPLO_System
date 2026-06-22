@@ -58,6 +58,14 @@ window.BPLOAudit = {
 };
 
 window.addEventListener("DOMContentLoaded", () => {
+  void (async () => {
+    const session = await getAuditSession();
+    const role = session?.user?.app_metadata?.role || "";
+    if (window.location.pathname.startsWith("/admin") && role === "department") {
+      window.location.replace("/department/dashboard");
+    }
+  })();
+
   window.BPLOAudit.record("page_view", {
     path: window.location.pathname,
     title: document.title,

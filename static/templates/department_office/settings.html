@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Settings</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=6" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=6"></script>
+  </head>
+  <body data-page="settings">
+    <main class="department-shell">
+      <aside class="department-sidebar">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a class="is-active" href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="department-content">
+        <header class="department-header">
+          <div><h1>Settings</h1><p data-department-name>Department office preferences</p></div>
+          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+
+        <section class="department-page settings-page">
+          <p class="status-line" data-status>Loading settings...</p>
+          <div class="settings-layout settings-layout--simple">
+            <form class="settings-grid-form" data-settings-form>
+              <section class="settings-card profile-card" id="profile-settings">
+                <header><i data-lucide="user-round"></i><div><h2>Profile Settings</h2><p>Manage your personal information.</p></div></header>
+                <div class="profile-settings-body">
+                  <div class="profile-photo">
+                    <span><i data-lucide="user"></i></span>
+                    <button class="btn" type="button">Change Photo</button>
+                  </div>
+                  <div class="settings-field-grid">
+                    <label>Staff Name<input name="profile.staffName" /></label>
+                    <label>Department Office<input name="profile.departmentOffice" /></label>
+                    <label>Email Address<input name="profile.emailAddress" type="email" /></label>
+                    <label>Position / Role<input name="profile.positionRole" /></label>
+                    <label>Contact Number<input name="profile.contactNumber" /></label>
+                    <div class="settings-actions"><button class="btn btn-primary" type="submit">Save Changes</button><button class="btn" type="button" data-change-password><i data-lucide="lock"></i>Change Password</button></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-card" id="office-information">
+                <header><i data-lucide="building-2"></i><div><h2>Office Information</h2><p>Manage information about your department office.</p></div></header>
+                <div class="settings-field-grid">
+                  <label>Office Name<input name="office.officeName" /></label>
+                  <label>Office Email<input name="office.officeEmail" type="email" /></label>
+                  <label>Office Head<input name="office.officeHead" /></label>
+                  <label>Office Address<textarea name="office.officeAddress"></textarea></label>
+                  <label>Office Contact Number<input name="office.officeContactNumber" /></label>
+                </div>
+              </section>
+
+              <section class="settings-card" id="security-settings">
+                <header><i data-lucide="shield-check"></i><div><h2>Security</h2><p>Manage your account security and activity.</p></div></header>
+                <div class="security-list">
+                  <label>Two-Step Verification<input name="security.twoStepVerification" type="checkbox" /><span>Add an extra layer of security to your account.</span></label>
+                  <div><strong>Last Login</strong><span data-last-login>Today</span></div>
+                  <div><strong>Logout from All Devices</strong><span>Sign out from all devices except this one.</span><button class="btn btn-primary" type="button" data-logout-all>Logout All</button></div>
+                  <div><strong>Account Activity</strong><span>View recent activity on your account.</span><button class="btn btn-primary" type="button" data-view-activity>View Activity</button></div>
+                  <div><strong>Reset Settings</strong><span>Soft delete saved settings and return to defaults.</span><button class="btn btn-danger" type="button" data-reset-settings>Reset</button></div>
+                </div>
+              </section>
+            </form>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Reports</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=5" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=5"></script>
+  </head>
+  <body data-page="reports">
+    <main class="department-shell">
+      <aside class="department-sidebar">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a class="is-active" href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="department-content">
+        <header class="department-header">
+          <div>
+            <h1>Reports</h1>
+            <p data-department-name>Department reports and transactions</p>
+          </div>
+          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+
+        <section class="department-page reports-page">
+          <header class="reports-heading">
+            <h2>Department Reports</h2>
+            <p>Summary of inspections, applications, and office transactions.</p>
+          </header>
+
+          <p class="status-line" data-status>Loading reports...</p>
+
+          <section class="report-summary-grid">
+            <article class="report-summary-card"><i data-lucide="clipboard-list"></i><span>Total Transactions</span><strong data-report-count="total">0</strong><small>This Month</small></article>
+            <article class="report-summary-card is-green"><i data-lucide="circle-check"></i><span>Completed Inspections</span><strong data-report-count="completed">0</strong><small>This Month</small></article>
+            <article class="report-summary-card is-yellow"><i data-lucide="clock"></i><span>Pending Inspections</span><strong data-report-count="pending">0</strong><small>This Month</small></article>
+            <article class="report-summary-card is-green"><i data-lucide="clipboard-check"></i><span>Approved Applications</span><strong data-report-count="approved">0</strong><small>This Month</small></article>
+            <article class="report-summary-card is-red"><i data-lucide="file-pen-line"></i><span>For Revision</span><strong data-report-count="revision">0</strong><small>This Month</small></article>
+          </section>
+
+          <section class="reports-table-card">
+            <div class="reports-toolbar">
+              <label class="report-search"><i data-lucide="search"></i><input data-report-search type="search" placeholder="Search reports..." /></label>
+              <label>Date Range<input type="text" value="May 1 - May 31, 2024" readonly /></label>
+              <label>Status<select data-report-status-filter><option value="">All Statuses</option><option>Completed</option><option>Approved</option><option>Pending</option><option>For Revision</option><option>Draft</option></select></label>
+              <label>Type<select data-report-type-filter><option value="">All Types</option><option>Site Inspection Report</option><option>Business Permit Application</option><option>Electrical Inspection Report</option><option>Sign Permit Application</option></select></label>
+              <button class="btn" type="button" data-export-placeholder><i data-lucide="file-text"></i>Export PDF</button>
+              <button class="btn" type="button" data-export-placeholder><i data-lucide="sheet"></i>Export Excel</button>
+              <button class="btn btn-primary" type="button" data-toggle-report-form><i data-lucide="plus"></i>New Report</button>
+            </div>
+
+            <form class="report-form" data-report-form hidden>
+              <input type="hidden" name="id" />
+              <label>Applicant<input name="applicantName" required /></label>
+              <label>Business Name<input name="businessName" required /></label>
+              <label>Report Type<select name="reportType" required><option>Site Inspection Report</option><option>Business Permit Application</option><option>Electrical Inspection Report</option><option>Sign Permit Application</option></select></label>
+              <label>Date<input name="reportDate" type="date" required /></label>
+              <label>Status<select name="status"><option>Completed</option><option>Approved</option><option>Pending</option><option>For Revision</option><option>Draft</option></select></label>
+              <label class="form-wide">Remarks<textarea name="remarks"></textarea></label>
+              <div class="form-wide report-form-actions"><button class="btn btn-primary" type="submit">Save Report</button><button class="btn" type="reset">Clear</button></div>
+            </form>
+
+            <div class="report-table-wrap">
+              <table class="report-table">
+                <thead><tr><th>Report ID</th><th>Applicant</th><th>Business Name</th><th>Report Type</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody data-reports-table><tr><td colspan="7" class="empty-state">Loading reports...</td></tr></tbody>
+              </table>
+            </div>
+            <footer class="report-table-footer">
+              <span data-report-entry-count>Showing 0 reports</span>
+              <nav class="pagination"><button type="button"><i data-lucide="chevron-left"></i></button><button class="is-active" type="button">1</button><button type="button">2</button><button type="button">3</button><button type="button">4</button><button type="button">5</button><button type="button"><i data-lucide="chevron-right"></i></button></nav>
+            </footer>
+          </section>
+
+          <section class="report-chart-grid">
+            <article class="report-chart-card">
+              <h3><i data-lucide="chart-column"></i>Monthly Transactions</h3>
+              <div class="bar-chart" data-report-bars></div>
+            </article>
+            <article class="report-chart-card">
+              <h3><i data-lucide="chart-no-axes-column-increasing"></i>Status Breakdown</h3>
+              <div class="status-breakdown">
+                <div class="donut-chart"><span data-report-count="total">0</span><small>Total</small></div>
+                <div class="breakdown-list" data-report-breakdown></div>
+              </div>
+            </article>
+          </section>
+
+          <footer class="reports-footer">&copy; 2024 BPLO Department Office. All rights reserved.</footer>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

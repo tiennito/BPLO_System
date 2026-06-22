@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Application Details</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=1" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=1"></script>
+  </head>
+  <body data-page="application-details">
+    <main class="department-shell">
+      <aside class="department-sidebar" aria-label="Department navigation">
+        <a class="department-brand" href="/department/dashboard"><img src="/assets/Victoria.png" alt="Seal" /><span><strong>BPLO</strong><small>Department Office</small></span></a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a class="is-active" href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+      <section class="department-content">
+        <header class="department-header"><div><h1>Application Details</h1><p data-department-name>Review assigned application</p></div><section class="welcome-card"><span>Welcome back,</span><strong data-user-name>Staff name</strong></section></header>
+        <section class="department-page stack">
+          <p class="status-line" data-status>Loading application...</p>
+          <section class="panel">
+            <header class="panel-header"><h2>Applicant and Business Information</h2><a class="btn" href="/department/applications">Back</a></header>
+            <div class="detail-grid" data-detail-grid></div>
+          </section>
+          <section class="panel">
+            <header class="panel-header"><h2>Evaluation Status</h2></header>
+            <form class="form-grid" data-evaluation-form>
+              <label class="field"><span>Status</span><select name="status" required><option>Pending</option><option>Approved</option><option>Rejected</option></select></label>
+              <label class="field"><span>Requirement Verification</span><select name="verificationStatus"><option>Unverified</option><option>Pending</option><option>Verified</option><option>Rejected</option></select></label>
+              <label class="field field-full"><span>Remarks</span><textarea name="remarks" placeholder="Required when rejecting"></textarea></label>
+              <div class="field-full action-row"><button class="btn btn-primary" type="submit">Update Evaluation</button></div>
+            </form>
+          </section>
+          <section class="panel">
+            <header class="panel-header"><h2>Create Verification Record</h2></header>
+            <form class="form-grid" data-verification-form>
+              <label class="field"><span>Status</span><select name="status" required><option>Pending</option><option>Verified</option><option>Rejected</option></select></label>
+              <label class="field"><span>Requirement ID</span><input name="requirementId" placeholder="Optional checklist ID" /></label>
+              <label class="field field-full"><span>Verification Remarks</span><textarea name="remarks"></textarea></label>
+              <div class="field-full action-row"><button class="btn btn-primary" type="submit">Add Verification</button></div>
+            </form>
+            <div class="record-list" data-verification-list></div>
+          </section>
+          <section class="panel">
+            <header class="panel-header"><h2>Site Inspection Schedule</h2></header>
+            <form class="form-grid" data-inspection-form>
+              <label class="field"><span>Date</span><input name="scheduledDate" type="date" required /></label>
+              <label class="field"><span>Time</span><input name="scheduledTime" type="time" required /></label>
+              <label class="field"><span>Status</span><select name="status"><option>Draft</option><option>Scheduled</option><option>Completed</option><option>Cancelled</option></select></label>
+              <label class="field field-full"><span>Inspection Remarks</span><textarea name="remarks"></textarea></label>
+              <div class="field-full action-row"><button class="btn btn-primary" type="submit">Save Inspection</button></div>
+            </form>
+            <div class="record-list" data-inspection-list></div>
+          </section>
+          <section class="panel">
+            <header class="panel-header"><h2>Remarks</h2></header>
+            <form class="form-grid" data-remark-form>
+              <label class="field"><span>Status</span><select name="status"><option>Draft</option><option>Submitted</option></select></label>
+              <label class="field field-full"><span>Remark</span><textarea name="remark" required></textarea></label>
+              <div class="field-full action-row"><button class="btn btn-primary" type="submit">Add Remark</button></div>
+            </form>
+            <div class="record-list" data-remark-list></div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

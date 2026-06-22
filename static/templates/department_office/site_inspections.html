@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Site Inspections</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=4" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=4"></script>
+  </head>
+  <body data-page="inspections">
+    <main class="department-shell">
+      <aside class="department-sidebar">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a class="is-active" href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="department-content">
+        <header class="department-header">
+          <div>
+            <h1>Site Inspections</h1>
+            <p data-department-name>Department inspection schedule</p>
+          </div>
+          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+
+        <section class="department-page inspections-page">
+          <header class="inspection-heading">
+            <div>
+              <h2>Inspection Schedule</h2>
+              <p>View and manage scheduled site inspections.</p>
+            </div>
+            <div class="inspection-toolbar">
+              <label class="inspection-search">
+                <i data-lucide="search"></i>
+                <input type="search" data-inspection-search placeholder="Search by client, location, or reference..." />
+              </label>
+              <button class="date-button" type="button" aria-label="Open calendar"><i data-lucide="calendar-days"></i></button>
+              <button class="btn btn-primary new-inspection-button" type="button" data-toggle-inspection-form>
+                <i data-lucide="plus"></i>
+                New Inspection
+              </button>
+            </div>
+          </header>
+
+          <p class="status-line" data-status>Loading inspections...</p>
+
+          <section class="inspection-create-panel" data-inspection-create-panel hidden>
+            <form class="inspection-create-form" data-global-inspection-form>
+              <input type="hidden" name="id" />
+              <label>Application<select name="applicationId" required data-application-options></select></label>
+              <label>Date<input name="scheduledDate" type="date" required /></label>
+              <label>Time<input name="scheduledTime" type="time" required /></label>
+              <label>Status<select name="status"><option>Draft</option><option>Scheduled</option><option>Completed</option><option>Cancelled</option></select></label>
+              <label class="form-wide">Remarks<textarea name="remarks"></textarea></label>
+              <div class="form-wide inspection-form-actions">
+                <button class="btn btn-primary" type="submit">Save Inspection</button>
+                <button class="btn" type="reset">Clear</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="inspection-schedule-card">
+            <div class="inspection-table-wrap">
+              <table class="inspection-table">
+                <thead>
+                  <tr>
+                    <th>Inspection ID</th>
+                    <th>Client / Applicant</th>
+                    <th>Project / Location</th>
+                    <th>Inspection Type</th>
+                    <th>Scheduled Date <i data-lucide="chevron-down"></i></th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Assigned To</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-inspections-table>
+                  <tr><td colspan="9" class="empty-state">Loading inspections...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <footer class="inspection-table-footer">
+              <span data-inspection-entry-count>Showing 0 entries</span>
+              <nav class="pagination" aria-label="Inspection pagination">
+                <button type="button" aria-label="Previous page"><i data-lucide="chevron-left"></i></button>
+                <button class="is-active" type="button">1</button>
+                <button type="button">2</button>
+                <button type="button">3</button>
+                <button type="button" aria-label="Next page"><i data-lucide="chevron-right"></i></button>
+              </nav>
+            </footer>
+          </section>
+
+          <section class="inspection-legend">
+            <h3>Status Legend:</h3>
+            <div class="legend-grid">
+              <span class="legend-item"><em class="legend-scheduled"></em><strong>Scheduled</strong><small>Inspection is scheduled</small></span>
+              <span class="legend-item"><em class="legend-confirmed"></em><strong>Confirmed</strong><small>Inspection is confirmed</small></span>
+              <span class="legend-item"><em class="legend-pending"></em><strong>Pending</strong><small>Waiting for confirmation</small></span>
+              <span class="legend-item"><em class="legend-completed"></em><strong>Completed</strong><small>Inspection finished</small></span>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

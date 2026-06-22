@@ -1,6 +1,7 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
@@ -26,6 +27,10 @@ def load_env():
 
 
 load_env()
+
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 PORT = int(os.getenv("APP_PORT", "8000"))
@@ -72,6 +77,26 @@ PAGE_ROUTES = {
     "/admin/audit-logs": "/templates/admin/audit_logs.html",
     "/admin/audit-logs/": "/templates/admin/audit_logs.html",
     "/admin/audit-logs.html": "/templates/admin/audit_logs.html",
+    "/department": "/templates/department_office/dashboard.html",
+    "/department/": "/templates/department_office/dashboard.html",
+    "/department/dashboard": "/templates/department_office/dashboard.html",
+    "/department/dashboard/": "/templates/department_office/dashboard.html",
+    "/department/applications": "/templates/department_office/applications.html",
+    "/department/applications/": "/templates/department_office/applications.html",
+    "/department/application-details": "/templates/department_office/application_details.html",
+    "/department/application-details/": "/templates/department_office/application_details.html",
+    "/department/permit-requirements": "/templates/department_office/permit_requirements.html",
+    "/department/permit-requirements/": "/templates/department_office/permit_requirements.html",
+    "/department/site-inspections": "/templates/department_office/site_inspections.html",
+    "/department/site-inspections/": "/templates/department_office/site_inspections.html",
+    "/department/reports": "/templates/department_office/reports.html",
+    "/department/reports/": "/templates/department_office/reports.html",
+    "/department/settings": "/templates/department_office/settings.html",
+    "/department/settings/": "/templates/department_office/settings.html",
+    "/treasury": "/templates/treasury_office/dashboard.html",
+    "/treasury/": "/templates/treasury_office/dashboard.html",
+    "/treasury/dashboard": "/templates/treasury_office/dashboard.html",
+    "/treasury/dashboard/": "/templates/treasury_office/dashboard.html",
 }
 
 
@@ -87,6 +112,44 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         request_path = urlsplit(self.path).path
+
+        if request_path == "/department/api/me":
+            self.get_department_profile()
+            return
+
+        if request_path == "/department/api/applications":
+            self.list_department_applications()
+            return
+
+        if request_path.startswith("/department/api/applications/"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 4:
+                self.get_department_application(parts[-1])
+                return
+
+        if request_path == "/department/api/requirements":
+            self.list_department_requirements()
+            return
+
+        if request_path == "/department/api/inspections":
+            self.list_department_inspections()
+            return
+
+        if request_path == "/department/api/reports":
+            self.list_department_reports()
+            return
+
+        if request_path == "/department/api/settings":
+            self.get_department_settings()
+            return
+
+        if request_path == "/treasury/api/me":
+            self.get_treasury_profile()
+            return
+
+        if request_path == "/treasury/api/records":
+            self.list_treasury_records()
+            return
 
         if request_path == "/admin/api/users":
             self.list_admin_users()
@@ -123,6 +186,34 @@ class AppHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         request_path = urlsplit(self.path).path
 
+        if request_path == "/department/api/requirements":
+            self.create_department_requirement()
+            return
+
+        if request_path == "/department/api/inspections":
+            self.create_department_inspection()
+            return
+
+        if request_path == "/department/api/remarks":
+            self.create_department_remark()
+            return
+
+        if request_path == "/department/api/verifications":
+            self.create_department_verification()
+            return
+
+        if request_path == "/department/api/reports":
+            self.create_department_report()
+            return
+
+        if request_path == "/department/api/settings":
+            self.upsert_department_settings()
+            return
+
+        if request_path == "/treasury/api/records":
+            self.create_treasury_record()
+            return
+
         if request_path == "/admin/api/users":
             self.create_admin_user()
             return
@@ -140,6 +231,41 @@ class AppHandler(SimpleHTTPRequestHandler):
     def do_PATCH(self):
         request_path = urlsplit(self.path).path
 
+        if request_path.startswith("/department/api/applications/") and request_path.endswith("/evaluation"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 5:
+                self.update_department_application_evaluation(parts[3])
+                return
+
+        if request_path.startswith("/department/api/requirements/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.update_department_requirement(record_id)
+            return
+
+        if request_path.startswith("/department/api/inspections/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.update_department_inspection(record_id)
+            return
+
+        if request_path.startswith("/department/api/verifications/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.update_department_verification(record_id)
+            return
+
+        if request_path.startswith("/department/api/reports/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.update_department_report(record_id)
+            return
+
+        if request_path == "/department/api/settings":
+            self.upsert_department_settings()
+            return
+
+        if request_path.startswith("/treasury/api/records/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.update_treasury_record(record_id)
+            return
+
         if request_path.startswith("/admin/api/departments/"):
             department_id = request_path.rsplit("/", 1)[-1]
             self.update_admin_department(department_id)
@@ -149,6 +275,35 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         request_path = urlsplit(self.path).path
+
+        if request_path.startswith("/department/api/requirements/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.soft_delete_department_record("department_requirement_checklists", record_id, "requirement_deleted")
+            return
+
+        if request_path.startswith("/department/api/inspections/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.soft_delete_department_record("department_inspections", record_id, "inspection_deleted")
+            return
+
+        if request_path.startswith("/department/api/remarks/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.soft_delete_department_record("department_remarks", record_id, "remark_deleted")
+            return
+
+        if request_path.startswith("/department/api/reports/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.soft_delete_department_record("department_reports", record_id, "report_deleted")
+            return
+
+        if request_path == "/department/api/settings":
+            self.delete_department_settings()
+            return
+
+        if request_path.startswith("/treasury/api/records/"):
+            record_id = request_path.rsplit("/", 1)[-1]
+            self.soft_delete_treasury_record(record_id)
+            return
 
         if request_path.startswith("/admin/api/departments/"):
             department_id = request_path.rsplit("/", 1)[-1]
@@ -832,6 +987,869 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": message}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to load audit logs."}, status=500)
+
+    def ensure_department_request(self):
+        supabase_url, supabase_client_key, supabase_service_key, _admin_email = self.get_admin_api_config()
+
+        if not supabase_url or not supabase_client_key or not supabase_service_key:
+            self.send_json(
+                {
+                    "error": (
+                        "Department office access is not configured. Set SUPABASE_URL, "
+                        "SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY, and "
+                        "SUPABASE_SERVICE_ROLE_KEY in .env."
+                    )
+                },
+                status=500,
+            )
+            return None
+
+        auth_header = self.headers.get("Authorization", "")
+        access_token = auth_header.removeprefix("Bearer ").strip()
+        if not access_token:
+            self.send_json({"error": "Please log in as a department office user."}, status=401)
+            return None
+
+        try:
+            actor = self.get_session_user(access_token, supabase_url, supabase_client_key)
+        except HTTPError:
+            self.send_json({"error": "Invalid or expired session."}, status=401)
+            return None
+
+        app_metadata = actor.get("app_metadata") or {}
+        role = app_metadata.get("role")
+        department_key = app_metadata.get("department_key")
+        department_name = app_metadata.get("department_name") or app_metadata.get("department")
+
+        if role != "department" or not department_key:
+            self.send_json({"error": "This page is only for department office accounts."}, status=403)
+            return None
+
+        return {
+            "supabase_url": supabase_url,
+            "supabase_service_key": supabase_service_key,
+            "actor": actor,
+            "department_key": department_key,
+            "department_name": department_name or department_key.replace("_", " ").title(),
+        }
+
+    def service_rest_request(self, config, table, method="GET", payload=None, query=None, prefer=None):
+        url = f"{config['supabase_url'].rstrip('/')}/rest/v1/{table}"
+        if query:
+            url = f"{url}?{query}"
+
+        data = None
+        headers = {
+            "apikey": config["supabase_service_key"],
+            "Authorization": f"Bearer {config['supabase_service_key']}",
+        }
+
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        if prefer:
+            headers["Prefer"] = prefer
+
+        request = Request(url, data=data, method=method, headers=headers)
+        with urlopen(request, timeout=15) as response:
+            body = response.read().decode("utf-8")
+            if not body:
+                return None
+            return json.loads(body)
+
+    def department_error(self, error, fallback):
+        if isinstance(error, HTTPError):
+            response_body = error.read().decode("utf-8")
+            try:
+                response_payload = json.loads(response_body)
+                message = response_payload.get("message") or response_payload.get("msg") or response_body
+            except json.JSONDecodeError:
+                message = response_body or fallback
+            self.send_json({"error": message}, status=error.code)
+            return
+
+        self.send_json({"error": str(error) or fallback}, status=500)
+
+    def get_department_profile(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        actor = config["actor"]
+        metadata = actor.get("user_metadata") or {}
+        first_name = metadata.get("first_name") or ""
+        last_name = metadata.get("last_name") or ""
+        full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+        self.send_json(
+            {
+                "user": {
+                    "id": actor.get("id"),
+                    "email": actor.get("email"),
+                    "name": full_name or actor.get("email") or "Department user",
+                    "role": "department",
+                    "departmentKey": config["department_key"],
+                    "departmentName": config["department_name"],
+                }
+            }
+        )
+
+    def format_department_assignment(self, assignment):
+        application = assignment.get("business_permit_applications") or {}
+        payload = application.get("application_payload") or {}
+        return {
+            "assignmentId": assignment.get("id"),
+            "applicationId": assignment.get("application_id"),
+            "referenceNumber": application.get("permit_id") or "-",
+            "businessName": application.get("business_name") or "-",
+            "status": assignment.get("evaluation_status") or "Pending",
+            "remarks": assignment.get("remarks") or "",
+            "verificationStatus": assignment.get("verification_status") or "Unverified",
+            "inspectionDate": assignment.get("inspection_date") or "",
+            "inspectionTime": assignment.get("inspection_time") or "",
+            "inspectionRemarks": assignment.get("inspection_remarks") or "",
+            "assignedAt": assignment.get("created_at") or "",
+            "applicant": {
+                "name": " ".join(
+                    part
+                    for part in [
+                        payload.get("firstName"),
+                        payload.get("middleName"),
+                        payload.get("lastName"),
+                    ]
+                    if part
+                ).strip(),
+                "email": payload.get("email") or payload.get("businessEmail") or "",
+                "contact": payload.get("contactNumber") or payload.get("businessMobile") or "",
+                "address": payload.get("homeAddress") or payload.get("businessAddress") or "",
+            },
+            "application": {
+                "type": application.get("application_type") or "",
+                "submittedId": application.get("submitted_id") or "",
+                "submittedAt": application.get("created_at") or "",
+                "payload": payload,
+            },
+        }
+
+    def get_department_assignments(self, config, application_id=None):
+        select = (
+            "id,application_id,department_key,evaluation_status,remarks,verification_status,"
+            "inspection_date,inspection_time,inspection_remarks,created_at,updated_at,"
+            "business_permit_applications(id,permit_id,business_name,status,application_type,"
+            "submitted_id,application_payload,created_at,user_id)"
+        )
+        filters = {
+            "select": select,
+            "department_key": f"eq.{config['department_key']}",
+            "deleted_at": "is.null",
+            "order": "created_at.desc",
+        }
+        if application_id:
+            filters["application_id"] = f"eq.{application_id}"
+
+        return self.service_rest_request(
+            config,
+            "department_application_assignments",
+            query=urlencode(filters),
+        ) or []
+
+    def list_department_applications(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            assignments = [self.format_department_assignment(item) for item in self.get_department_assignments(config)]
+            counts = {"Pending": 0, "Approved": 0, "Rejected": 0}
+            for assignment in assignments:
+                status = assignment["status"]
+                if status in counts:
+                    counts[status] += 1
+
+            self.send_json(
+                {
+                    "applications": assignments,
+                    "counts": {
+                        "pending": counts["Pending"],
+                        "approved": counts["Approved"],
+                        "rejected": counts["Rejected"],
+                        "totalApplicants": len(assignments),
+                    },
+                    "departmentName": config["department_name"],
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load department applications.")
+
+    def get_department_application(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            assignments = self.get_department_assignments(config, application_id=application_id)
+            if not assignments:
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            assignment = self.format_department_assignment(assignments[0])
+            query = urlencode(
+                {
+                    "select": "*",
+                    "department_key": f"eq.{config['department_key']}",
+                    "application_id": f"eq.{application_id}",
+                    "deleted_at": "is.null",
+                    "order": "created_at.desc",
+                }
+            )
+            remarks = self.service_rest_request(config, "department_remarks", query=query) or []
+            inspections = self.service_rest_request(config, "department_inspections", query=query) or []
+            verifications = self.service_rest_request(config, "department_verifications", query=query) or []
+            self.send_json(
+                {
+                    "application": assignment,
+                    "remarks": remarks,
+                    "inspections": inspections,
+                    "verifications": verifications,
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load application details.")
+
+    def update_department_application_evaluation(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            status = (payload.get("status") or "").strip()
+            remarks = (payload.get("remarks") or "").strip()
+            verification_status = (payload.get("verificationStatus") or "").strip()
+
+            if status not in {"Pending", "Approved", "Rejected"}:
+                self.send_json({"error": "Status must be Pending, Approved, or Rejected."}, status=400)
+                return
+
+            if status == "Rejected" and not remarks:
+                self.send_json({"error": "Remarks are required when rejecting an application."}, status=400)
+                return
+
+            current = self.get_department_assignments(config, application_id=application_id)
+            if not current:
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            update_payload = {
+                "evaluation_status": status,
+                "remarks": remarks,
+                "updated_at": utc_now_iso(),
+            }
+            if verification_status:
+                update_payload["verification_status"] = verification_status
+
+            query = urlencode(
+                {
+                    "application_id": f"eq.{application_id}",
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                }
+            )
+            updated = self.service_rest_request(
+                config,
+                "department_application_assignments",
+                method="PATCH",
+                payload=update_payload,
+                query=query,
+                prefer="return=representation",
+            )
+            actor = config["actor"]
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "department_application_evaluation_updated",
+                actor=actor,
+                entity_type="department_application_assignment",
+                entity_id=application_id,
+                details={"department": config["department_key"], "status": status, "remarks": remarks},
+            )
+            self.send_json({"message": "Application evaluation updated.", "assignment": updated[0] if updated else {}})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to update application evaluation.")
+
+    def list_department_requirements(self):
+        self.list_department_owned_records("department_requirement_checklists", "requirements")
+
+    def list_department_inspections(self):
+        self.list_department_owned_records("department_inspections", "inspections")
+
+    def list_department_reports(self):
+        self.list_department_owned_records("department_reports", "reports")
+
+    def list_department_owned_records(self, table, response_key):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            query = urlencode(
+                {
+                    "select": "*",
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                    "order": "created_at.desc",
+                }
+            )
+            rows = self.service_rest_request(config, table, query=query) or []
+            self.send_json({response_key: rows, "total": len(rows)})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, f"Unable to load {response_key}.")
+
+    def create_department_requirement(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            title = (payload.get("title") or "").strip()
+            description = (payload.get("description") or "").strip()
+            status = (payload.get("status") or "Draft").strip()
+
+            if not title:
+                self.send_json({"error": "Requirement title is required."}, status=400)
+                return
+
+            if status not in {"Draft", "Active"}:
+                self.send_json({"error": "Requirement status must be Draft or Active."}, status=400)
+                return
+
+            record = {
+                "department_key": config["department_key"],
+                "title": title,
+                "description": description,
+                "is_required": bool(payload.get("isRequired", True)),
+                "status": status,
+                "created_by": config["actor"].get("id"),
+            }
+            rows = self.service_rest_request(
+                config,
+                "department_requirement_checklists",
+                method="POST",
+                payload=record,
+                prefer="return=representation",
+            )
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "requirement_created",
+                actor=config["actor"],
+                entity_type="department_requirement",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "title": title},
+            )
+            self.send_json({"message": "Requirement created.", "requirement": created}, status=201)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to create requirement.")
+
+    def update_department_requirement(self, record_id):
+        payload = self.read_json_body()
+        allowed = {
+            "title": (payload.get("title") or "").strip(),
+            "description": (payload.get("description") or "").strip(),
+            "is_required": bool(payload.get("isRequired", True)),
+            "status": (payload.get("status") or "Draft").strip(),
+        }
+        if not allowed["title"]:
+            self.send_json({"error": "Requirement title is required."}, status=400)
+            return
+        if allowed["status"] not in {"Draft", "Active"}:
+            self.send_json({"error": "Requirement status must be Draft or Active."}, status=400)
+            return
+        self.update_department_record(
+            "department_requirement_checklists",
+            record_id,
+            allowed,
+            "requirement_updated",
+            "department_requirement",
+        )
+
+    def create_department_inspection(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("applicationId") or "").strip()
+            scheduled_date = (payload.get("scheduledDate") or "").strip()
+            scheduled_time = (payload.get("scheduledTime") or "").strip()
+            remarks = (payload.get("remarks") or "").strip()
+
+            if not application_id or not scheduled_date or not scheduled_time:
+                self.send_json({"error": "Application, date, and time are required."}, status=400)
+                return
+
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            record = {
+                "application_id": application_id,
+                "department_key": config["department_key"],
+                "scheduled_date": scheduled_date,
+                "scheduled_time": scheduled_time,
+                "remarks": remarks,
+                "status": (payload.get("status") or "Draft").strip(),
+                "created_by": config["actor"].get("id"),
+            }
+            rows = self.service_rest_request(
+                config,
+                "department_inspections",
+                method="POST",
+                payload=record,
+                prefer="return=representation",
+            )
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "inspection_created",
+                actor=config["actor"],
+                entity_type="department_inspection",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "applicationId": application_id},
+            )
+            self.send_json({"message": "Inspection schedule created.", "inspection": created}, status=201)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to create inspection schedule.")
+
+    def update_department_inspection(self, record_id):
+        payload = self.read_json_body()
+        record = {
+            "scheduled_date": (payload.get("scheduledDate") or "").strip(),
+            "scheduled_time": (payload.get("scheduledTime") or "").strip(),
+            "remarks": (payload.get("remarks") or "").strip(),
+            "status": (payload.get("status") or "Draft").strip(),
+        }
+        if not record["scheduled_date"] or not record["scheduled_time"]:
+            self.send_json({"error": "Inspection date and time are required."}, status=400)
+            return
+        self.update_department_record(
+            "department_inspections",
+            record_id,
+            record,
+            "inspection_updated",
+            "department_inspection",
+        )
+
+    def create_department_remark(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("applicationId") or "").strip()
+            remark = (payload.get("remark") or "").strip()
+
+            if not application_id or not remark:
+                self.send_json({"error": "Application and remark are required."}, status=400)
+                return
+
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            record = {
+                "application_id": application_id,
+                "department_key": config["department_key"],
+                "remark": remark,
+                "status": (payload.get("status") or "Draft").strip(),
+                "created_by": config["actor"].get("id"),
+            }
+            rows = self.service_rest_request(
+                config,
+                "department_remarks",
+                method="POST",
+                payload=record,
+                prefer="return=representation",
+            )
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "remark_created",
+                actor=config["actor"],
+                entity_type="department_remark",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "applicationId": application_id},
+            )
+            self.send_json({"message": "Remark created.", "remark": created}, status=201)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to create remark.")
+
+    def create_department_verification(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("applicationId") or "").strip()
+            requirement_id = (payload.get("requirementId") or "").strip() or None
+            status = (payload.get("status") or "").strip()
+            remarks = (payload.get("remarks") or "").strip()
+
+            if not application_id or status not in {"Pending", "Verified", "Rejected"}:
+                self.send_json({"error": "Application and a valid verification status are required."}, status=400)
+                return
+
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            record = {
+                "application_id": application_id,
+                "department_key": config["department_key"],
+                "requirement_id": requirement_id,
+                "verification_status": status,
+                "remarks": remarks,
+                "created_by": config["actor"].get("id"),
+            }
+            rows = self.service_rest_request(
+                config,
+                "department_verifications",
+                method="POST",
+                payload=record,
+                prefer="return=representation",
+            )
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "verification_created",
+                actor=config["actor"],
+                entity_type="department_verification",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "applicationId": application_id, "status": status},
+            )
+            self.send_json({"message": "Verification record created.", "verification": created}, status=201)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to create verification record.")
+
+    def update_department_verification(self, record_id):
+        payload = self.read_json_body()
+        status = (payload.get("status") or "").strip()
+        if status not in {"Pending", "Verified", "Rejected"}:
+            self.send_json({"error": "Verification status must be Pending, Verified, or Rejected."}, status=400)
+            return
+        self.update_department_record(
+            "department_verifications",
+            record_id,
+            {"verification_status": status, "remarks": (payload.get("remarks") or "").strip()},
+            "verification_updated",
+            "department_verification",
+        )
+
+    def validate_department_report_payload(self, payload):
+        report = {
+            "applicant_name": (payload.get("applicantName") or "").strip(),
+            "business_name": (payload.get("businessName") or "").strip(),
+            "report_type": (payload.get("reportType") or "").strip(),
+            "report_date": (payload.get("reportDate") or "").strip(),
+            "status": (payload.get("status") or "Pending").strip(),
+            "remarks": (payload.get("remarks") or "").strip(),
+        }
+        if not report["applicant_name"] or not report["business_name"] or not report["report_type"]:
+            raise ValueError("Applicant, business name, and report type are required.")
+        if not report["report_date"]:
+            raise ValueError("Report date is required.")
+        if report["status"] not in {"Completed", "Approved", "Pending", "For Revision", "Draft"}:
+            raise ValueError("Report status is invalid.")
+        return report
+
+    def create_department_report(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            report = self.validate_department_report_payload(self.read_json_body())
+            report["department_key"] = config["department_key"]
+            report["created_by"] = config["actor"].get("id")
+            rows = self.service_rest_request(
+                config,
+                "department_reports",
+                method="POST",
+                payload=report,
+                prefer="return=representation",
+            )
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "report_created",
+                actor=config["actor"],
+                entity_type="department_report",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "reportType": report["report_type"]},
+            )
+            self.send_json({"message": "Report created.", "report": created}, status=201)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to create report.")
+
+    def update_department_report(self, record_id):
+        try:
+            report = self.validate_department_report_payload(self.read_json_body())
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+            return
+
+        self.update_department_record(
+            "department_reports",
+            record_id,
+            report,
+            "report_updated",
+            "department_report",
+        )
+
+    def default_department_settings(self, config):
+        actor = config["actor"]
+        metadata = actor.get("user_metadata") or {}
+        full_name = " ".join(
+            part for part in [metadata.get("first_name"), metadata.get("last_name")] if part
+        ).strip() or actor.get("email") or "Department staff"
+        return {
+            "profile_settings": {
+                "staffName": full_name,
+                "emailAddress": actor.get("email") or "",
+                "contactNumber": "",
+                "positionRole": "Department Staff",
+                "departmentOffice": config["department_name"],
+            },
+            "office_information": {
+                "officeName": config["department_name"],
+                "officeEmail": actor.get("email") or "",
+                "officeHead": "",
+                "officeAddress": "",
+                "officeContactNumber": "",
+            },
+            "notification_settings": {
+                "newApplicationAssigned": True,
+                "newDocumentUploaded": True,
+                "inspectionScheduleReminder": True,
+                "applicantResubmission": True,
+                "bploAdminUpdates": True,
+                "emailNotifications": True,
+                "systemNotifications": True,
+            },
+            "inspection_settings": {
+                "defaultInspectionDuration": "60 minutes",
+                "maximumInspectionsPerDay": "8",
+                "availableInspectionDays": "Monday to Friday",
+                "defaultAssignedInspector": full_name,
+                "availableInspectionTime": "8:00 AM - 5:00 PM",
+            },
+            "report_settings": {
+                "defaultReportFormat": "PDF",
+                "includeOfficeLogo": True,
+                "includeInspectorSignature": True,
+                "reportHeaderText": f"{config['department_name']} Site Inspection Report",
+                "reportFooterText": "This is a system generated report. Thank you.",
+            },
+            "security_settings": {
+                "twoStepVerification": False,
+                "lastLogin": "",
+                "accountActivity": "No recent activity.",
+            },
+        }
+
+    def normalize_department_settings_payload(self, payload, config):
+        defaults = self.default_department_settings(config)
+        normalized = {}
+        for key, default_value in defaults.items():
+            value = payload.get(key)
+            if value is None:
+                value = payload.get("settings", {}).get(key) if isinstance(payload.get("settings"), dict) else None
+            if not isinstance(value, dict):
+                value = {}
+            merged = dict(default_value)
+            merged.update(value)
+            normalized[key] = merged
+        return normalized
+
+    def get_department_settings(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            query = urlencode(
+                {
+                    "select": "*",
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                    "limit": "1",
+                }
+            )
+            rows = self.service_rest_request(config, "department_settings", query=query) or []
+            settings = rows[0] if rows else {
+                "id": None,
+                "department_key": config["department_key"],
+                **self.default_department_settings(config),
+            }
+            self.send_json({"settings": settings})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load settings.")
+
+    def upsert_department_settings(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            settings_payload = self.normalize_department_settings_payload(payload, config)
+            settings_payload["department_key"] = config["department_key"]
+            settings_payload["created_by"] = config["actor"].get("id")
+            settings_payload["deleted_at"] = None
+
+            query = urlencode({"on_conflict": "department_key"})
+            rows = self.service_rest_request(
+                config,
+                "department_settings",
+                method="POST",
+                payload=settings_payload,
+                query=query,
+                prefer="resolution=merge-duplicates,return=representation",
+            )
+            saved = rows[0] if rows else {}
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "settings_saved",
+                actor=config["actor"],
+                entity_type="department_settings",
+                entity_id=saved.get("id"),
+                details={"department": config["department_key"]},
+            )
+            self.send_json({"message": "Settings saved.", "settings": saved})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to save settings.")
+
+    def delete_department_settings(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            query = urlencode(
+                {
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                }
+            )
+            rows = self.service_rest_request(
+                config,
+                "department_settings",
+                method="PATCH",
+                payload={"deleted_at": utc_now_iso(), "updated_at": utc_now_iso()},
+                query=query,
+                prefer="return=representation",
+            )
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "settings_deleted",
+                actor=config["actor"],
+                entity_type="department_settings",
+                entity_id=(rows[0] or {}).get("id") if rows else None,
+                details={"department": config["department_key"], "softDelete": True},
+            )
+            self.send_json({"message": "Settings reset.", "settings": rows[0] if rows else {}})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to reset settings.")
+
+    def update_department_record(self, table, record_id, payload, action, entity_type):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload["updated_at"] = utc_now_iso()
+            query = urlencode(
+                {
+                    "id": f"eq.{record_id}",
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                }
+            )
+            rows = self.service_rest_request(
+                config,
+                table,
+                method="PATCH",
+                payload=payload,
+                query=query,
+                prefer="return=representation",
+            )
+            if not rows:
+                self.send_json({"error": "Record not found for this department."}, status=404)
+                return
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                action,
+                actor=config["actor"],
+                entity_type=entity_type,
+                entity_id=record_id,
+                details={"department": config["department_key"]},
+            )
+            self.send_json({"message": "Record updated.", "record": rows[0]})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to update record.")
+
+    def soft_delete_department_record(self, table, record_id, action):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            query = urlencode(
+                {
+                    "id": f"eq.{record_id}",
+                    "department_key": f"eq.{config['department_key']}",
+                    "status": "eq.Draft",
+                    "deleted_at": "is.null",
+                }
+            )
+            rows = self.service_rest_request(
+                config,
+                table,
+                method="PATCH",
+                payload={"deleted_at": utc_now_iso(), "updated_at": utc_now_iso()},
+                query=query,
+                prefer="return=representation",
+            )
+            if not rows:
+                self.send_json({"error": "Only draft department-created records can be deleted."}, status=404)
+                return
+
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                action,
+                actor=config["actor"],
+                entity_type=table,
+                entity_id=record_id,
+                details={"department": config["department_key"], "softDelete": True},
+            )
+            self.send_json({"message": "Draft record deleted.", "record": rows[0]})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to delete draft record.")
 
 
 def main():

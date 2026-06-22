@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Department Permit Requirements</title>
+    <script defer src="/config.js?v=3"></script>
+    <link rel="stylesheet" href="/styles/department_office.css?v=3" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/department_office.js?v=3"></script>
+  </head>
+  <body data-page="requirements">
+    <main class="department-shell">
+      <aside class="department-sidebar">
+        <a class="department-brand" href="/department/dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Department Office</small></span>
+        </a>
+        <nav class="department-nav">
+          <a href="/department/dashboard"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+          <a href="/department/applications"><i data-lucide="file"></i><span>Applications</span><em data-pending-badge>0</em></a>
+          <a class="is-active" href="/department/permit-requirements"><i data-lucide="clipboard-list"></i><span>Permit Requirements</span></a>
+          <a href="/department/site-inspections"><i data-lucide="clipboard-check"></i><span>Site Inspections</span></a>
+          <a href="/department/reports"><i data-lucide="circle-alert"></i><span>Reports</span><em data-rejected-badge>0</em></a>
+          <a href="/department/settings"><i data-lucide="settings"></i><span>Settings</span></a>
+        </nav>
+        <a class="department-logout" href="/login" data-department-logout><i data-lucide="log-out"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="department-content">
+        <header class="department-header">
+          <div>
+            <h1>Permit Requirements</h1>
+            <p data-department-name>Department document requirements</p>
+          </div>
+          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+        </header>
+
+        <section class="department-page requirements-page">
+          <div class="requirements-shell">
+            <header class="requirements-heading">
+              <h2><i data-lucide="clipboard-list"></i> Permit Requirements</h2>
+              <p>
+                Add document requirements that applicants must upload for your office. These appear
+                under your office name on the applicant upload page.
+              </p>
+            </header>
+
+            <p class="status-line" data-status>Loading requirements...</p>
+
+            <section class="visibility-note">
+              <i data-lucide="info"></i>
+              <div>
+                <strong>Applicant visibility</strong>
+                <p>
+                  Requirements saved here are tied to the selected permit type and your office.
+                  Example: Engineering adds Building Plan, then applicants see it under Engineering.
+                </p>
+              </div>
+            </section>
+
+            <section class="requirements-grid">
+              <article class="requirements-card permit-type-card">
+                <header>
+                  <h3>Permit Types</h3>
+                  <span data-permit-type-count>1</span>
+                </header>
+                <button class="permit-type-option is-active" type="button" data-permit-type="BP01" data-permit-name="Business Permit">
+                  <span>BP01</span>
+                  <strong>Business Permit</strong>
+                </button>
+              </article>
+
+              <article class="requirements-card requirement-manager-card">
+                <header>
+                  <h3 data-selected-permit-title>Select a Permit Type</h3>
+                  <span data-requirement-count>0</span>
+                </header>
+
+                <div class="selected-permit-empty" data-requirement-empty>
+                  Choose a permit type on the left to manage your office requirements.
+                </div>
+
+                <form class="requirement-create-form" data-requirement-form>
+                  <input type="hidden" name="id" />
+                  <input type="hidden" name="permitType" value="BP01" />
+
+                  <label>
+                    Requirement Name <em>*</em>
+                    <input name="title" required placeholder="Example: Building Plan" />
+                  </label>
+
+                  <label>
+                    Applicant Instructions
+                    <textarea name="description" placeholder="Tell applicants what file or document they need to upload."></textarea>
+                  </label>
+
+                  <div class="requirement-form-row">
+                    <label>
+                      Status
+                      <select name="status">
+                        <option>Active</option>
+                        <option>Draft</option>
+                      </select>
+                    </label>
+                    <label>
+                      Required
+                      <select name="isRequired">
+                        <option value="true">Required</option>
+                        <option value="false">Optional</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <footer class="requirement-actions">
+                    <button class="btn btn-primary" type="submit">Save Requirement</button>
+                    <button class="btn" type="reset">Clear</button>
+                  </footer>
+                </form>
+
+                <div class="requirements-list" data-requirements-list></div>
+
+                <div class="table-wrap requirements-table-fallback">
+                  <table class="department-table">
+                    <thead><tr><th>Title</th><th>Status</th><th>Required</th><th>Actions</th></tr></thead>
+                    <tbody data-requirements-table><tr><td colspan="4" class="empty-state">Loading requirements...</td></tr></tbody>
+                  </table>
+                </div>
+              </article>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
