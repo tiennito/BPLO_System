@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Treasury Dashboard</title>
+    <script defer src="/config.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/treasury_office.css?v=3" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/treasury_office.js?v=3"></script>
+  </head>
+  <body>
+    <main class="treasury-shell">
+      <aside class="treasury-sidebar">
+        <a class="treasury-brand" href="/treasury/dashboard">
+          <span><i data-lucide="landmark"></i></span>
+          <strong>Treasury</strong>
+          <small>Cashier Panel</small>
+        </a>
+        <nav class="treasury-nav">
+          <a class="is-active" href="/treasury/dashboard"><i data-lucide="chart-line"></i>Dashboard</a>
+          <a href="/treasury/processing"><i data-lucide="receipt-text"></i>Treasury Processing</a>
+          <a href="/treasury/payment-records"><i data-lucide="table"></i>Payment Records</a>
+          <a href="/treasury/official-receipts"><i data-lucide="file-text"></i>Official Receipts</a>
+          <a href="/treasury/reports"><i data-lucide="pie-chart"></i>Reports</a>
+          <a href="/treasury/settings"><i data-lucide="settings"></i>Settings</a>
+        </nav>
+        <a class="treasury-logout" href="/login" data-treasury-logout><i data-lucide="log-out"></i>Logout</a>
+      </aside>
+
+      <section class="treasury-content">
+        <header class="treasury-header">
+          <button class="icon-button" type="button"><i data-lucide="menu"></i></button>
+          <h1>Treasury Dashboard</h1>
+          <section class="treasury-user"><i data-lucide="circle-user-round"></i><span>Welcome,<strong data-user-name>Staff name</strong></span><i data-lucide="chevron-down"></i></section>
+        </header>
+
+        <section class="treasury-page">
+          <p class="treasury-status" data-status>Loading treasury dashboard...</p>
+
+          <section class="treasury-stat-grid">
+            <article class="treasury-stat"><i data-lucide="philippine-peso"></i><span>Total Collections Today</span><strong data-count="totalCollections">₱ 0.00</strong><small>vs yesterday <em>+12.5%</em></small></article>
+            <article class="treasury-stat purple"><i data-lucide="clipboard-list"></i><span>Assessment Review</span><strong data-count="assessmentReview">0</strong><small>Applications <em class="down">-7.3%</em></small></article>
+            <article class="treasury-stat blue"><i data-lucide="credit-card"></i><span>Ready for Payment</span><strong data-count="readyForPayment">0</strong><small>Applications <em class="down">-4.4%</em></small></article>
+            <article class="treasury-stat green"><i data-lucide="receipt"></i><span>Official Receipts Issued Today</span><strong data-count="receiptsIssued">0</strong><small>Receipts <em>+18.7%</em></small></article>
+          </section>
+
+          <section class="treasury-grid">
+            <article class="treasury-card" id="payments">
+              <header><h2>Recent Payment Transactions</h2><button type="button">View all <i data-lucide="chevron-right"></i></button></header>
+              <div class="treasury-table-wrap"><table class="treasury-table"><thead><tr><th>OR No.</th><th>Applicant</th><th>Business Name</th><th>Amount</th><th>Step</th><th>Status</th><th>Date</th></tr></thead><tbody data-payment-table></tbody></table></div>
+            </article>
+
+            <article class="treasury-card" id="processing">
+              <header><h2>Treasury Processing Queue</h2><button type="button">View all <i data-lucide="chevron-right"></i></button></header>
+              <div class="treasury-table-wrap"><table class="treasury-table"><thead><tr><th>Application No.</th><th>Applicant</th><th>Business Name</th><th>Amount</th><th>Current Step</th><th>Status</th><th>Action</th></tr></thead><tbody data-processing-table></tbody></table></div>
+            </article>
+          </section>
+
+          <section class="treasury-form-card">
+            <header><h2>Manage Treasury Record</h2><button class="btn-primary" type="button" data-new-record><i data-lucide="plus"></i>New Record</button></header>
+            <form class="treasury-form" data-record-form>
+              <input type="hidden" name="id" />
+              <label>Application No.<input name="applicationNo" required /></label>
+              <label>OR No.<input name="orNo" /></label>
+              <label>Applicant<input name="applicant" required /></label>
+              <label>Business Name<input name="businessName" required /></label>
+              <label>Amount<input name="amount" type="number" min="0" step="0.01" required /></label>
+              <label>Step<select name="step"><option>Assessment</option><option>SOA Generation</option><option>Payment</option><option>Official Receipt</option></select></label>
+              <label>Status<select name="status"><option>Paid</option><option>Pending</option><option>Ready</option><option>Generated</option><option>Not Generated</option><option>Accepted</option></select></label>
+              <label>Date<input name="transactionDate" type="date" /></label>
+              <label class="wide">Remarks<textarea name="remarks"></textarea></label>
+              <div class="wide form-actions"><button class="btn-primary" type="submit">Save Record</button><button type="reset">Clear</button></div>
+            </form>
+          </section>
+
+          <section class="treasury-bottom-grid">
+            <article class="treasury-card chart-card"><header><h2>Monthly Collection Overview</h2><select><option>May 2024</option></select></header><div class="treasury-bars" data-bars></div></article>
+            <article class="treasury-card"><header><h2>Quick Actions</h2></header><div class="quick-actions"><button>View Treasury Processing <i data-lucide="chevron-right"></i></button><button>Search Payment Records <i data-lucide="chevron-right"></i></button><button>Search Official Receipts <i data-lucide="chevron-right"></i></button><button>Generate Report <i data-lucide="chevron-right"></i></button><button>System Settings <i data-lucide="chevron-right"></i></button></div></article>
+            <article class="treasury-card"><header><h2>Alerts & Notifications</h2><button>View all</button></header><div class="alerts"><p><i data-lucide="bell"></i>5 payments need verification.<span>10:15 AM</span></p><p><i data-lucide="clock"></i>3 applications ready for SOA generation.<span>09:47 AM</span></p><p><i data-lucide="file-text"></i>2 official receipts for cancellation.<span>Yesterday</span></p><p><i data-lucide="info"></i>System backup completed successfully.<span>Yesterday</span></p></div></article>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

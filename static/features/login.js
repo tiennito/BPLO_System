@@ -90,6 +90,8 @@ form?.addEventListener("submit", async (event) => {
       redirectPath = "/admin/dashboard";
     } else if (role === "department") {
       redirectPath = "/department/dashboard";
+    } else if (role === "treasury") {
+      redirectPath = "/treasury/dashboard";
     }
 
     setStatus("Signed in successfully. Redirecting...");

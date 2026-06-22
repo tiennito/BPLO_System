@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Official Receipts</title>
+    <script defer src="/config.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/treasury_office.css?v=4" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/treasury_office.js?v=4"></script>
+  </head>
+  <body data-page="official-receipts">
+    <main class="treasury-shell">
+      <aside class="treasury-sidebar">
+        <a class="treasury-brand" href="/treasury/dashboard">
+          <span><i data-lucide="landmark"></i></span>
+          <strong>Treasury</strong>
+          <small>Cashier Panel</small>
+        </a>
+        <nav class="treasury-nav">
+          <a href="/treasury/dashboard"><i data-lucide="chart-line"></i>Dashboard</a>
+          <a href="/treasury/processing"><i data-lucide="receipt-text"></i>Treasury Processing</a>
+          <a href="/treasury/payment-records"><i data-lucide="table"></i>Payment Records</a>
+          <a class="is-active" href="/treasury/official-receipts"><i data-lucide="file-text"></i>Official Receipts</a>
+          <a href="/treasury/reports"><i data-lucide="pie-chart"></i>Reports</a>
+          <a href="/treasury/settings"><i data-lucide="settings"></i>Settings</a>
+        </nav>
+        <a class="treasury-logout" href="/login" data-treasury-logout><i data-lucide="log-out"></i>Logout</a>
+      </aside>
+
+      <section class="treasury-content">
+        <header class="treasury-header processing-header">
+          <button class="icon-button" type="button"><i data-lucide="menu"></i></button>
+          <div>
+            <h1>Official Receipts</h1>
+            <p>View, issue, reprint, and manage official receipt records.</p>
+          </div>
+          <section class="treasury-user"><i data-lucide="circle-user-round"></i><span>Welcome,<strong data-user-name>Staff name</strong></span><i data-lucide="chevron-down"></i></section>
+        </header>
+
+        <section class="treasury-page official-receipts-page">
+          <p class="treasury-status" data-status>Loading official receipts...</p>
+
+          <section class="treasury-stat-grid payment-summary-grid">
+            <article class="treasury-stat green"><i data-lucide="receipt-text"></i><span>OR Issued Today</span><strong data-receipt-count="issuedToday">0</strong><small>Receipts <em>0.0%</em></small></article>
+            <article class="treasury-stat blue"><i data-lucide="bar-chart-3"></i><span>Total Issued This Month</span><strong data-receipt-count="issuedMonth">0</strong><small>Receipts <em>0.0%</em></small></article>
+            <article class="treasury-stat purple"><i data-lucide="printer"></i><span>Reprinted Receipts</span><strong data-receipt-count="reprinted">0</strong><small>Receipts <em>0.0%</em></small></article>
+            <article class="treasury-stat"><i data-lucide="file-x-2"></i><span>Cancelled / Void Receipts</span><strong data-receipt-count="cancelled">0</strong><small>Receipts <em class="down">0.0%</em></small></article>
+          </section>
+
+          <section class="official-receipts-layout">
+            <article class="treasury-card official-receipts-card">
+              <header>
+                <h2>Official Receipt Records</h2>
+                <div class="queue-actions">
+                  <button type="button" data-receipt-export><i data-lucide="download"></i>Export <i data-lucide="chevron-down"></i></button>
+                  <button type="button" data-refresh-receipts><i data-lucide="refresh-cw"></i></button>
+                </div>
+              </header>
+
+              <section class="receipt-toolbar" aria-label="Official receipt filters">
+                <label class="payment-search">
+                  <input type="search" data-receipt-search placeholder="Search by OR No., Applicant or Business Name..." />
+                  <i data-lucide="search"></i>
+                </label>
+                <button type="button" class="payment-date-filter"><i data-lucide="calendar-days"></i>Date Range</button>
+                <select data-receipt-status-filter>
+                  <option value="">All Statuses</option>
+                  <option>Issued</option>
+                  <option>Reprinted</option>
+                  <option>Cancelled</option>
+                  <option>Void</option>
+                </select>
+                <button type="button" class="reset-button" data-reset-receipt-filters><i data-lucide="rotate-ccw"></i>Reset</button>
+              </section>
+
+              <div class="treasury-table-wrap">
+                <table class="treasury-table receipt-table">
+                  <thead>
+                    <tr>
+                      <th>OR No.</th>
+                      <th>Applicant</th>
+                      <th>Business Name</th>
+                      <th>Payment Date</th>
+                      <th>Amount</th>
+                      <th>Receipt Status</th>
+                      <th>Issued By</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody data-receipts-table>
+                    <tr><td class="payment-empty-state" colspan="8">No official receipts yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <footer class="payment-footer">
+                <span data-receipt-entry-count>Showing 0 entries</span>
+                <nav class="processing-pagination" aria-label="Official receipt pages">
+                  <button type="button"><i data-lucide="chevron-left"></i></button>
+                  <button class="is-active" type="button">1</button>
+                  <button type="button"><i data-lucide="chevron-right"></i></button>
+                  <select><option>10 / page</option></select>
+                </nav>
+              </footer>
+            </article>
+
+            <aside class="treasury-card receipt-details-card">
+              <header><h2>Receipt Details</h2><button type="button"><i data-lucide="chevron-up"></i></button></header>
+              <section class="receipt-preview-empty" data-receipt-details>
+                <i data-lucide="receipt-text"></i>
+                <strong>No receipt selected</strong>
+                <p>Receipt details will appear here after records are available.</p>
+                <button class="action-button" type="button" disabled>View Full Receipt</button>
+              </section>
+            </aside>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

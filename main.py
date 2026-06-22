@@ -97,6 +97,16 @@ PAGE_ROUTES = {
     "/treasury/": "/templates/treasury_office/dashboard.html",
     "/treasury/dashboard": "/templates/treasury_office/dashboard.html",
     "/treasury/dashboard/": "/templates/treasury_office/dashboard.html",
+    "/treasury/processing": "/templates/treasury_office/processing.html",
+    "/treasury/processing/": "/templates/treasury_office/processing.html",
+    "/treasury/payment-records": "/templates/treasury_office/payment_records.html",
+    "/treasury/payment-records/": "/templates/treasury_office/payment_records.html",
+    "/treasury/official-receipts": "/templates/treasury_office/official_receipts.html",
+    "/treasury/official-receipts/": "/templates/treasury_office/official_receipts.html",
+    "/treasury/reports": "/templates/treasury_office/reports.html",
+    "/treasury/reports/": "/templates/treasury_office/reports.html",
+    "/treasury/settings": "/templates/treasury_office/settings.html",
+    "/treasury/settings/": "/templates/treasury_office/settings.html",
 }
 
 
@@ -1850,6 +1860,163 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"message": "Draft record deleted.", "record": rows[0]})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to delete draft record.")
+
+    def ensure_treasury_request(self):
+        supabase_url, supabase_client_key, supabase_service_key, _admin_email = self.get_admin_api_config()
+        if not supabase_url or not supabase_client_key or not supabase_service_key:
+            self.send_json({"error": "Treasury access is not configured."}, status=500)
+            return None
+
+        auth_header = self.headers.get("Authorization", "")
+        access_token = auth_header.removeprefix("Bearer ").strip()
+        if not access_token:
+            self.send_json({"error": "Please log in as a treasury user."}, status=401)
+            return None
+
+        try:
+            actor = self.get_session_user(access_token, supabase_url, supabase_client_key)
+        except HTTPError:
+            self.send_json({"error": "Invalid or expired session."}, status=401)
+            return None
+
+        if (actor.get("app_metadata") or {}).get("role") != "treasury":
+            self.send_json({"error": "This page is only for Treasury accounts."}, status=403)
+            return None
+
+        return {
+            "supabase_url": supabase_url,
+            "supabase_service_key": supabase_service_key,
+            "actor": actor,
+        }
+
+    def treasury_error(self, error, fallback):
+        if isinstance(error, HTTPError):
+            response_body = error.read().decode("utf-8")
+            try:
+                response_payload = json.loads(response_body)
+                message = response_payload.get("message") or response_payload.get("msg") or response_body
+            except json.JSONDecodeError:
+                message = response_body or fallback
+            self.send_json({"error": message}, status=error.code)
+            return
+        self.send_json({"error": str(error) or fallback}, status=500)
+
+    def get_treasury_profile(self):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        actor = config["actor"]
+        metadata = actor.get("user_metadata") or {}
+        name = " ".join(part for part in [metadata.get("first_name"), metadata.get("last_name")] if part).strip()
+        self.send_json({"user": {"id": actor.get("id"), "email": actor.get("email"), "name": name or actor.get("email") or "Treasury Staff", "role": "treasury"}})
+
+    def format_treasury_record(self, record):
+        return {
+            "id": record.get("id"),
+            "applicationNo": record.get("application_no") or "",
+            "orNo": record.get("or_no") or "",
+            "applicant": record.get("applicant") or "",
+            "businessName": record.get("business_name") or "",
+            "amount": float(record.get("amount") or 0),
+            "step": record.get("step") or "Assessment",
+            "status": record.get("status") or "Pending",
+            "currentStep": record.get("current_step") or record.get("step") or "Assessment",
+            "recordType": record.get("record_type") or "payment",
+            "transactionDate": record.get("transaction_date") or "",
+            "remarks": record.get("remarks") or "",
+            "createdAt": record.get("created_at") or "",
+        }
+
+    def list_treasury_records(self):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            query = urlencode({"select": "*", "deleted_at": "is.null", "order": "created_at.desc", "limit": "500"})
+            rows = self.service_rest_request(config, "treasury_records", query=query) or []
+            records = [self.format_treasury_record(row) for row in rows]
+            total_collections = sum(record["amount"] for record in records if record["status"] == "Paid")
+            counts = {
+                "totalCollections": total_collections,
+                "assessmentReview": sum(1 for record in records if record["step"] == "Assessment"),
+                "readyForPayment": sum(1 for record in records if record["status"] in {"Ready", "Pending"}),
+                "receiptsIssued": sum(1 for record in records if record["status"] == "Paid" or record["currentStep"] == "Official Receipt"),
+            }
+            self.send_json({"records": records, "counts": counts})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to load treasury records.")
+
+    def validate_treasury_payload(self, payload):
+        record = {
+            "application_no": (payload.get("applicationNo") or "").strip(),
+            "or_no": (payload.get("orNo") or "").strip(),
+            "applicant": (payload.get("applicant") or "").strip(),
+            "business_name": (payload.get("businessName") or "").strip(),
+            "amount": payload.get("amount") or 0,
+            "step": (payload.get("step") or "Assessment").strip(),
+            "status": (payload.get("status") or "Pending").strip(),
+            "current_step": (payload.get("currentStep") or payload.get("step") or "Assessment").strip(),
+            "record_type": (payload.get("recordType") or "payment").strip(),
+            "transaction_date": (payload.get("transactionDate") or "").strip(),
+            "remarks": (payload.get("remarks") or "").strip(),
+        }
+        if not record["application_no"] or not record["applicant"] or not record["business_name"]:
+            raise ValueError("Application number, applicant, and business name are required.")
+        if record["status"] not in {"Paid", "Pending", "Ready", "Generated", "Not Generated", "Accepted"}:
+            raise ValueError("Treasury status is invalid.")
+        if not record["transaction_date"]:
+            record["transaction_date"] = datetime.now(timezone.utc).date().isoformat()
+        return record
+
+    def create_treasury_record(self):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            record = self.validate_treasury_payload(self.read_json_body())
+            record["created_by"] = config["actor"].get("id")
+            rows = self.service_rest_request(config, "treasury_records", method="POST", payload=record, prefer="return=representation")
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_created", actor=config["actor"], entity_type="treasury_record", entity_id=created.get("id"), details={"applicationNo": record["application_no"]})
+            self.send_json({"message": "Treasury record created.", "record": self.format_treasury_record(created)}, status=201)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to create treasury record.")
+
+    def update_treasury_record(self, record_id):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            payload = self.validate_treasury_payload(self.read_json_body())
+            payload["updated_at"] = utc_now_iso()
+            query = urlencode({"id": f"eq.{record_id}", "deleted_at": "is.null"})
+            rows = self.service_rest_request(config, "treasury_records", method="PATCH", payload=payload, query=query, prefer="return=representation")
+            if not rows:
+                self.send_json({"error": "Treasury record not found."}, status=404)
+                return
+            self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_updated", actor=config["actor"], entity_type="treasury_record", entity_id=record_id, details={"applicationNo": payload["application_no"]})
+            self.send_json({"message": "Treasury record updated.", "record": self.format_treasury_record(rows[0])})
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to update treasury record.")
+
+    def soft_delete_treasury_record(self, record_id):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            query = urlencode({"id": f"eq.{record_id}", "deleted_at": "is.null"})
+            rows = self.service_rest_request(config, "treasury_records", method="PATCH", payload={"deleted_at": utc_now_iso(), "updated_at": utc_now_iso()}, query=query, prefer="return=representation")
+            if not rows:
+                self.send_json({"error": "Treasury record not found."}, status=404)
+                return
+            self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_deleted", actor=config["actor"], entity_type="treasury_record", entity_id=record_id, details={"softDelete": True})
+            self.send_json({"message": "Treasury record deleted.", "record": self.format_treasury_record(rows[0])})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to delete treasury record.")
 
 
 def main():

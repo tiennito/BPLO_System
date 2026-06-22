@@ -64,6 +64,9 @@ window.addEventListener("DOMContentLoaded", () => {
     if (window.location.pathname.startsWith("/admin") && role === "department") {
       window.location.replace("/department/dashboard");
     }
+    if (window.location.pathname.startsWith("/admin") && role === "treasury") {
+      window.location.replace("/treasury/dashboard");
+    }
   })();
 
   window.BPLOAudit.record("page_view", {

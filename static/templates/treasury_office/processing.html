@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Treasury Processing</title>
+    <script defer src="/config.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/treasury_office.css?v=3" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/treasury_office.js?v=3"></script>
+  </head>
+  <body data-page="processing">
+    <main class="treasury-shell">
+      <aside class="treasury-sidebar">
+        <a class="treasury-brand" href="/treasury/dashboard">
+          <span><i data-lucide="landmark"></i></span>
+          <strong>Treasury</strong>
+          <small>Cashier Panel</small>
+        </a>
+        <nav class="treasury-nav">
+          <a href="/treasury/dashboard"><i data-lucide="chart-line"></i>Dashboard</a>
+          <a class="is-active" href="/treasury/processing"><i data-lucide="receipt-text"></i>Treasury Processing</a>
+          <a href="/treasury/payment-records"><i data-lucide="table"></i>Payment Records</a>
+          <a href="/treasury/official-receipts"><i data-lucide="file-text"></i>Official Receipts</a>
+          <a href="/treasury/reports"><i data-lucide="pie-chart"></i>Reports</a>
+          <a href="/treasury/settings"><i data-lucide="settings"></i>Settings</a>
+        </nav>
+        <a class="treasury-logout" href="/login" data-treasury-logout><i data-lucide="log-out"></i>Logout</a>
+      </aside>
+
+      <section class="treasury-content">
+        <header class="treasury-header processing-header">
+          <button class="icon-button" type="button"><i data-lucide="menu"></i></button>
+          <div>
+            <h1>Treasury Processing</h1>
+            <p>Assessment -> SOA Generation -> Payment -> Official Receipt</p>
+          </div>
+          <section class="treasury-user"><i data-lucide="circle-user-round"></i><span>Welcome,<strong data-user-name>Staff name</strong></span><i data-lucide="chevron-down"></i></section>
+        </header>
+
+        <section class="treasury-page processing-page">
+          <p class="treasury-status" data-status>Loading treasury processing...</p>
+
+          <section class="treasury-stat-grid processing-stats">
+            <article class="treasury-stat purple"><i data-lucide="clipboard-list"></i><span>Assessment Review</span><strong data-count="assessmentReview">0</strong><small>Total Amount <em data-processing-amount="assessment">PHP 0.00</em></small></article>
+            <article class="treasury-stat orange"><i data-lucide="receipt-text"></i><span>SOA Ready to Generate</span><strong data-count="soaReady">0</strong><small>Total Amount <em data-processing-amount="soa">PHP 0.00</em></small></article>
+            <article class="treasury-stat blue"><i data-lucide="credit-card"></i><span>Ready for Payment</span><strong data-count="readyForPayment">0</strong><small>Total Amount <em data-processing-amount="payment">PHP 0.00</em></small></article>
+            <article class="treasury-stat green"><i data-lucide="receipt"></i><span>Official Receipts Issued Today</span><strong data-count="receiptsIssued">0</strong><small>Total Amount <em data-processing-amount="receipt">PHP 0.00</em></small></article>
+          </section>
+
+          <section class="process-flow">
+            <article><strong>1</strong><span>Assessment<small>Review applications and validate requirements</small></span></article>
+            <article><strong>2</strong><span>SOA Generation<small>Generate Statement of Account</small></span></article>
+            <article><strong>3</strong><span>Payment<small>Accept and verify payments</small></span></article>
+            <article><strong>4</strong><span>Official Receipt<small>Issue and record official receipt</small></span></article>
+          </section>
+
+          <section class="processing-layout">
+            <article class="treasury-card processing-queue-card">
+              <header>
+                <div>
+                  <h2>Unified Processing Queue</h2>
+                  <p>Assessments, SOA Generation, Payments and Official Receipts in one workflow</p>
+                </div>
+                <div class="queue-actions">
+                  <button type="button" data-refresh-processing><i data-lucide="refresh-cw"></i></button>
+                  <button type="button">Export <i data-lucide="chevron-down"></i></button>
+                </div>
+              </header>
+
+              <div class="processing-filters">
+                <label><input type="search" data-processing-search placeholder="Search by Application No., Applicant or Business..." /><i data-lucide="search"></i></label>
+                <button type="button"><i data-lucide="calendar-days"></i>Date Range</button>
+                <select data-step-filter><option value="">All Current Steps</option><option>Assessment</option><option>SOA Generation</option><option>Payment</option><option>Official Receipt</option></select>
+                <select data-processing-status-filter><option value="">All Statuses</option><option>Not Generated</option><option>Ready</option><option>Generated</option><option>Pending</option><option>Paid</option><option>Accepted</option></select>
+                <button type="button" data-reset-processing-filters><i data-lucide="rotate-ccw"></i>Reset</button>
+              </div>
+
+              <div class="treasury-table-wrap">
+                <table class="treasury-table processing-table">
+                  <thead>
+                    <tr><th>Application No.</th><th>Applicant</th><th>Business Name</th><th>Amount Due</th><th>Current Step</th><th>SOA Status</th><th>Payment Status</th><th>OR Status</th><th>Action</th></tr>
+                  </thead>
+                  <tbody data-processing-queue></tbody>
+                </table>
+              </div>
+              <footer class="processing-footer">
+                <span data-processing-entry-count>Showing 0 entries</span>
+                <nav class="processing-pagination"><button><i data-lucide="chevron-left"></i></button><button class="is-active">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button><i data-lucide="chevron-right"></i></button><select><option>10 / page</option></select></nav>
+              </footer>
+            </article>
+
+            <aside class="treasury-card selected-transaction">
+              <header><h2>Selected Transaction</h2></header>
+              <div data-selected-transaction class="selected-transaction-body">
+                <p>Select a transaction to view details.</p>
+              </div>
+            </aside>
+          </section>
+
+          <section class="treasury-form-card processing-form-card">
+            <header><h2>Create / Update Treasury Processing Record</h2><button class="btn-primary" type="button" data-new-record><i data-lucide="plus"></i>New Record</button></header>
+            <form class="treasury-form" data-record-form>
+              <input type="hidden" name="id" />
+              <label>Application No.<input name="applicationNo" required /></label>
+              <label>OR No.<input name="orNo" /></label>
+              <label>Applicant<input name="applicant" required /></label>
+              <label>Business Name<input name="businessName" required /></label>
+              <label>Amount<input name="amount" type="number" min="0" step="0.01" required /></label>
+              <label>Step<select name="step"><option>Assessment</option><option>SOA Generation</option><option>Payment</option><option>Official Receipt</option></select></label>
+              <label>Status<select name="status"><option>Not Generated</option><option>Ready</option><option>Generated</option><option>Pending</option><option>Paid</option><option>Accepted</option></select></label>
+              <label>Date<input name="transactionDate" type="date" /></label>
+              <label class="wide">Remarks<textarea name="remarks"></textarea></label>
+              <div class="wide form-actions"><button class="btn-primary" type="submit">Save Record</button><button type="reset">Clear</button></div>
+            </form>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

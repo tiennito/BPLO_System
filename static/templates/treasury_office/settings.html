@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Treasury Settings</title>
+    <script defer src="/config.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/treasury_office.css?v=6" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/treasury_office.js?v=6"></script>
+  </head>
+  <body data-page="treasury-settings">
+    <main class="treasury-shell">
+      <aside class="treasury-sidebar">
+        <a class="treasury-brand" href="/treasury/dashboard">
+          <span><i data-lucide="landmark"></i></span>
+          <strong>Treasury</strong>
+          <small>Cashier Panel</small>
+        </a>
+        <nav class="treasury-nav">
+          <a href="/treasury/dashboard"><i data-lucide="chart-line"></i>Dashboard</a>
+          <a href="/treasury/processing"><i data-lucide="receipt-text"></i>Treasury Processing</a>
+          <a href="/treasury/payment-records"><i data-lucide="table"></i>Payment Records</a>
+          <a href="/treasury/official-receipts"><i data-lucide="file-text"></i>Official Receipts</a>
+          <a href="/treasury/reports"><i data-lucide="pie-chart"></i>Reports</a>
+          <a class="is-active" href="/treasury/settings"><i data-lucide="settings"></i>Settings</a>
+        </nav>
+        <a class="treasury-logout" href="/login" data-treasury-logout><i data-lucide="log-out"></i>Logout</a>
+      </aside>
+
+      <section class="treasury-content">
+        <header class="treasury-header processing-header">
+          <button class="icon-button" type="button"><i data-lucide="menu"></i></button>
+          <div>
+            <h1>Settings</h1>
+          </div>
+          <section class="treasury-user"><i data-lucide="circle-user-round"></i><span>Welcome,<strong data-user-name>Staff name</strong></span><i data-lucide="chevron-down"></i></section>
+        </header>
+
+        <section class="treasury-page treasury-settings-page">
+          <p class="treasury-status" data-status>Loading settings...</p>
+
+          <section class="settings-grid no-settings-sidebar">
+            <article class="treasury-card settings-panel">
+              <header>
+                <span class="settings-icon"><i data-lucide="user-round"></i></span>
+                <div>
+                  <h2>Profile Settings</h2>
+                  <p>Manage your personal account information.</p>
+                </div>
+              </header>
+              <form class="settings-form" data-settings-form>
+                <label>Staff Name<input name="staffName" autocomplete="name" /></label>
+                <label>Email Address<input name="email" type="email" autocomplete="email" /></label>
+                <label>Contact Number<input name="contactNumber" inputmode="tel" /></label>
+                <label>Position / Role<select name="position"><option value="">Select position</option><option>Treasury Staff</option><option>Cashier</option><option>Supervisor</option></select></label>
+                <div class="wide form-actions"><button class="btn-primary" type="submit">Save Changes</button></div>
+              </form>
+            </article>
+
+            <article class="treasury-card settings-panel">
+              <header>
+                <span class="settings-icon"><i data-lucide="landmark"></i></span>
+                <div>
+                  <h2>Treasury Office Information</h2>
+                  <p>Manage office details and contact information.</p>
+                </div>
+              </header>
+              <form class="settings-form" data-settings-form>
+                <label>Office Name<input name="officeName" /></label>
+                <label>Office Email<input name="officeEmail" type="email" /></label>
+                <label class="wide">Office Address<input name="officeAddress" /></label>
+                <label>Office Contact Number<input name="officeContactNumber" inputmode="tel" /></label>
+                <label>Office Fax Number (Optional)<input name="officeFaxNumber" /></label>
+                <div class="wide form-actions"><button class="btn-primary" type="submit">Save Changes</button></div>
+              </form>
+            </article>
+
+            <article class="treasury-card settings-panel security-panel">
+              <header>
+                <span class="settings-icon"><i data-lucide="shield-check"></i></span>
+                <div>
+                  <h2>Security</h2>
+                  <p>Manage account security and active sessions.</p>
+                </div>
+              </header>
+              <section class="security-grid">
+                <div>
+                  <h3>Change Password</h3>
+                  <p>Update your password regularly to keep your account secure.</p>
+                  <button class="action-button" type="button" data-settings-action><i data-lucide="lock-keyhole"></i>Change Password</button>
+                </div>
+                <div>
+                  <h3>Active Sessions</h3>
+                  <p>No active session data to display.</p>
+                  <button class="danger-button" type="button" data-settings-action><i data-lucide="log-out"></i>Log out of all other sessions</button>
+                </div>
+              </section>
+            </article>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

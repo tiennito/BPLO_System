@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Records</title>
+    <script defer src="/config.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/treasury_office.css?v=3" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/treasury_office.js?v=3"></script>
+  </head>
+  <body data-page="payment-records">
+    <main class="treasury-shell">
+      <aside class="treasury-sidebar">
+        <a class="treasury-brand" href="/treasury/dashboard">
+          <span><i data-lucide="landmark"></i></span>
+          <strong>Treasury</strong>
+          <small>Cashier Panel</small>
+        </a>
+        <nav class="treasury-nav">
+          <a href="/treasury/dashboard"><i data-lucide="chart-line"></i>Dashboard</a>
+          <a href="/treasury/processing"><i data-lucide="receipt-text"></i>Treasury Processing</a>
+          <a class="is-active" href="/treasury/payment-records"><i data-lucide="table"></i>Payment Records</a>
+          <a href="/treasury/official-receipts"><i data-lucide="file-text"></i>Official Receipts</a>
+          <a href="/treasury/reports"><i data-lucide="pie-chart"></i>Reports</a>
+          <a href="/treasury/settings"><i data-lucide="settings"></i>Settings</a>
+        </nav>
+        <a class="treasury-logout" href="/login" data-treasury-logout><i data-lucide="log-out"></i>Logout</a>
+      </aside>
+
+      <section class="treasury-content">
+        <header class="treasury-header processing-header">
+          <button class="icon-button" type="button"><i data-lucide="menu"></i></button>
+          <div>
+            <h1>Payment Records</h1>
+            <p>View and manage completed and verified payment transactions.</p>
+          </div>
+          <section class="treasury-user"><i data-lucide="circle-user-round"></i><span>Welcome,<strong data-user-name>Staff name</strong></span><i data-lucide="chevron-down"></i></section>
+        </header>
+
+        <section class="treasury-page payment-records-page">
+          <p class="treasury-status" data-status>Loading payment records...</p>
+
+          <section class="treasury-stat-grid payment-summary-grid">
+            <article class="treasury-stat green"><i data-lucide="credit-card"></i><span>Total Payments Today</span><strong data-payment-count="totalPayments">PHP 0.00</strong><small>vs yesterday <em>0.0%</em></small></article>
+            <article class="treasury-stat blue"><i data-lucide="shield-check"></i><span>Verified Payments</span><strong data-payment-count="verifiedPayments">0</strong><small>Total Amount <em>PHP 0.00</em></small></article>
+            <article class="treasury-stat orange"><i data-lucide="clock"></i><span>Pending Verification</span><strong data-payment-count="pendingVerification">0</strong><small>Total Amount <em class="down">PHP 0.00</em></small></article>
+            <article class="treasury-stat purple"><i data-lucide="coins"></i><span>Total Collections</span><strong data-payment-count="totalCollections">PHP 0.00</strong><small>vs yesterday <em>0.0%</em></small></article>
+          </section>
+
+          <article class="treasury-card payment-records-card">
+            <section class="payment-toolbar" aria-label="Payment record filters">
+              <label class="payment-search">
+                <input type="search" data-payment-search placeholder="Search by OR No., applicant or business..." />
+                <i data-lucide="search"></i>
+              </label>
+              <button type="button" class="payment-date-filter"><i data-lucide="calendar-days"></i>Date Range</button>
+              <select data-payment-status-filter>
+                <option value="">All Statuses</option>
+                <option>Verified</option>
+                <option>Pending</option>
+                <option>Paid</option>
+                <option>Cancelled</option>
+              </select>
+              <select data-payment-method-filter>
+                <option value="">All Payment Methods</option>
+                <option>Cash</option>
+                <option>Bank Transfer</option>
+                <option>GCash</option>
+                <option>Maya</option>
+              </select>
+              <button type="button" class="export-button pdf" data-payment-export="pdf"><i data-lucide="file-text"></i>Export PDF</button>
+              <button type="button" class="export-button excel" data-payment-export="excel"><i data-lucide="file-spreadsheet"></i>Export Excel</button>
+              <button type="button" class="reset-button" data-reset-payment-filters><i data-lucide="rotate-ccw"></i>Reset</button>
+            </section>
+
+            <div class="treasury-table-wrap">
+              <table class="treasury-table payment-table">
+                <thead>
+                  <tr>
+                    <th>OR No.</th>
+                    <th>Payment Date</th>
+                    <th>Applicant</th>
+                    <th>Business Name</th>
+                    <th>Amount</th>
+                    <th>Payment Method</th>
+                    <th>Status</th>
+                    <th>Cashier</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-payment-records-table>
+                  <tr><td class="payment-empty-state" colspan="9">No payment records yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <footer class="payment-footer">
+              <span data-payment-entry-count>Showing 0 entries</span>
+              <nav class="processing-pagination" aria-label="Payment records pages">
+                <button type="button"><i data-lucide="chevron-left"></i></button>
+                <button class="is-active" type="button">1</button>
+                <button type="button"><i data-lucide="chevron-right"></i></button>
+                <select><option>10 / page</option></select>
+              </nav>
+            </footer>
+          </article>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
