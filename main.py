@@ -1,16 +1,26 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
 import os
+import re
+import tempfile
+
+import fitz
+import pytesseract
+from PIL import Image
 
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 ENV_FILE = BASE_DIR / ".env"
+
+if os.name == "nt":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 
 def load_env():
@@ -328,6 +338,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.update_applicant_application_document()
             return
 
+        if request_path == "/applicant/api/ocr-extract":
+            self.extract_applicant_document_ocr()
+            return
+
         if request_path == "/api/audit-logs":
             self.create_audit_log()
             return
@@ -443,6 +457,106 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def download_storage_file(self, supabase_url, service_key, bucket, file_path):
+        encoded_path = quote(file_path, safe="/")
+        request = Request(
+            f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+            },
+        )
+
+        with urlopen(request, timeout=30) as response:
+            return response.read()
+
+    def extract_text_from_file(self, file_name, file_bytes):
+        file_name_lower = (file_name or "").lower()
+
+        if file_name_lower.endswith(".pdf"):
+            document = fitz.open(stream=file_bytes, filetype="pdf")
+            extracted_pages = []
+
+            for page in document:
+                pix = page.get_pixmap(dpi=200)
+                image_bytes = pix.tobytes("png")
+                image = Image.open(BytesIO(image_bytes))
+                text = pytesseract.image_to_string(image)
+                extracted_pages.append(text)
+
+            return "\n".join(extracted_pages)
+
+        image = Image.open(BytesIO(file_bytes))
+        return pytesseract.image_to_string(image)
+
+    def clean_ocr_text(self, text):
+        return re.sub(r"\s+", " ", text or "").strip()
+
+    def find_first_match(self, patterns, text):
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip(" :,-")
+        return ""
+
+    def extract_business_fields_from_text(self, raw_text, document_type=""):
+        text = self.clean_ocr_text(raw_text)
+
+        extracted = {
+            "registration_number": self.find_first_match(
+                [
+                    r"(?:Registration No\.?|Reg\.? No\.?|Certificate No\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
+                    r"(?:DTI No\.?|SEC No\.?|CDA No\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
+                ],
+                text,
+            ),
+            "business_name": self.find_first_match(
+                [
+                    r"(?:Business Name|Trade Name)\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]+?)(?: Owner| Proprietor| Address| Registration|$)",
+                ],
+                text,
+            ),
+            "trade_name": self.find_first_match(
+                [
+                    r"(?:Trade Name)\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]+?)(?: Owner| Proprietor| Address| Registration|$)",
+                ],
+                text,
+            ),
+            "tin": self.find_first_match(
+                [
+                    r"(?:TIN|Tax Identification Number)\s*[:\-]?\s*([0-9\-]+)",
+                ],
+                text,
+            ),
+            "business_address": self.find_first_match(
+                [
+                    r"(?:Business Address|Business Location|Address)\s*[:\-]?\s*([A-Za-z0-9 #.,'\-]+?)(?: Barangay| Owner| Registration|$)",
+                ],
+                text,
+            ),
+            "first_name": "",
+            "middle_name": "",
+            "last_name": "",
+        }
+
+        owner_name = self.find_first_match(
+            [
+                r"(?:Owner|Proprietor|Registrant|Applicant Name)\s*[:\-]?\s*([A-Za-z .,'\-]+?)(?: Address| Business| Registration|$)",
+            ],
+            text,
+        )
+
+        if owner_name:
+            parts = owner_name.split()
+            if len(parts) >= 2:
+                extracted["first_name"] = parts[0]
+                extracted["last_name"] = parts[-1]
+                extracted["middle_name"] = " ".join(parts[1:-1])
+            else:
+                extracted["first_name"] = owner_name
+
+        return {key: value for key, value in extracted.items() if value}
 
     def verify_admin_session(self, access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email):
         if not access_token:
@@ -2047,6 +2161,114 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": self.handle_rest_error(error, "Unable to update document.")}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to update document."}, status=500)
+
+    def extract_applicant_document_ocr(self):
+        config = self.ensure_applicant_request("OCR extraction")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+
+        try:
+            payload = self.read_json_body()
+
+            application_id = (payload.get("applicationId") or "").strip()
+            permit_document_id = (payload.get("permitDocumentId") or "").strip()
+            file_name = (payload.get("fileName") or "").strip()
+            file_url = (payload.get("fileUrl") or "").strip()
+            document_type = (payload.get("documentType") or "").strip()
+
+            if not application_id or not permit_document_id or not file_url:
+                self.send_json({"error": "Application, document, and file path are required."}, status=400)
+                return
+
+            owned = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id",
+                    "id": f"eq.{application_id}",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "limit": 1,
+                },
+            )
+
+            if not owned:
+                self.send_json({"error": "Application not found."}, status=404)
+                return
+
+            document_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id",
+                    "application_id": f"eq.{application_id}",
+                    "permit_document_id": f"eq.{permit_document_id}",
+                    "limit": 1,
+                },
+            )
+
+            if not document_rows:
+                self.send_json({"error": "Application document not found."}, status=404)
+                return
+
+            application_document_id = document_rows[0].get("id")
+
+            file_bytes = self.download_storage_file(
+                supabase_url,
+                supabase_service_key,
+                "application-documents",
+                file_url,
+            )
+
+            raw_text = self.extract_text_from_file(file_name, file_bytes)
+            extracted_fields = self.extract_business_fields_from_text(raw_text, document_type)
+
+            self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {"id": f"eq.{application_document_id}"},
+                method="PATCH",
+                payload={
+                    "ocr_status": "Completed",
+                    "ocr_raw_text": raw_text,
+                    "ocr_extracted_fields": extracted_fields,
+                },
+                prefer="return=representation",
+            )
+
+            ocr_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_ocr_results",
+                method="POST",
+                payload={
+                    "application_id": application_id,
+                    "application_document_id": application_document_id,
+                    "permit_document_id": permit_document_id,
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "document_type": document_type,
+                    "raw_text": raw_text,
+                    "extracted_fields": extracted_fields,
+                    "ocr_status": "Completed",
+                },
+                prefer="return=representation",
+            )
+
+            self.send_json(
+                {
+                    "message": "OCR completed.",
+                    "ocr": ocr_rows[0] if ocr_rows else {},
+                    "extractedFields": extracted_fields,
+                }
+            )
+
+        except Exception as error:
+            self.send_json({"error": str(error) or "Unable to process OCR."}, status=500)
 
     def create_audit_log(self):
         config = self.ensure_authenticated_request()

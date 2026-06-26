@@ -33,6 +33,7 @@ const requirementsStatus = document.querySelector("[data-requirements-status]");
 const PERMIT_STORAGE_KEY = "bplo_recent_business_permits";
 const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
 const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
+const OCR_FIELDS_KEY = "bplo_current_ocr_fields";
 
 let supabaseClient = null;
 let currentUser = null;
@@ -243,6 +244,20 @@ function writeStoredPermits(permits) {
   }
 }
 
+function readStoredOcrFields() {
+  try {
+    return JSON.parse(window.sessionStorage.getItem(OCR_FIELDS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredOcrFields(fields) {
+  const current = readStoredOcrFields();
+  const merged = { ...current, ...fields };
+  window.sessionStorage.setItem(OCR_FIELDS_KEY, JSON.stringify(merged));
+}
+
 function updateRequirementsNextState() {
   if (!requirementsNextButton) {
     return;
@@ -348,6 +363,44 @@ async function persistApplicationDocument(permitDocumentId, fileName, uploadStat
   });
 }
 
+async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
+  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  const documentConfig = checklistDocuments.find((doc) => doc.id === permitDocumentId);
+
+  const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
+
+  if (result) {
+    result.textContent = `${fileName} - Reading document...`;
+  }
+
+  try {
+    const payload = await applicantApi("/applicant/api/ocr-extract", {
+      method: "POST",
+      body: JSON.stringify({
+        applicationId,
+        permitDocumentId,
+        fileName,
+        fileUrl,
+        documentType: documentConfig?.documentName || "",
+      }),
+    });
+
+    writeStoredOcrFields(payload.extractedFields || {});
+
+    if (result) {
+      result.textContent = `${fileName} - OCR completed`;
+      result.classList.add("is-uploaded");
+    }
+  } catch (error) {
+    if (result) {
+      result.textContent = `${fileName} - Uploaded, but OCR failed`;
+      result.classList.add("is-uploaded");
+    }
+
+    console.error("OCR error:", error);
+  }
+}
+
 async function handleChecklistFileSelected(input) {
   const permitDocumentId = input.dataset.fileInput || "";
   const file = input.files?.[0];
@@ -373,6 +426,7 @@ async function handleChecklistFileSelected(input) {
     }
     updateRequirementsNextState();
     await persistApplicationDocument(permitDocumentId, file.name, "Uploaded", fileUrl);
+    await runOcrForUploadedDocument(permitDocumentId, file.name, fileUrl);
   } catch (error) {
     uploadedDocumentNames.delete(permitDocumentId);
     if (result) {
@@ -445,6 +499,51 @@ async function loadRequirementsChecklist() {
       </article>
     `;
   }
+}
+
+function setBusinessFieldValue(name, value) {
+  if (!businessFormShell || value === undefined || value === null || value === "") {
+    return;
+  }
+
+  const controls = businessFormShell.querySelectorAll(`[data-business-field="${CSS.escape(name)}"]`);
+
+  controls.forEach((control) => {
+    if (control instanceof HTMLInputElement) {
+      if (control.type === "radio") {
+        control.checked = control.value === value;
+        return;
+      }
+
+      if (control.type === "checkbox") {
+        control.checked = Array.isArray(value)
+          ? value.includes(control.value)
+          : control.value === value;
+        return;
+      }
+
+      control.value = value;
+      control.classList.add("is-ocr-filled");
+      return;
+    }
+
+    if (control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement) {
+      control.value = value;
+      control.classList.add("is-ocr-filled");
+    }
+  });
+}
+
+function applyOcrFieldsToBusinessForm() {
+  if (!businessFormShell) {
+    return;
+  }
+
+  const extractedFields = readStoredOcrFields();
+
+  Object.entries(extractedFields).forEach(([fieldName, fieldValue]) => {
+    setBusinessFieldValue(fieldName, fieldValue);
+  });
 }
 
 function getBusinessFieldValue(name) {
@@ -821,8 +920,10 @@ requirementsNextButton?.addEventListener("click", () => {
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
   syncBusinessPermitType();
+
   loadApplicantDashboard().then(() => {
     void loadActivePermits();
     void loadRequirementsChecklist();
+    applyOcrFieldsToBusinessForm();
   });
 });
