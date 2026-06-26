@@ -27,6 +27,15 @@ function setDashboardStatus(message, isError = false) {
   dashboardStatus.style.color = isError ? "#b42318" : "#078d36";
 }
 
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return { admin: "bplo_admin", administrator: "bplo_admin" }[role] || role;
+}
+
+function normalizeStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 async function getDashboardAdminSession() {
   const client = initDashboardSupabase();
   if (!client) {
@@ -44,7 +53,15 @@ async function getDashboardAdminSession() {
   }
 
   const signedInEmail = (session.user?.email || "").toLowerCase();
-  if (DASHBOARD_ADMIN_EMAIL && signedInEmail !== DASHBOARD_ADMIN_EMAIL) {
+  const profileResponse = await fetch("/api/me/profile", {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  const profilePayload = await profileResponse.json().catch(() => ({}));
+  const role = normalizeRole(profilePayload.profile?.role || session.user?.app_metadata?.role);
+  if (!profileResponse.ok || profilePayload.profile?.status !== "active") {
+    throw new Error(profilePayload.error || "Your admin profile is not active.");
+  }
+  if (DASHBOARD_ADMIN_EMAIL && signedInEmail !== DASHBOARD_ADMIN_EMAIL && !["super_admin", "bplo_admin"].includes(role)) {
     throw new Error("Only the configured admin account can view dashboard data.");
   }
 
@@ -58,10 +75,10 @@ function setDashboardCount(key, value) {
 }
 
 function renderDashboardCounts(users) {
-  const activeUsers = users.filter((user) => user.status === "Active");
-  const adminUsers = users.filter((user) => user.role === "admin");
-  const departmentUsers = users.filter((user) => user.role === "department");
-  const clientUsers = users.filter((user) => ["client", "applicant"].includes(user.role));
+  const activeUsers = users.filter((user) => normalizeStatus(user.status) === "active");
+  const adminUsers = users.filter((user) => ["super_admin", "bplo_admin"].includes(normalizeRole(user.role)));
+  const departmentUsers = users.filter((user) => normalizeRole(user.role) === "department_office");
+  const clientUsers = users.filter((user) => normalizeRole(user.role) === "applicant");
 
   setDashboardCount("totalUsers", activeUsers.length);
   setDashboardCount("adminUsers", adminUsers.length);

@@ -37,6 +37,11 @@ function setStatus(message, isError = false) {
   usersStatus.style.color = isError ? "#b42318" : "#078d36";
 }
 
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return { admin: "bplo_admin", administrator: "bplo_admin" }[role] || role;
+}
+
 async function getAdminSession() {
   const client = initSupabase();
   if (!client) {
@@ -54,7 +59,15 @@ async function getAdminSession() {
   }
 
   const signedInEmail = (session.user?.email || "").toLowerCase();
-  if (ADMIN_EMAIL && signedInEmail !== ADMIN_EMAIL) {
+  const profileResponse = await fetch("/api/me/profile", {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  const profilePayload = await profileResponse.json().catch(() => ({}));
+  const role = normalizeRole(profilePayload.profile?.role || session.user?.app_metadata?.role);
+  if (!profileResponse.ok || profilePayload.profile?.status !== "active") {
+    throw new Error(profilePayload.error || "Your admin profile is not active.");
+  }
+  if (ADMIN_EMAIL && signedInEmail !== ADMIN_EMAIL && !["super_admin", "bplo_admin"].includes(role)) {
     throw new Error("Only the configured admin account can view users.");
   }
 
@@ -99,15 +112,14 @@ function formatDateTime(value) {
 
 function formatRole(value) {
   const roleLabels = {
-    admin: "Admin",
-    department: "Department User",
+    super_admin: "Super Admin",
+    bplo_admin: "BPLO Admin",
+    department_office: "Department Office",
     treasury: "Treasury User",
-    client: "Client",
     applicant: "Applicant",
-    employee: "Employee",
   };
 
-  return roleLabels[value] || value || "Client";
+  return roleLabels[value] || value || "Applicant";
 }
 
 function getFilteredUsers() {
@@ -137,7 +149,7 @@ function renderUsers() {
   if (!users.length) {
     usersBody.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="users-empty-state">
             <strong>No users found</strong>
             <p>Create an account first, then refresh this list.</p>
@@ -152,7 +164,7 @@ function renderUsers() {
   if (!filteredUsers.length) {
     usersBody.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="users-empty-state">
             <strong>No matching users</strong>
             <p>Try a different search, role, or status filter.</p>
@@ -169,6 +181,7 @@ function renderUsers() {
         <tr>
           <td>${escapeHtml(user.name)}</td>
           <td>${escapeHtml(user.email)}</td>
+          <td>${escapeHtml(user.contactNumber || "-")}</td>
           <td>${escapeHtml(formatRole(user.role))}</td>
           <td>${escapeHtml(user.department || "-")}</td>
           <td><span class="status-pill status-pill--${escapeHtml(user.status.toLowerCase())}">${escapeHtml(user.status)}</span></td>
@@ -224,7 +237,6 @@ function showUserDetails(userId) {
       ${detailItem("Updated", formatDateTime(user.updatedAt))}
       ${detailItem("Last Sign In", formatDateTime(user.lastSignInAt))}
       ${detailItem("Email Confirmed", formatDateTime(user.emailConfirmedAt))}
-      ${detailItem("Banned Until", formatDateTime(user.bannedUntil))}
     </section>
   `;
   userDetailsDialog.showModal();

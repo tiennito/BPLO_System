@@ -9,7 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/audit_logger.js?v=2"></script>
-    <script defer src="/features/admin_create_permit.js?v=1"></script>
+    <script defer src="/features/admin_create_permit.js?v=2"></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -166,6 +166,18 @@
                     </table>
                   </div>
                 </article>
+              </div>
+            </section>
+
+            <section class="permit-section required-offices-card">
+              <header>
+                <div>
+                  <h3>Required Offices</h3>
+                  <p>Select the offices that must process this permit.</p>
+                </div>
+              </header>
+              <div class="required-office-grid" data-required-offices>
+                <p class="permit-empty-row">Loading offices...</p>
               </div>
             </section>
 

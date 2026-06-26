@@ -9,6 +9,9 @@ const successModal = document.querySelector("[data-create-user-success-modal]");
 const submitButton = form?.querySelector('button[type="submit"]');
 const passwordInput = form?.querySelector('input[name="password"]');
 const confirmPasswordInput = form?.querySelector('input[name="confirmPassword"]');
+const roleSelect = form?.querySelector('select[name="role"]');
+const departmentField = document.querySelector("[data-department-field]");
+const departmentSelect = document.querySelector("[data-department-select]");
 const ruleNodes = {
   length: document.querySelector('[data-rule="length"]'),
   uppercase: document.querySelector('[data-rule="uppercase"]'),
@@ -17,6 +20,7 @@ const ruleNodes = {
 };
 
 let supabaseClient = null;
+let departmentOptions = [];
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -98,11 +102,112 @@ async function getAdminSession() {
   }
 
   const signedInEmail = (session.user?.email || "").toLowerCase();
-  if (ADMIN_EMAIL && signedInEmail !== ADMIN_EMAIL) {
+  const profileResponse = await fetch("/api/me/profile", {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  const profilePayload = await profileResponse.json().catch(() => ({}));
+  const role = normalizeRole(profilePayload.profile?.role || session.user?.app_metadata?.role);
+  if (!profileResponse.ok || profilePayload.profile?.status !== "active") {
+    throw new Error(profilePayload.error || "Your admin profile is not active.");
+  }
+  if (ADMIN_EMAIL && signedInEmail !== ADMIN_EMAIL && !["super_admin", "bplo_admin"].includes(role)) {
     throw new Error("Only the configured admin account can create users.");
   }
 
   return session;
+}
+
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const aliases = {
+    admin: "bplo_admin",
+    administrator: "bplo_admin",
+    department: "department_office",
+    department_user: "department_office",
+    department_office_user: "department_office",
+    client: "applicant",
+  };
+  return aliases[role] || role;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function slugifyKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function departmentKeyFromName(name) {
+  let key = slugifyKey(name).replace(/_(office|department)$/g, "");
+  const aliases = {
+    health_sanitary: "health",
+    zoning_mpdc: "zoning",
+    engineering: "engineering",
+    fire: "fire",
+  };
+  return aliases[key] || key;
+}
+
+function selectedDepartment() {
+  return departmentOptions.find((department) => department.id === departmentSelect?.value) || null;
+}
+
+function syncDepartmentField() {
+  const isDepartment = normalizeRole(roleSelect?.value) === "department_office";
+  if (departmentField) {
+    departmentField.hidden = !isDepartment;
+  }
+  if (departmentSelect) {
+    departmentSelect.required = isDepartment;
+    if (!isDepartment) {
+      departmentSelect.value = "";
+    }
+  }
+}
+
+function renderDepartmentOptions() {
+  if (!departmentSelect) {
+    return;
+  }
+
+  departmentSelect.innerHTML = '<option value="">--Select Department--</option>' + departmentOptions
+    .filter((department) => department.status === "Active")
+    .map((department) => `<option value="${escapeHtml(department.id)}">${escapeHtml(department.name)}</option>`)
+    .join("");
+}
+
+async function loadDepartments(session) {
+  if (!departmentSelect) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/admin/api/departments", {
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to load departments.");
+    }
+    departmentOptions = Array.isArray(result.departments) ? result.departments : [];
+    renderDepartmentOptions();
+  } catch (error) {
+    departmentOptions = [];
+    renderDepartmentOptions();
+    setStatus(error instanceof Error ? error.message : "Unable to load departments.", true);
+  }
 }
 
 form?.addEventListener("submit", async (event) => {
@@ -118,6 +223,13 @@ form?.addEventListener("submit", async (event) => {
 
     const session = await getAdminSession();
     const formData = new FormData(form);
+    const role = normalizeRole(formData.get("role"));
+    const department = role === "department_office" ? selectedDepartment() : null;
+
+    if (role === "department_office" && !department) {
+      throw new Error("Select an active department for this user.");
+    }
+
     const payload = {
       firstName: (formData.get("firstName") || "").toString().trim(),
       lastName: (formData.get("lastName") || "").toString().trim(),
@@ -125,7 +237,10 @@ form?.addEventListener("submit", async (event) => {
       suffix: (formData.get("suffix") || "").toString().trim(),
       email: (formData.get("email") || "").toString().trim(),
       contactNumber: (formData.get("contactNumber") || "").toString().trim(),
-      role: (formData.get("role") || "").toString().trim(),
+      role,
+      departmentId: department?.id || "",
+      departmentName: department?.name || "",
+      departmentKey: department ? departmentKeyFromName(department.name) : "",
       password: (formData.get("password") || "").toString(),
     };
 
@@ -160,15 +275,21 @@ form?.addEventListener("submit", async (event) => {
 form?.addEventListener("reset", () => {
   window.setTimeout(() => {
     syncPasswordRules();
+    syncDepartmentField();
     setStatus("");
   }, 0);
 });
 
 passwordInput?.addEventListener("input", syncPasswordRules);
+roleSelect?.addEventListener("change", syncDepartmentField);
 syncPasswordRules();
+syncDepartmentField();
 
 window.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) {
     window.lucide.createIcons();
   }
+  getAdminSession()
+    .then(loadDepartments)
+    .catch((error) => setStatus(error instanceof Error ? error.message : "Unable to prepare user creation.", true));
 });

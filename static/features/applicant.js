@@ -23,11 +23,22 @@ const businessContinueButton = document.querySelector("[data-business-continue]"
 const finishApplicationButton = document.querySelector("[data-finish-application]");
 const reviewStrip = document.querySelector("[data-review-strip]");
 const recentPermitsTableBody = document.querySelector(".permits-table-wrap tbody");
+const activePermitsGrid = document.querySelector("[data-active-permits]");
+const dynamicDocumentGrid = document.querySelector("[data-dynamic-document-grid]");
+const checklistPermitName = document.querySelector("[data-checklist-permit-name]");
+const checklistPermitCode = document.querySelector("[data-checklist-permit-code]");
+const requirementsNextButton = document.querySelector("[data-requirements-next]");
+const requirementsStatus = document.querySelector("[data-requirements-status]");
 
 const PERMIT_STORAGE_KEY = "bplo_recent_business_permits";
+const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
+const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
 
 let supabaseClient = null;
 let currentUser = null;
+let activePermitCache = [];
+let checklistDocuments = [];
+let uploadedDocumentNames = new Map();
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -39,6 +50,46 @@ function initSupabase() {
   }
 
   return supabaseClient;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+async function getApplicantAccessToken() {
+  const client = initSupabase();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { data, error } = await client.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Please sign in before continuing.");
+  }
+
+  return data.session.access_token;
+}
+
+async function applicantApi(path, options = {}) {
+  const accessToken = await getApplicantAccessToken();
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to complete request.");
+  }
+  return payload;
 }
 
 function setField(name, value) {
@@ -93,6 +144,87 @@ function syncBusinessPermitType() {
   }
 }
 
+function renderActivePermits(permits) {
+  if (!activePermitsGrid) {
+    return;
+  }
+
+  if (!permits.length) {
+    activePermitsGrid.innerHTML = `
+      <article class="permit-summary-card permit-summary-card--empty">
+        <h2>No active permits yet</h2>
+        <p>Ask the admin to create and activate a permit first.</p>
+      </article>
+    `;
+    return;
+  }
+
+  activePermitsGrid.innerHTML = permits
+    .map(
+      (permit, index) => `
+        <section class="permit-summary-card" aria-labelledby="permit-${escapeHtml(permit.id)}">
+          <header>
+            <h2 id="permit-${escapeHtml(permit.id)}">${escapeHtml(permit.permitName)}</h2>
+            <span>${escapeHtml(permit.category || "Permit")}</span>
+          </header>
+          <p>${escapeHtml(permit.description || "No description provided.")}</p>
+          <dl>
+            <dt>Code:</dt>
+            <dd>${escapeHtml(permit.permitCode)}</dd>
+          </dl>
+          <button class="start-application-button" type="button" data-start-permit="${escapeHtml(permit.id)}">
+            <span>Start Application</span>
+            <i data-lucide="arrow-right" aria-hidden="true"></i>
+          </button>
+        </section>
+      `
+    )
+    .join("");
+
+  window.sessionStorage.setItem(SELECTED_PERMIT_KEY, permits[0].id);
+  window.lucide?.createIcons();
+}
+
+async function loadActivePermits() {
+  if (!activePermitsGrid) {
+    return;
+  }
+
+  try {
+    const payload = await applicantApi("/applicant/api/permits");
+    activePermitCache = payload.permits || [];
+    renderActivePermits(activePermitCache);
+  } catch (error) {
+    activePermitsGrid.innerHTML = `
+      <article class="permit-summary-card permit-summary-card--empty">
+        <h2>Unable to load permits</h2>
+        <p>${escapeHtml(error.message)}</p>
+      </article>
+    `;
+  }
+}
+
+async function startPermitApplication(permitId) {
+  const button = document.querySelector(`[data-start-permit="${CSS.escape(permitId)}"]`);
+  try {
+    if (button) {
+      button.disabled = true;
+    }
+    const payload = await applicantApi("/applicant/api/applications", {
+      method: "POST",
+      body: JSON.stringify({ permitId }),
+    });
+    window.sessionStorage.setItem(SELECTED_PERMIT_KEY, permitId);
+    window.sessionStorage.setItem(CURRENT_APPLICATION_KEY, payload.application?.id || "");
+    window.location.href = "/applicant/new-application";
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+    }
+    alert(error.message || "Unable to start application.");
+  }
+}
+
 function readStoredPermits() {
   try {
     const raw = window.localStorage.getItem(PERMIT_STORAGE_KEY);
@@ -108,6 +240,210 @@ function writeStoredPermits(permits) {
     window.localStorage.setItem(PERMIT_STORAGE_KEY, JSON.stringify(permits));
   } catch {
     // Ignore storage failures in restricted browser modes.
+  }
+}
+
+function updateRequirementsNextState() {
+  if (!requirementsNextButton) {
+    return;
+  }
+
+  const missingRequired = checklistDocuments.filter(
+    (doc) => doc.requirementType === "Required" && !uploadedDocumentNames.get(doc.id)
+  );
+  requirementsNextButton.disabled = missingRequired.length > 0;
+
+  if (requirementsStatus) {
+    requirementsStatus.textContent = missingRequired.length
+      ? `${missingRequired.length} required document(s) still missing.`
+      : "All required documents uploaded. You may continue.";
+    requirementsStatus.classList.toggle("is-ready", missingRequired.length === 0);
+  }
+}
+
+function renderChecklistDocuments(documents) {
+  if (!dynamicDocumentGrid) {
+    return;
+  }
+
+  checklistDocuments = documents || [];
+  uploadedDocumentNames = new Map();
+
+  if (!checklistDocuments.length) {
+    dynamicDocumentGrid.innerHTML = `
+      <article class="document-card">
+        <p>No document requirements configured for this permit.</p>
+      </article>
+    `;
+    updateRequirementsNextState();
+    return;
+  }
+
+  dynamicDocumentGrid.innerHTML = checklistDocuments
+    .map((doc, index) => {
+      const isRequired = doc.requirementType === "Required";
+      return `
+        <article class="document-card" data-document-card="${escapeHtml(doc.id)}">
+          <header>
+            <h3>${index + 1}. ${escapeHtml(doc.documentName)}</h3>
+            <span class="doc-badge ${isRequired ? "doc-badge--required" : "doc-badge--optional"}">
+              ${isRequired ? "Required" : "Optional"}
+            </span>
+          </header>
+          <p class="document-card-description">${escapeHtml(doc.shortDescription || doc.notes || "")}</p>
+          <input class="visually-hidden-file" type="file" data-file-input="${escapeHtml(doc.id)}" />
+          <button class="upload-slot" type="button" data-upload-trigger="${escapeHtml(doc.id)}">
+            <i data-lucide="file-up" aria-hidden="true"></i>
+            <span>Upload Document</span>
+            <small>${escapeHtml(doc.acceptedFileTypes || "PDF, JPG, PNG")} ${doc.maxFileSize ? ` / ${escapeHtml(doc.maxFileSize)}` : ""}</small>
+          </button>
+          <div class="upload-result" data-upload-result="${escapeHtml(doc.id)}">No file uploaded</div>
+          <button class="remove-upload-button" type="button" data-remove-upload="${escapeHtml(doc.id)}" hidden>Remove file</button>
+        </article>
+      `;
+    })
+    .join("");
+  window.lucide?.createIcons();
+  updateRequirementsNextState();
+}
+
+function sanitizeStorageName(fileName) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+async function uploadApplicationFile(permitDocumentId, file) {
+  const client = initSupabase();
+  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  if (!client || !currentUser?.id || !applicationId) {
+    throw new Error("Application session is not ready. Please start the application again.");
+  }
+
+  const storagePath = `${currentUser.id}/${applicationId}/${permitDocumentId}/${Date.now()}-${sanitizeStorageName(file.name)}`;
+  const { error } = await client.storage.from("application-documents").upload(storagePath, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (error) {
+    throw new Error(error.message || "Unable to upload file.");
+  }
+
+  return storagePath;
+}
+
+async function persistApplicationDocument(permitDocumentId, fileName, uploadStatus, fileUrl = "") {
+  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  if (!applicationId) {
+    return;
+  }
+
+  await applicantApi("/applicant/api/application-documents", {
+    method: "POST",
+    body: JSON.stringify({
+      applicationId,
+      permitDocumentId,
+      fileName,
+      fileUrl,
+      uploadStatus,
+    }),
+  });
+}
+
+async function handleChecklistFileSelected(input) {
+  const permitDocumentId = input.dataset.fileInput || "";
+  const file = input.files?.[0];
+  if (!permitDocumentId || !file) {
+    return;
+  }
+
+  const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
+  const removeButton = document.querySelector(`[data-remove-upload="${CSS.escape(permitDocumentId)}"]`);
+  if (result) {
+    result.textContent = "Uploading...";
+    result.classList.remove("is-uploaded");
+  }
+  try {
+    const fileUrl = await uploadApplicationFile(permitDocumentId, file);
+    uploadedDocumentNames.set(permitDocumentId, file.name);
+    if (result) {
+      result.textContent = file.name;
+      result.classList.add("is-uploaded");
+    }
+    if (removeButton) {
+      removeButton.hidden = false;
+    }
+    updateRequirementsNextState();
+    await persistApplicationDocument(permitDocumentId, file.name, "Uploaded", fileUrl);
+  } catch (error) {
+    uploadedDocumentNames.delete(permitDocumentId);
+    if (result) {
+      result.textContent = error.message || "Unable to upload file.";
+      result.classList.remove("is-uploaded");
+    }
+    if (removeButton) {
+      removeButton.hidden = true;
+    }
+    if (requirementsStatus) {
+      requirementsStatus.textContent = error.message || "Unable to upload file.";
+      requirementsStatus.classList.remove("is-ready");
+    }
+    updateRequirementsNextState();
+  }
+}
+
+async function removeChecklistUpload(permitDocumentId) {
+  uploadedDocumentNames.delete(permitDocumentId);
+  const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
+  const removeButton = document.querySelector(`[data-remove-upload="${CSS.escape(permitDocumentId)}"]`);
+  const input = document.querySelector(`[data-file-input="${CSS.escape(permitDocumentId)}"]`);
+  if (input) {
+    input.value = "";
+  }
+  if (result) {
+    result.textContent = "No file uploaded";
+    result.classList.remove("is-uploaded");
+  }
+  if (removeButton) {
+    removeButton.hidden = true;
+  }
+  updateRequirementsNextState();
+  try {
+    await persistApplicationDocument(permitDocumentId, "", "Removed");
+  } catch {
+    // Keep the local UI responsive; the applicant can reselect the file.
+  }
+}
+
+async function loadRequirementsChecklist() {
+  if (!dynamicDocumentGrid) {
+    return;
+  }
+
+  const permitId = window.sessionStorage.getItem(SELECTED_PERMIT_KEY);
+  if (!permitId) {
+    dynamicDocumentGrid.innerHTML = `
+      <article class="document-card">
+        <p>No permit selected. Please start from the permit page.</p>
+      </article>
+    `;
+    return;
+  }
+
+  try {
+    const payload = await applicantApi(`/applicant/api/permits/${encodeURIComponent(permitId)}`);
+    const permit = payload.permit;
+    if (checklistPermitName) {
+      checklistPermitName.textContent = permit.permitName || "Permit";
+    }
+    if (checklistPermitCode) {
+      checklistPermitCode.textContent = permit.permitCode || "Code";
+    }
+    renderChecklistDocuments(permit.documents || []);
+  } catch (error) {
+    dynamicDocumentGrid.innerHTML = `
+      <article class="document-card">
+        <p>${escapeHtml(error.message || "Unable to load requirements.")}</p>
+      </article>
+    `;
   }
 }
 
@@ -377,6 +713,20 @@ async function loadApplicantDashboard() {
     return;
   }
 
+  const profilePayload = await applicantApi("/api/me/profile");
+  const accessProfile = profilePayload.profile || {};
+  if (accessProfile.status !== "active") {
+    alert(`This account is ${accessProfile.status}. Please contact the administrator.`);
+    await client.auth.signOut();
+    window.location.href = "/login";
+    return;
+  }
+  if (accessProfile.role !== "applicant") {
+    alert("This dashboard is only for applicant accounts.");
+    window.location.href = profilePayload.redirectPath || "/login";
+    return;
+  }
+
   currentUser = user;
 
   const { data: profile } = await client
@@ -409,6 +759,29 @@ profileToggle?.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  const clickedElement = event.target instanceof HTMLElement ? event.target : null;
+
+  const startPermitButton = clickedElement?.closest("[data-start-permit]");
+  if (startPermitButton instanceof HTMLElement) {
+    const permitId = startPermitButton.dataset.startPermit || "";
+    void startPermitApplication(permitId);
+    return;
+  }
+
+  const uploadTrigger = clickedElement?.closest("[data-upload-trigger]");
+  if (uploadTrigger instanceof HTMLElement) {
+    const documentId = uploadTrigger.dataset.uploadTrigger || "";
+    const input = document.querySelector(`[data-file-input="${CSS.escape(documentId)}"]`);
+    input?.click();
+    return;
+  }
+
+  const removeUploadButton = clickedElement?.closest("[data-remove-upload]");
+  if (removeUploadButton instanceof HTMLElement) {
+    void removeChecklistUpload(removeUploadButton.dataset.removeUpload || "");
+    return;
+  }
+
   if (!profileDropdown?.classList.contains("is-open")) {
     return;
   }
@@ -416,6 +789,13 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Node && !profileDropdown.contains(target) && !profileToggle?.contains(target)) {
     profileDropdown.classList.remove("is-open");
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.matches("[data-file-input]")) {
+    void handleChecklistFileSelected(target);
   }
 });
 
@@ -431,8 +811,18 @@ finishApplicationButton?.addEventListener("click", () => {
   void handleFinishApplication();
 });
 
+requirementsNextButton?.addEventListener("click", () => {
+  updateRequirementsNextState();
+  if (!requirementsNextButton.disabled) {
+    window.location.href = "/applicant/business-information";
+  }
+});
+
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
   syncBusinessPermitType();
-  loadApplicantDashboard();
+  loadApplicantDashboard().then(() => {
+    void loadActivePermits();
+    void loadRequirementsChecklist();
+  });
 });

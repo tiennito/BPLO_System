@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/styles/applicant.css?v=8" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/applicant.js?v=8"></script>
+    <script defer src="/features/applicant.js?v=9"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -45,20 +45,10 @@
 
         <h1 class="page-title">Create Business Permit Application</h1>
 
-        <section class="permit-summary-card" aria-labelledby="permit-title">
-          <header>
-            <h2 id="permit-title">Business Permit</h2>
-            <span>Business Permit</span>
-          </header>
-          <p>This is the Business permit for application to the BPLO</p>
-          <dl>
-            <dt>Code:</dt>
-            <dd>BPLO 01</dd>
-          </dl>
-          <a class="start-application-button" href="/applicant/application-type">
-            <span>Start Application</span>
-            <i data-lucide="arrow-right" aria-hidden="true"></i>
-          </a>
+        <section class="active-permits-grid" data-active-permits aria-label="Available permits">
+          <article class="permit-summary-card">
+            <p>Loading active permits...</p>
+          </article>
         </section>
 
         <div class="permit-content-grid">
@@ -103,7 +93,7 @@
               <div class="office-column">
                 <details class="office-card">
                   <summary>Office of the City Market Administrator</summary>
-                  <p>Market Clearance (For stall holders)</p>
+                  <p>Market Clearance for stall holders.</p>
                 </details>
                 <details class="office-card">
                   <summary>Municipal Assessor Office</summary>

@@ -20,6 +20,11 @@ function setStatus(message, isError = false) {
   node.style.color = isError ? "#b42318" : "#667085";
 }
 
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return { treasury_office: "treasury", treasury_user: "treasury" }[role] || role;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
@@ -63,11 +68,23 @@ async function requireTreasurySession() {
     window.location.assign("/login");
     return false;
   }
-  if (session.user?.app_metadata?.role !== "treasury") {
-    window.location.assign("/login");
+  const profilePayload = await apiFetch("/api/me/profile");
+  const accessProfile = profilePayload.profile || {};
+  const role = normalizeRole(accessProfile.role);
+  if (accessProfile.status !== "active") {
+    setStatus(`This account is ${accessProfile.status} and cannot access the dashboard.`, true);
+    return false;
+  }
+  if (role !== "treasury") {
+    setStatus("This account is signed in, but it is not a Treasury account.", true);
+    console.debug("[auth] treasury guard rejected", {
+      authUserId: accessProfile.authUserId,
+      role,
+    });
     return false;
   }
   const profile = await apiFetch("/treasury/api/me");
+  console.debug("[auth] treasury profile", profile.user);
   document.querySelectorAll("[data-user-name]").forEach((node) => {
     node.textContent = profile.user?.name || "Treasury Staff";
   });

@@ -79,19 +79,19 @@
 
             <select class="filter-control" data-role-filter aria-label="Filter by role">
               <option value="">All Roles</option>
-              <option value="admin">Admin</option>
-              <option value="department">Department User</option>
+              <option value="super_admin">Super Admin</option>
+              <option value="bplo_admin">BPLO Admin</option>
+              <option value="department_office">Department Office</option>
               <option value="treasury">Treasury User</option>
-              <option value="client">Client</option>
               <option value="applicant">Applicant</option>
-              <option value="employee">Employee</option>
             </select>
 
             <select class="filter-control" data-status-filter aria-label="Filter by status">
               <option value="">All Status</option>
-              <option value="Active">Active</option>
-              <option value="Pending">Pending</option>
-              <option value="Disabled">Disabled</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="inactive">Inactive</option>
+              <option value="disabled">Disabled</option>
             </select>
 
             <button class="refresh-button" type="button" data-refresh-users>
@@ -110,18 +110,19 @@
               <table class="users-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Status</th>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Contact</th>
+                      <th>Role</th>
+                      <th>Department</th>
+                      <th>Status</th>
                     <th>Created</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody data-users-body>
                   <tr>
-                    <td colspan="7">
+                      <td colspan="8">
                       <div class="users-empty-state">
                         <strong>Loading users</strong>
                         <p>Please wait while the system loads all project users.</p>

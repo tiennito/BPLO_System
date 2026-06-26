@@ -103,9 +103,17 @@
                 <span>User Role <em>*</em></span>
                 <select name="role" required>
                   <option value="">--Select Role--</option>
-                  <option value="admin">Admin</option>
-                  <option value="department">Department User</option>
-                  <option value="client">Client</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="bplo_admin">BPLO Admin</option>
+                  <option value="department_office">Department Office</option>
+                  <option value="treasury">Treasury User</option>
+                  <option value="applicant">Applicant</option>
+                </select>
+              </label>
+              <label class="field" data-department-field hidden>
+                <span>Department <em>*</em></span>
+                <select name="departmentId" data-department-select>
+                  <option value="">--Select Department--</option>
                 </select>
               </label>
               <label class="field">

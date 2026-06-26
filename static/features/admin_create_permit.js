@@ -4,8 +4,13 @@ const documentDialog = document.querySelector("[data-document-dialog]");
 const documentForm = document.querySelector("[data-document-form]");
 const documentDialogTitle = document.querySelector("[data-document-dialog-title]");
 const draftButton = document.querySelector("[data-save-draft]");
+const requiredOfficesContainer = document.querySelector("[data-required-offices]");
 
-const PERMIT_STORAGE_KEY = "bplo_admin_permits";
+const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
+const SUPABASE_ANON_KEY =
+  window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
+let supabaseClient = null;
+let existingPermits = [];
 const documents = {
   required: [
     {
@@ -68,6 +73,19 @@ const documents = {
     },
   ],
 };
+let offices = [];
+
+function initSupabase() {
+  if (!window.supabase?.createClient || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return null;
+  }
+
+  if (!supabaseClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+
+  return supabaseClient;
+}
 
 function setPermitStatus(message, isError = false) {
   if (!permitStatus) {
@@ -137,6 +155,31 @@ function renderAllDocuments() {
   renderDocuments("optional");
 }
 
+function renderOffices() {
+  if (!requiredOfficesContainer) {
+    return;
+  }
+
+  if (!offices.length) {
+    requiredOfficesContainer.innerHTML = '<p class="permit-empty-row">No offices found. Add offices in Departments first.</p>';
+    return;
+  }
+
+  requiredOfficesContainer.innerHTML = offices
+    .map(
+      (office) => `
+        <label class="required-office-option">
+          <input type="checkbox" name="requiredOfficeIds" value="${escapeHtml(office.id)}" />
+          <span>
+            <strong>${escapeHtml(office.name)}</strong>
+            <small>${escapeHtml(office.description || "Required processing office")}</small>
+          </span>
+        </label>
+      `
+    )
+    .join("");
+}
+
 function openDocumentDialog(group, doc = null) {
   if (!documentDialog || !documentForm) {
     return;
@@ -154,43 +197,148 @@ function openDocumentDialog(group, doc = null) {
   window.lucide?.createIcons();
 }
 
-function readSavedPermits() {
+async function getAccessToken() {
+  const client = initSupabase();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { data, error } = await client.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Please sign in as admin before saving a permit.");
+  }
+
+  return data.session.access_token;
+}
+
+async function loadOffices() {
+  if (!requiredOfficesContainer) {
+    return;
+  }
+
   try {
-    const raw = window.localStorage.getItem(PERMIT_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
-    return [];
+    const accessToken = await getAccessToken();
+    const response = await fetch("/admin/api/departments", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to load offices.");
+    }
+    offices = (payload.departments || []).filter((office) => office.status !== "Inactive");
+    renderOffices();
+  } catch (error) {
+    requiredOfficesContainer.innerHTML = `<p class="permit-empty-row">${escapeHtml(error.message || "Unable to load offices.")}</p>`;
   }
 }
 
-function savePermitRecord(status) {
+function getPermitCodeInput() {
+  return permitForm?.querySelector('input[name="permitCode"]') || null;
+}
+
+function getNextPermitCode() {
+  const usedNumbers = existingPermits
+    .map((permit) => permit.permitCode || "")
+    .map((code) => /^BP-(\d+)$/i.exec(code.trim()))
+    .filter(Boolean)
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value));
+  const nextNumber = usedNumbers.length ? Math.max(...usedNumbers) + 1 : 1;
+  return `BP-${String(nextNumber).padStart(3, "0")}`;
+}
+
+async function loadExistingPermits() {
+  try {
+    const accessToken = await getAccessToken();
+    const response = await fetch("/admin/api/permits", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to load permits.");
+    }
+
+    existingPermits = payload.permits || [];
+    const codeInput = getPermitCodeInput();
+    if (codeInput && (!codeInput.value.trim() || codeInput.value.trim() === "BP-001")) {
+      const nextCode = getNextPermitCode();
+      codeInput.value = nextCode;
+      if (nextCode !== "BP-001") {
+        setPermitStatus(`Permit code ${nextCode} is ready for the next permit.`);
+      }
+    }
+  } catch (_error) {
+    existingPermits = [];
+  }
+}
+
+async function ensureUniquePermitCodeBeforeCreate(payload) {
+  await loadExistingPermits();
+  const currentCode = payload.permitCode.trim().toLowerCase();
+  const isDuplicate = existingPermits.some(
+    (permit) => (permit.permitCode || "").trim().toLowerCase() === currentCode
+  );
+
+  if (!isDuplicate) {
+    return payload;
+  }
+
+  const nextCode = getNextPermitCode();
+  const codeInput = getPermitCodeInput();
+  if (codeInput) {
+    codeInput.value = nextCode;
+  }
+
+  return { ...payload, permitCode: nextCode };
+}
+
+function buildPermitPayload(status) {
   if (!permitForm) {
     return null;
   }
 
   const formData = new FormData(permitForm);
-  const record = {
-    id: crypto.randomUUID(),
+  const selectedOfficeIds = [...permitForm.querySelectorAll('input[name="requiredOfficeIds"]:checked')].map(
+    (input) => input.value
+  );
+
+  return {
     status,
     permitName: formData.get("permitName").toString().trim(),
     permitCode: formData.get("permitCode").toString().trim(),
     category: formData.get("category").toString(),
-    isActive: Boolean(formData.get("status")),
     description: formData.get("description").toString().trim(),
     processingFee: formData.get("processingFee").toString().trim(),
     applicantNotes: formData.get("applicantNotes").toString().trim(),
-    documents: {
-      required: documents.required,
-      optional: documents.optional,
-    },
-    savedAt: new Date().toISOString(),
+    requiredOfficeIds: selectedOfficeIds,
+    documents: [
+      ...documents.required.map((doc) => ({ ...doc, requirementType: "Required" })),
+      ...documents.optional.map((doc) => ({ ...doc, requirementType: "Optional" })),
+    ],
   };
+}
 
-  const permits = readSavedPermits();
-  permits.unshift(record);
-  window.localStorage.setItem(PERMIT_STORAGE_KEY, JSON.stringify(permits.slice(0, 50)));
-  return record;
+async function savePermitRecord(status) {
+  let payload = buildPermitPayload(status);
+  if (!payload) {
+    return null;
+  }
+
+  payload = await ensureUniquePermitCodeBeforeCreate(payload);
+  const accessToken = await getAccessToken();
+  const response = await fetch("/admin/api/permits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const responsePayload = await response.json();
+  if (!response.ok) {
+    throw new Error(responsePayload.error || "Unable to save permit.");
+  }
+  return responsePayload.permit;
 }
 
 document.querySelectorAll("[data-add-document]").forEach((button) => {
@@ -252,23 +400,42 @@ documentForm?.addEventListener("submit", (event) => {
   setPermitStatus("Document requirement saved.");
 });
 
-draftButton?.addEventListener("click", () => {
-  savePermitRecord("Draft");
-  setPermitStatus("Permit saved as draft on this browser.");
+draftButton?.addEventListener("click", async () => {
+  try {
+    draftButton.disabled = true;
+    const permit = await savePermitRecord("Draft");
+    setPermitStatus(`Permit saved as draft${permit?.permitCode ? ` with code ${permit.permitCode}` : ""}.`);
+  } catch (error) {
+    setPermitStatus(error.message || "Unable to save permit draft.", true);
+  } finally {
+    draftButton.disabled = false;
+  }
 });
 
-permitForm?.addEventListener("submit", (event) => {
+permitForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!documents.required.length) {
     setPermitStatus("Add at least one required document before creating a permit.", true);
     return;
   }
 
-  savePermitRecord("Created");
-  setPermitStatus("Permit created on this browser.");
+  const submitButton = permitForm.querySelector('button[type="submit"]');
+  try {
+    submitButton.disabled = true;
+    const formData = new FormData(permitForm);
+    const status = formData.get("status") ? "Active" : "Inactive";
+    const permit = await savePermitRecord(status);
+    setPermitStatus(`Permit created successfully${permit?.permitCode ? ` with code ${permit.permitCode}` : ""}.`);
+  } catch (error) {
+    setPermitStatus(error.message || "Unable to create permit.", true);
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   renderAllDocuments();
+  void loadOffices();
+  void loadExistingPermits();
   window.lucide?.createIcons();
 });

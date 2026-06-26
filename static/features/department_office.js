@@ -31,6 +31,16 @@ function setStatus(message, isError = false) {
   statusNode.style.color = isError ? "#b42318" : "#626262";
 }
 
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const aliases = {
+    department: "department_office",
+    department_user: "department_office",
+    department_office_user: "department_office",
+  };
+  return aliases[role] || role;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -81,14 +91,26 @@ async function requireDepartmentSession() {
     return false;
   }
 
-  const role = session.user?.app_metadata?.role;
-  const departmentKey = session.user?.app_metadata?.department_key;
-  if (role !== "department" || !departmentKey) {
-    window.location.assign("/login");
+  const profilePayload = await apiFetch("/api/me/profile");
+  const accessProfile = profilePayload.profile || {};
+  const role = normalizeRole(accessProfile.role);
+  const departmentKey = accessProfile.departmentKey;
+  if (accessProfile.status !== "active") {
+    setStatus(`This account is ${accessProfile.status} and cannot access the dashboard.`, true);
+    return false;
+  }
+  if (role !== "department_office" || !accessProfile.departmentId) {
+    setStatus("This account is signed in, but it is not assigned to an active department office.", true);
+    console.debug("[auth] department guard rejected", {
+      authUserId: accessProfile.authUserId,
+      role,
+      departmentKey: departmentKey || "",
+    });
     return false;
   }
 
   const profile = await apiFetch("/department/api/me");
+  console.debug("[auth] department profile", profile.user);
   currentUser = profile.user;
   document.querySelectorAll("[data-user-name]").forEach((node) => {
     node.textContent = currentUser.name || "Department user";

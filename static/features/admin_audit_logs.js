@@ -41,6 +41,11 @@ function setAuditStatus(message, isError = false) {
   auditStatus.style.color = isError ? "#b42318" : "#078d36";
 }
 
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return { admin: "bplo_admin", administrator: "bplo_admin" }[role] || role;
+}
+
 async function getAdminSession() {
   const client = initAuditSupabase();
   if (!client) {
@@ -58,7 +63,15 @@ async function getAdminSession() {
   }
 
   const signedInEmail = (session.user?.email || "").toLowerCase();
-  if (AUDIT_ADMIN_EMAIL && signedInEmail !== AUDIT_ADMIN_EMAIL) {
+  const profileResponse = await fetch("/api/me/profile", {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  const profilePayload = await profileResponse.json().catch(() => ({}));
+  const role = normalizeRole(profilePayload.profile?.role || session.user?.app_metadata?.role);
+  if (!profileResponse.ok || profilePayload.profile?.status !== "active") {
+    throw new Error(profilePayload.error || "Your admin profile is not active.");
+  }
+  if (AUDIT_ADMIN_EMAIL && signedInEmail !== AUDIT_ADMIN_EMAIL && !["super_admin", "bplo_admin"].includes(role)) {
     throw new Error("Only the configured admin account can view audit logs.");
   }
 

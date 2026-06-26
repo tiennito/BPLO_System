@@ -32,6 +32,65 @@ load_env()
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
+
+def normalize_role(value):
+    role = (value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "admin": "bplo_admin",
+        "administrator": "bplo_admin",
+        "department": "department_office",
+        "department_user": "department_office",
+        "department_office_user": "department_office",
+        "treasury_office": "treasury",
+        "treasury_user": "treasury",
+        "client": "applicant",
+    }
+    return aliases.get(role, role)
+
+
+def profile_status(value):
+    status = (value or "active").strip().lower()
+    return status if status in {"active", "inactive", "pending", "disabled"} else "active"
+
+
+def dashboard_path_for_role(role):
+    paths = {
+        "super_admin": "/admin/dashboard",
+        "bplo_admin": "/admin/dashboard",
+        "department_office": "/department/dashboard",
+        "treasury": "/treasury/dashboard",
+        "applicant": "/applicant/dashboard",
+    }
+    return paths.get(normalize_role(role))
+
+
+def slugify_key(value):
+    normalized = []
+    previous_was_separator = False
+    for character in (value or "").strip().lower():
+        if character.isalnum():
+            normalized.append(character)
+            previous_was_separator = False
+        elif not previous_was_separator:
+            normalized.append("_")
+            previous_was_separator = True
+    return "".join(normalized).strip("_")
+
+
+def department_key_from_name(name):
+    key = slugify_key(name)
+    for suffix in ("_office", "_department"):
+        if key.endswith(suffix):
+            key = key[: -len(suffix)]
+    seeded_aliases = {
+        "health_sanitary": "health",
+        "zoning_mpdc": "zoning",
+        "fire": "fire",
+        "engineering": "engineering",
+    }
+    return seeded_aliases.get(key, key)
+
+
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 PORT = int(os.getenv("APP_PORT", "8000"))
 PAGE_ROUTES = {
@@ -164,6 +223,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.list_treasury_records()
             return
 
+        if request_path == "/api/me/profile":
+            self.get_current_user_profile()
+            return
+
         if request_path == "/admin/api/users":
             self.list_admin_users()
             return
@@ -174,6 +237,24 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if request_path == "/admin/api/audit-logs":
             self.list_admin_audit_logs()
+            return
+
+        if request_path == "/admin/api/permits":
+            self.list_admin_permits()
+            return
+
+        if request_path.startswith("/admin/api/permits/"):
+            permit_id = request_path.rsplit("/", 1)[-1]
+            self.get_admin_permit(permit_id)
+            return
+
+        if request_path == "/applicant/api/permits":
+            self.list_applicant_permits()
+            return
+
+        if request_path.startswith("/applicant/api/permits/"):
+            permit_id = request_path.rsplit("/", 1)[-1]
+            self.get_applicant_permit(permit_id)
             return
 
         if request_path == "/config.js":
@@ -235,6 +316,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.create_admin_department()
             return
 
+        if request_path == "/admin/api/permits":
+            self.create_admin_permit()
+            return
+
+        if request_path == "/applicant/api/applications":
+            self.start_applicant_application()
+            return
+
+        if request_path == "/applicant/api/application-documents":
+            self.update_applicant_application_document()
+            return
+
         if request_path == "/api/audit-logs":
             self.create_audit_log()
             return
@@ -284,6 +377,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.update_admin_department(department_id)
             return
 
+        if request_path.startswith("/admin/api/permits/"):
+            permit_id = request_path.rsplit("/", 1)[-1]
+            self.update_admin_permit(permit_id)
+            return
+
         self.send_json({"error": "Endpoint not found."}, status=404)
 
     def do_DELETE(self):
@@ -323,6 +421,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.delete_admin_department(department_id)
             return
 
+        if request_path.startswith("/admin/api/permits/"):
+            permit_id = request_path.rsplit("/", 1)[-1]
+            self.delete_admin_permit(permit_id)
+            return
+
         self.send_json({"error": "Endpoint not found."}, status=404)
 
     def read_json_body(self):
@@ -341,12 +444,22 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def verify_admin_session(self, access_token, supabase_url, supabase_client_key, admin_email):
+    def verify_admin_session(self, access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email):
         if not access_token:
             return False
 
         user = self.get_session_user(access_token, supabase_url, supabase_client_key)
-        return (user.get("email") or "").lower() == admin_email.lower()
+        return self.user_has_admin_access(user, supabase_url, supabase_service_key, admin_email)
+
+    def user_has_admin_access(self, user, supabase_url, supabase_service_key, admin_email):
+        signed_in_email = (user.get("email") or "").lower()
+        if admin_email and signed_in_email == admin_email.lower():
+            return True
+
+        profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id"))
+        if not profile or profile_status(profile.get("status")) != "active":
+            return False
+        return normalize_role(profile.get("role")) in {"super_admin", "bplo_admin"}
 
     def get_session_user(self, access_token, supabase_url, supabase_client_key):
         request = Request(
@@ -359,6 +472,251 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         with urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def delete_auth_user(self, supabase_url, supabase_service_key, user_id):
+        if not user_id:
+            return False
+
+        request = Request(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{quote(user_id)}",
+            method="DELETE",
+            headers={
+                "apikey": supabase_service_key,
+                "Authorization": f"Bearer {supabase_service_key}",
+            },
+        )
+        try:
+            with urlopen(request, timeout=10):
+                return True
+        except (HTTPError, URLError, TimeoutError):
+            return False
+
+    def format_profile(self, profile, department=None):
+        first_name = profile.get("first_name") or ""
+        middle_name = profile.get("middle_name") or ""
+        last_name = profile.get("last_name") or ""
+        suffix = profile.get("suffix") or ""
+        full_name = " ".join(part for part in [first_name, middle_name, last_name, suffix] if part).strip()
+        role = normalize_role(profile.get("role"))
+        status = profile_status(profile.get("status"))
+        department = department or {}
+        department_name = department.get("name") or profile.get("department_name") or "-"
+        department_key = profile.get("department_key") or department_key_from_name(department_name)
+
+        return {
+            "id": profile.get("id"),
+            "authUserId": profile.get("auth_user_id"),
+            "name": full_name or profile.get("email") or "Unnamed user",
+            "firstName": first_name,
+            "middleName": middle_name,
+            "lastName": last_name,
+            "suffix": suffix,
+            "email": profile.get("email") or "",
+            "contactNumber": profile.get("contact_number") or "",
+            "role": role,
+            "departmentId": profile.get("department_id"),
+            "department": department_name,
+            "departmentKey": department_key,
+            "status": status,
+            "createdBy": profile.get("created_by"),
+            "createdAt": profile.get("created_at") or "",
+            "updatedAt": profile.get("updated_at") or "",
+        }
+
+    def load_department_by_id(self, supabase_url, supabase_service_key, department_id):
+        if not department_id:
+            return None
+        query = urlencode({"select": "id,name,status", "id": f"eq.{department_id}", "limit": "1"})
+        rows = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "departments",
+            query=query,
+        ) or []
+        return rows[0] if rows else None
+
+    def get_profile_by_auth_user_id(self, supabase_url, supabase_service_key, auth_user_id):
+        if not auth_user_id:
+            return None
+        query = urlencode(
+            {
+                "select": "*",
+                "auth_user_id": f"eq.{auth_user_id}",
+                "limit": "1",
+            }
+        )
+        rows = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "profiles",
+            query=query,
+        ) or []
+        return rows[0] if rows else None
+
+    def get_profile_by_email(self, supabase_url, supabase_service_key, email):
+        if not email:
+            return None
+        query = urlencode({"select": "*", "email": f"eq.{email.lower()}", "limit": "1"})
+        rows = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "profiles",
+            query=query,
+        ) or []
+        return rows[0] if rows else None
+
+    def find_department_for_profile(self, supabase_url, supabase_service_key, department_name="", department_key=""):
+        departments = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "departments",
+            query=urlencode({"select": "id,name,status", "status": "eq.Active"}),
+        ) or []
+        wanted_key = department_key or department_key_from_name(department_name)
+        wanted_name = (department_name or "").strip().lower()
+        for department in departments:
+            name = (department.get("name") or "").strip()
+            if wanted_key and department_key_from_name(name) == wanted_key:
+                return department
+            if wanted_name and name.lower() == wanted_name:
+                return department
+        return None
+
+    def create_profile_record(self, supabase_url, supabase_service_key, profile_payload):
+        rows = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "profiles",
+            method="POST",
+            payload=profile_payload,
+            prefer="return=representation",
+        ) or []
+        return rows[0] if rows else None
+
+    def update_profile_record(self, supabase_url, supabase_service_key, profile_id, profile_payload):
+        if not profile_id:
+            return None
+        rows = self.service_rest_request(
+            {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+            "profiles",
+            method="PATCH",
+            payload=profile_payload,
+            query=urlencode({"id": f"eq.{profile_id}"}),
+            prefer="return=representation",
+        ) or []
+        return rows[0] if rows else None
+
+    def profile_payload_from_auth_user(self, user, role=None, status="active", department_id=None, created_by=None):
+        metadata = user.get("user_metadata") or {}
+        app_metadata = user.get("app_metadata") or {}
+        role = normalize_role(role or app_metadata.get("role") or metadata.get("role") or "applicant")
+        department_name = app_metadata.get("department_name") or app_metadata.get("department") or ""
+        department_key = app_metadata.get("department_key") or department_key_from_name(department_name)
+        return {
+            "auth_user_id": user.get("id"),
+            "first_name": metadata.get("first_name") or "",
+            "middle_name": metadata.get("middle_name") or "",
+            "last_name": metadata.get("last_name") or "",
+            "suffix": metadata.get("suffix") or "",
+            "email": (user.get("email") or "").lower(),
+            "contact_number": metadata.get("contact_number") or "",
+            "role": role,
+            "department_id": department_id or app_metadata.get("department_id") or None,
+            "department_key": department_key or None,
+            "department_name": department_name or None,
+            "status": profile_status(status or app_metadata.get("status")),
+            "created_by": created_by,
+        }
+
+    def ensure_profile_for_user(self, supabase_url, supabase_service_key, user, admin_email=""):
+        profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id"))
+        signed_in_email = (user.get("email") or "").lower()
+        if profile:
+            if admin_email and signed_in_email == admin_email.lower():
+                needs_admin_repair = (
+                    normalize_role(profile.get("role")) != "super_admin"
+                    or profile_status(profile.get("status")) != "active"
+                )
+                if needs_admin_repair:
+                    repaired = self.update_profile_record(
+                        supabase_url,
+                        supabase_service_key,
+                        profile.get("id"),
+                        {"role": "super_admin", "status": "active"},
+                    )
+                    if repaired:
+                        print(
+                            "[auth] admin profile repaired",
+                            json.dumps(
+                                {
+                                    "profileId": repaired.get("id"),
+                                    "authUserId": repaired.get("auth_user_id"),
+                                    "email": repaired.get("email"),
+                                    "role": repaired.get("role"),
+                                    "status": repaired.get("status"),
+                                }
+                            ),
+                        )
+                        return repaired
+            return profile
+
+        role = "super_admin" if admin_email and signed_in_email == admin_email.lower() else None
+        payload = self.profile_payload_from_auth_user(user, role=role)
+        if payload.get("role") == "department_office" and not payload.get("department_id"):
+            department = self.find_department_for_profile(
+                supabase_url,
+                supabase_service_key,
+                payload.get("department_name") or "",
+                payload.get("department_key") or "",
+            )
+            if department:
+                payload["department_id"] = department.get("id")
+                payload["department_name"] = department.get("name")
+                payload["department_key"] = department_key_from_name(department.get("name"))
+        return self.create_profile_record(supabase_url, supabase_service_key, payload)
+
+    def get_current_user_profile(self):
+        supabase_url, supabase_client_key, supabase_service_key, admin_email = self.get_admin_api_config()
+        if not supabase_url or not supabase_client_key or not supabase_service_key:
+            self.send_json({"error": "Profile access is not configured."}, status=500)
+            return
+
+        auth_header = self.headers.get("Authorization", "")
+        access_token = auth_header.removeprefix("Bearer ").strip()
+        if not access_token:
+            self.send_json({"error": "No active login session was found."}, status=401)
+            return
+
+        try:
+            user = self.get_session_user(access_token, supabase_url, supabase_client_key)
+            profile = self.ensure_profile_for_user(supabase_url, supabase_service_key, user, admin_email)
+            if not profile:
+                self.send_json({"error": "No user profile was found for this account."}, status=404)
+                return
+
+            department = self.load_department_by_id(supabase_url, supabase_service_key, profile.get("department_id"))
+            formatted = self.format_profile(profile, department)
+            redirect_path = dashboard_path_for_role(formatted["role"])
+            print(
+                "[auth] profile fetched",
+                json.dumps(
+                    {
+                        "authUserId": formatted["authUserId"],
+                        "email": formatted["email"],
+                        "role": formatted["role"],
+                        "status": formatted["status"],
+                        "redirectPath": redirect_path,
+                    }
+                ),
+            )
+            self.send_json({"profile": formatted, "redirectPath": redirect_path})
+        except HTTPError as error:
+            response_body = error.read().decode("utf-8")
+            try:
+                response_payload = json.loads(response_body)
+                message = response_payload.get("message") or response_payload.get("msg") or response_body
+            except json.JSONDecodeError:
+                message = response_body or "Unable to load user profile."
+            if error.code in {401, 403} and "profiles" not in message:
+                message = "Invalid or expired session."
+            self.send_json({"error": message}, status=401 if error.code in {401, 403} else error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load user profile."}, status=500)
 
     def create_service_audit_log(
         self,
@@ -427,7 +785,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             access_token = auth_header.removeprefix("Bearer ").strip()
 
             if not self.verify_admin_session(
-                access_token, supabase_url, supabase_client_key, admin_email
+                access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email
             ):
                 self.send_json({"error": "Only the configured admin can create users."}, status=403)
                 return
@@ -436,10 +794,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             payload = self.read_json_body()
             email = (payload.get("email") or "").strip()
             password = payload.get("password") or ""
-            role = (payload.get("role") or "").strip()
+            role = normalize_role(payload.get("role"))
 
             if not email or not password or not role:
                 self.send_json({"error": "Email, password, and role are required."}, status=400)
+                return
+
+            if role not in {"super_admin", "bplo_admin", "department_office", "treasury", "applicant"}:
+                self.send_json({"error": "Select a valid user role."}, status=400)
+                return
+
+            if self.get_profile_by_email(supabase_url, supabase_service_key, email):
+                self.send_json({"error": "A profile already exists for this email address."}, status=409)
                 return
 
             user_metadata = {
@@ -449,12 +815,67 @@ class AppHandler(SimpleHTTPRequestHandler):
                 "suffix": (payload.get("suffix") or "").strip(),
                 "contact_number": (payload.get("contactNumber") or "").strip(),
             }
+            app_metadata = {"role": role, "status": "active"}
+            department_id = None
+            department_name = ""
+            department_key = ""
+
+            if role == "department_office":
+                department_id = (payload.get("departmentId") or "").strip() or None
+                department_name = (payload.get("departmentName") or "").strip()
+                department_key = (payload.get("departmentKey") or "").strip()
+
+                if department_id:
+                    department_query = urlencode(
+                        {
+                            "select": "id,name,status",
+                            "id": f"eq.{department_id}",
+                            "limit": "1",
+                        }
+                    )
+                    departments = self.service_rest_request(
+                        {
+                            "supabase_url": supabase_url,
+                            "supabase_service_key": supabase_service_key,
+                        },
+                        "departments",
+                        query=department_query,
+                    ) or []
+                    department = departments[0] if departments else None
+                    if not department:
+                        self.send_json({"error": "Selected department was not found."}, status=400)
+                        return
+                    if department.get("status") != "Active":
+                        self.send_json({"error": "Selected department is inactive."}, status=400)
+                        return
+                    department_name = department.get("name") or department_name
+                else:
+                    self.send_json({"error": "Department Office users must be assigned to an active department."}, status=400)
+                    return
+
+                department_key = department_key or department_key_from_name(department_name)
+                if not department_name or not department_key:
+                    self.send_json({"error": "Department Office users must be assigned to an active department."}, status=400)
+                    return
+
+                app_metadata.update(
+                    {
+                        "department_id": department_id,
+                        "department_key": department_key,
+                        "department_name": department_name,
+                        "department": department_name,
+                    }
+                )
+
+            if role == "treasury":
+                app_metadata["office"] = "Treasury Office"
+
             create_payload = {
                 "email": email,
                 "password": password,
                 "email_confirm": True,
                 "user_metadata": user_metadata,
-                "app_metadata": {"role": role},
+                "app_metadata": app_metadata,
             }
             request_body = json.dumps(create_payload).encode("utf-8")
             request = Request(
@@ -471,20 +892,72 @@ class AppHandler(SimpleHTTPRequestHandler):
             with urlopen(request, timeout=15) as response:
                 response_payload = json.loads(response.read().decode("utf-8"))
 
+            print(
+                "[auth] auth user created",
+                json.dumps({"authUserId": response_payload.get("id"), "email": response_payload.get("email"), "role": role}),
+            )
+            profile_payload = {
+                "auth_user_id": response_payload.get("id"),
+                "first_name": user_metadata["first_name"],
+                "middle_name": user_metadata["middle_name"],
+                "last_name": user_metadata["last_name"],
+                "suffix": user_metadata["suffix"],
+                "email": email.lower(),
+                "contact_number": user_metadata["contact_number"],
+                "role": role,
+                "department_id": department_id,
+                "department_key": department_key or None,
+                "department_name": department_name or None,
+                "status": "active",
+                "created_by": actor.get("id"),
+            }
+            try:
+                profile = self.create_profile_record(supabase_url, supabase_service_key, profile_payload)
+            except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+                rolled_back = self.delete_auth_user(
+                    supabase_url,
+                    supabase_service_key,
+                    response_payload.get("id"),
+                )
+                raise RuntimeError(
+                    "Authentication account was created, but the centralized profile could not be saved. "
+                    f"Auth rollback {'succeeded' if rolled_back else 'failed'}."
+                )
+
+            if not profile:
+                rolled_back = self.delete_auth_user(supabase_url, supabase_service_key, response_payload.get("id"))
+                raise RuntimeError(
+                    "Authentication account was created, but no centralized profile was returned. "
+                    f"Auth rollback {'succeeded' if rolled_back else 'failed'}."
+                )
+
+            print(
+                "[auth] profile inserted",
+                json.dumps(
+                    {
+                        "profileId": profile.get("id"),
+                        "authUserId": profile.get("auth_user_id"),
+                        "email": profile.get("email"),
+                        "role": profile.get("role"),
+                        "status": profile.get("status"),
+                    }
+                ),
+            )
             audit_logged = self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
                 "user_created_by_admin",
                 actor=actor,
                 entity_type="user",
-                entity_id=response_payload.get("id"),
-                details={"email": response_payload.get("email"), "role": role},
+                entity_id=profile.get("id"),
+                details={"email": response_payload.get("email"), "role": role, "authUserId": response_payload.get("id")},
             )
 
             self.send_json(
                 {
                     "message": "User account created successfully.",
                     "userId": response_payload.get("id"),
+                    "profileId": profile.get("id"),
                     "email": response_payload.get("email"),
                     "auditLogged": audit_logged,
                 },
@@ -501,6 +974,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": message}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to create user."}, status=500)
+        except RuntimeError as error:
+            self.send_json({"error": str(error)}, status=500)
 
     def get_admin_api_config(self):
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
@@ -533,7 +1008,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         access_token = auth_header.removeprefix("Bearer ").strip()
 
         if not self.verify_admin_session(
-            access_token, supabase_url, supabase_client_key, admin_email
+            access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email
         ):
             self.send_json({"error": "Only the configured admin can manage this area."}, status=403)
             return None
@@ -577,8 +1052,13 @@ class AppHandler(SimpleHTTPRequestHandler):
         first_name = user_metadata.get("first_name") or ""
         last_name = user_metadata.get("last_name") or ""
         full_name = " ".join(part for part in [first_name, last_name] if part).strip()
-        role = app_metadata.get("role") or user_metadata.get("role") or "client"
-        department = app_metadata.get("department") or user_metadata.get("department") or "-"
+        role = normalize_role(app_metadata.get("role") or user_metadata.get("role") or "applicant") or "applicant"
+        department = (
+            app_metadata.get("department_name")
+            or app_metadata.get("department")
+            or user_metadata.get("department")
+            or "-"
+        )
         email_confirmed = bool(user.get("email_confirmed_at") or user.get("confirmed_at"))
         banned_until = user.get("banned_until")
 
@@ -612,6 +1092,52 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def list_admin_users(self):
         config = self.ensure_admin_request("user listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        query_string = urlencode({"select": "*", "order": "created_at.desc"})
+
+        try:
+            profiles = self.service_rest_request(
+                {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+                "profiles",
+                query=query_string,
+            ) or []
+            department_ids = sorted({profile.get("department_id") for profile in profiles if profile.get("department_id")})
+            departments_by_id = {}
+            if department_ids:
+                departments = self.service_rest_request(
+                    {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+                    "departments",
+                    query=urlencode(
+                        {
+                            "select": "id,name,status",
+                            "id": f"in.({','.join(department_ids)})",
+                        }
+                    ),
+                ) or []
+                departments_by_id = {department.get("id"): department for department in departments}
+
+            users = [
+                self.format_profile(profile, departments_by_id.get(profile.get("department_id")))
+                for profile in profiles
+            ]
+            self.send_json({"users": users, "total": len(users)})
+        except HTTPError as error:
+            response_body = error.read().decode("utf-8")
+            try:
+                response_payload = json.loads(response_body)
+                message = response_payload.get("message") or response_payload.get("msg") or response_body
+            except json.JSONDecodeError:
+                message = response_body or "Supabase rejected the request."
+
+            self.send_json({"error": message}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load users."}, status=500)
+
+    def list_auth_users_legacy(self):
+        config = self.ensure_admin_request("legacy auth user listing")
         if not config:
             return
 
@@ -918,6 +1444,610 @@ class AppHandler(SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to delete department."}, status=500)
 
+    def supabase_rest_request(self, supabase_url, service_key, table, query=None, method="GET", payload=None, prefer=None):
+        query_string = urlencode(query or {})
+        url = f"{supabase_url.rstrip('/')}/rest/v1/{table}"
+        if query_string:
+            url = f"{url}?{query_string}"
+
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Content-Type": "application/json",
+        }
+        if prefer:
+            headers["Prefer"] = prefer
+
+        request = Request(url, data=data, method=method, headers=headers)
+        with urlopen(request, timeout=20) as response:
+            response_body = response.read().decode("utf-8")
+            return json.loads(response_body or "[]")
+
+    def handle_rest_error(self, error, fallback_message):
+        response_body = error.read().decode("utf-8")
+        try:
+            response_payload = json.loads(response_body)
+            message = response_payload.get("message") or response_payload.get("msg") or response_body
+        except json.JSONDecodeError:
+            message = response_body or fallback_message
+
+        if "permits_permit_code_key" in message or "permit_code" in message:
+            return "This permit code already exists. Use a different permit code."
+
+        return message
+
+    def format_permit_document(self, document):
+        requirement_type = document.get("requirement_type") or "Required"
+        return {
+            "id": document.get("id"),
+            "permitId": document.get("permit_id"),
+            "documentName": document.get("document_name") or "",
+            "shortDescription": document.get("short_description") or "",
+            "requirementType": requirement_type,
+            "acceptedFileTypes": document.get("accepted_file_types") or "",
+            "maxFileSize": document.get("max_file_size") or "",
+            "uploadRequired": bool(document.get("upload_required")),
+            "notes": document.get("notes") or "",
+            "createdAt": document.get("created_at") or "",
+            "updatedAt": document.get("updated_at") or "",
+        }
+
+    def format_permit(self, permit, documents=None, offices=None):
+        return {
+            "id": permit.get("id"),
+            "permitName": permit.get("permit_name") or "",
+            "permitCode": permit.get("permit_code") or "",
+            "category": permit.get("category") or "",
+            "description": permit.get("description") or "",
+            "status": permit.get("status") or "Draft",
+            "processingFee": permit.get("processing_fee"),
+            "applicantNotes": permit.get("applicant_notes") or "",
+            "createdAt": permit.get("created_at") or "",
+            "updatedAt": permit.get("updated_at") or "",
+            "documents": documents if documents is not None else [],
+            "requiredOffices": offices if offices is not None else [],
+        }
+
+    def normalize_permit_payload(self, payload):
+        permit_name = (payload.get("permitName") or "").strip()
+        permit_code = (payload.get("permitCode") or "").strip()
+        category = (payload.get("category") or "").strip()
+        description = (payload.get("description") or "").strip()
+        status = (payload.get("status") or "Draft").strip()
+        applicant_notes = (payload.get("applicantNotes") or "").strip()
+        processing_fee_raw = payload.get("processingFee")
+
+        if not permit_name:
+            raise ValueError("Permit name is required.")
+        if not permit_code:
+            raise ValueError("Permit code is required.")
+        if not category:
+            raise ValueError("Permit category is required.")
+        if status not in {"Active", "Inactive", "Draft"}:
+            raise ValueError("Permit status must be Active, Inactive, or Draft.")
+
+        processing_fee = None
+        if processing_fee_raw not in (None, ""):
+            processing_fee = float(processing_fee_raw)
+            if processing_fee < 0:
+                raise ValueError("Processing fee cannot be negative.")
+
+        documents = payload.get("documents") or []
+        normalized_documents = []
+        for document in documents:
+            document_name = (document.get("documentName") or document.get("name") or "").strip()
+            requirement_type = (document.get("requirementType") or "Required").strip().title()
+            accepted_file_types = (
+                document.get("acceptedFileTypes") or document.get("fileTypes") or ""
+            ).strip()
+            if not document_name:
+                raise ValueError("Every document requirement needs a document name.")
+            if requirement_type not in {"Required", "Optional"}:
+                raise ValueError("Document requirement type must be Required or Optional.")
+            if not accepted_file_types:
+                raise ValueError(f"Accepted file types are required for {document_name}.")
+
+            normalized_documents.append(
+                {
+                    "document_name": document_name,
+                    "short_description": (document.get("shortDescription") or document.get("description") or "").strip(),
+                    "requirement_type": requirement_type,
+                    "accepted_file_types": accepted_file_types,
+                    "max_file_size": (document.get("maxFileSize") or document.get("maxSize") or "").strip(),
+                    "upload_required": bool(document.get("uploadRequired", requirement_type == "Required")),
+                    "notes": (document.get("notes") or "").strip(),
+                }
+            )
+
+        if status == "Active" and not any(doc["requirement_type"] == "Required" for doc in normalized_documents):
+            raise ValueError("Add at least one required document before activating a permit.")
+
+        required_office_ids = []
+        for office_id in payload.get("requiredOfficeIds") or []:
+            office_id = str(office_id).strip()
+            if office_id and office_id not in required_office_ids:
+                required_office_ids.append(office_id)
+
+        return {
+            "permit": {
+                "permit_name": permit_name,
+                "permit_code": permit_code,
+                "category": category,
+                "description": description,
+                "status": status,
+                "processing_fee": processing_fee,
+                "applicant_notes": applicant_notes,
+            },
+            "documents": normalized_documents,
+            "requiredOfficeIds": required_office_ids,
+        }
+
+    def get_permit_bundle(self, supabase_url, service_key, permit_id, active_only=False):
+        permit_query = {
+            "select": "id,permit_name,permit_code,category,description,status,processing_fee,applicant_notes,created_at,updated_at",
+            "id": f"eq.{permit_id}",
+            "limit": 1,
+        }
+        if active_only:
+            permit_query["status"] = "eq.Active"
+
+        permits = self.supabase_rest_request(supabase_url, service_key, "permits", permit_query)
+        if not permits:
+            return None
+
+        documents = self.supabase_rest_request(
+            supabase_url,
+            service_key,
+            "permit_documents",
+            {
+                "select": "id,permit_id,document_name,short_description,requirement_type,accepted_file_types,max_file_size,upload_required,notes,created_at,updated_at",
+                "permit_id": f"eq.{permit_id}",
+                "order": "requirement_type.asc,created_at.asc",
+            },
+        )
+        office_rows = self.supabase_rest_request(
+            supabase_url,
+            service_key,
+            "permit_required_offices",
+            {"select": "id,permit_id,office_id,created_at", "permit_id": f"eq.{permit_id}", "order": "created_at.asc"},
+        )
+        office_ids = [row.get("office_id") for row in office_rows if row.get("office_id")]
+        offices = []
+        if office_ids:
+            departments = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "departments",
+                {
+                    "select": "id,name,description,status",
+                    "id": f"in.({','.join(office_ids)})",
+                },
+            )
+            department_by_id = {department.get("id"): department for department in departments or []}
+            offices = [
+                {
+                    "id": office_id,
+                    "name": (department_by_id.get(office_id) or {}).get("name") or "Office",
+                    "description": (department_by_id.get(office_id) or {}).get("description") or "",
+                }
+                for office_id in office_ids
+            ]
+
+        return self.format_permit(
+            permits[0],
+            [self.format_permit_document(document) for document in documents or []],
+            offices,
+        )
+
+    def list_admin_permits(self):
+        config = self.ensure_admin_request("permit listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            permits = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {
+                    "select": "id,permit_name,permit_code,category,description,status,processing_fee,applicant_notes,created_at,updated_at",
+                    "order": "created_at.desc",
+                },
+            )
+            self.send_json({"permits": [self.format_permit(permit) for permit in permits or []], "total": len(permits or [])})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load permits.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load permits."}, status=500)
+
+    def get_admin_permit(self, permit_id):
+        config = self.ensure_admin_request("permit viewing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            permit = self.get_permit_bundle(supabase_url, supabase_service_key, permit_id)
+            if not permit:
+                self.send_json({"error": "Permit not found."}, status=404)
+                return
+            self.send_json({"permit": permit})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load permit."}, status=500)
+
+    def create_admin_permit(self):
+        config = self.ensure_admin_request("permit creation")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            normalized = self.normalize_permit_payload(self.read_json_body())
+            created = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                method="POST",
+                payload=normalized["permit"],
+                prefer="return=representation",
+            )
+            permit = created[0] if created else {}
+            permit_id = permit.get("id")
+
+            if normalized["documents"]:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_documents",
+                    method="POST",
+                    payload=[{**document, "permit_id": permit_id} for document in normalized["documents"]],
+                    prefer="return=minimal",
+                )
+
+            if normalized["requiredOfficeIds"]:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_required_offices",
+                    method="POST",
+                    payload=[{"permit_id": permit_id, "office_id": office_id} for office_id in normalized["requiredOfficeIds"]],
+                    prefer="return=minimal",
+                )
+
+            actor = self.get_request_actor(supabase_url)
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "permit_created",
+                actor=actor,
+                entity_type="permit",
+                entity_id=permit_id,
+                details={"permitName": permit.get("permit_name"), "status": permit.get("status")},
+            )
+            self.send_json(
+                {"message": "Permit created successfully.", "permit": self.get_permit_bundle(supabase_url, supabase_service_key, permit_id)},
+                status=201,
+            )
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to create permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to create permit."}, status=500)
+
+    def update_admin_permit(self, permit_id):
+        config = self.ensure_admin_request("permit update")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            normalized = self.normalize_permit_payload(self.read_json_body())
+            updated = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {"id": f"eq.{permit_id}"},
+                method="PATCH",
+                payload=normalized["permit"],
+                prefer="return=representation",
+            )
+            if not updated:
+                self.send_json({"error": "Permit not found."}, status=404)
+                return
+
+            self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permit_documents",
+                {"permit_id": f"eq.{permit_id}"},
+                method="DELETE",
+                prefer="return=minimal",
+            )
+            self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permit_required_offices",
+                {"permit_id": f"eq.{permit_id}"},
+                method="DELETE",
+                prefer="return=minimal",
+            )
+
+            if normalized["documents"]:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_documents",
+                    method="POST",
+                    payload=[{**document, "permit_id": permit_id} for document in normalized["documents"]],
+                    prefer="return=minimal",
+                )
+            if normalized["requiredOfficeIds"]:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_required_offices",
+                    method="POST",
+                    payload=[{"permit_id": permit_id, "office_id": office_id} for office_id in normalized["requiredOfficeIds"]],
+                    prefer="return=minimal",
+                )
+
+            actor = self.get_request_actor(supabase_url)
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "permit_updated",
+                actor=actor,
+                entity_type="permit",
+                entity_id=permit_id,
+                details={"permitName": updated[0].get("permit_name"), "status": updated[0].get("status")},
+            )
+            self.send_json({"message": "Permit updated successfully.", "permit": self.get_permit_bundle(supabase_url, supabase_service_key, permit_id)})
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update permit."}, status=500)
+
+    def delete_admin_permit(self, permit_id):
+        config = self.ensure_admin_request("permit deletion")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            deleted = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {"id": f"eq.{permit_id}"},
+                method="DELETE",
+                prefer="return=representation",
+            )
+            actor = self.get_request_actor(supabase_url)
+            deleted_permit = deleted[0] if deleted else {}
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "permit_deleted",
+                actor=actor,
+                entity_type="permit",
+                entity_id=permit_id,
+                details={"permitName": deleted_permit.get("permit_name")},
+            )
+            self.send_json({"message": "Permit deleted successfully.", "permit": self.format_permit(deleted_permit)})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to delete permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to delete permit."}, status=500)
+
+    def ensure_applicant_request(self, action_label):
+        supabase_url, supabase_client_key, supabase_service_key, _admin_email = self.get_admin_api_config()
+        if not supabase_url or not supabase_client_key or not supabase_service_key:
+            self.send_json(
+                {
+                    "error": (
+                        f"Applicant {action_label} is not configured. Set SUPABASE_URL, "
+                        "SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY, and SUPABASE_SERVICE_ROLE_KEY in .env."
+                    )
+                },
+                status=500,
+            )
+            return None
+
+        auth_header = self.headers.get("Authorization", "")
+        access_token = auth_header.removeprefix("Bearer ").strip()
+        if not access_token:
+            self.send_json({"error": "Please sign in before continuing."}, status=401)
+            return None
+
+        try:
+            user = self.get_session_user(access_token, supabase_url, supabase_client_key)
+        except HTTPError:
+            self.send_json({"error": "Invalid or expired session."}, status=401)
+            return None
+
+        return supabase_url, supabase_service_key, user
+
+    def list_applicant_permits(self):
+        config = self.ensure_applicant_request("permit listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, _user = config
+        try:
+            permits = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {
+                    "select": "id,permit_name,permit_code,category,description,status,processing_fee,applicant_notes,created_at,updated_at",
+                    "status": "eq.Active",
+                    "order": "created_at.desc",
+                },
+            )
+            self.send_json({"permits": [self.format_permit(permit) for permit in permits or []], "total": len(permits or [])})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load permits.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load permits."}, status=500)
+
+    def get_applicant_permit(self, permit_id):
+        config = self.ensure_applicant_request("permit viewing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, _user = config
+        try:
+            permit = self.get_permit_bundle(supabase_url, supabase_service_key, permit_id, active_only=True)
+            if not permit:
+                self.send_json({"error": "Permit not found or inactive."}, status=404)
+                return
+            self.send_json({"permit": permit})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load permit."}, status=500)
+
+    def start_applicant_application(self):
+        config = self.ensure_applicant_request("application creation")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            payload = self.read_json_body()
+            permit_id = (payload.get("permitId") or "").strip()
+            if not permit_id:
+                self.send_json({"error": "Permit is required."}, status=400)
+                return
+
+            permit = self.get_permit_bundle(supabase_url, supabase_service_key, permit_id, active_only=True)
+            if not permit:
+                self.send_json({"error": "Permit not found or inactive."}, status=404)
+                return
+
+            created = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                method="POST",
+                payload={
+                    "permit_id": permit_id,
+                    "applicant_id": user.get("id"),
+                    "status": "Requirements",
+                    "permit_snapshot": permit,
+                },
+                prefer="return=representation",
+            )
+            application = created[0] if created else {}
+            application_id = application.get("id")
+
+            document_rows = [
+                {
+                    "application_id": application_id,
+                    "permit_document_id": document.get("id"),
+                    "document_snapshot": document,
+                    "upload_status": "Pending",
+                }
+                for document in permit.get("documents", [])
+            ]
+            if document_rows:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_documents",
+                    method="POST",
+                    payload=document_rows,
+                    prefer="return=minimal",
+                )
+
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "application_started",
+                actor=user,
+                entity_type="application",
+                entity_id=application_id,
+                details={"permitId": permit_id, "permitName": permit.get("permitName")},
+            )
+            self.send_json({"message": "Application started.", "application": application, "permit": permit}, status=201)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to start application.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to start application."}, status=500)
+
+    def update_applicant_application_document(self):
+        config = self.ensure_applicant_request("document upload")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("applicationId") or "").strip()
+            permit_document_id = (payload.get("permitDocumentId") or "").strip()
+            file_name = (payload.get("fileName") or "").strip()
+            file_url = (payload.get("fileUrl") or "").strip()
+            upload_status = (payload.get("uploadStatus") or ("Uploaded" if file_name else "Removed")).strip()
+
+            if upload_status not in {"Pending", "Uploaded", "Removed"}:
+                self.send_json({"error": "Invalid upload status."}, status=400)
+                return
+            if not application_id or not permit_document_id:
+                self.send_json({"error": "Application and document are required."}, status=400)
+                return
+
+            owned = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {"select": "id", "id": f"eq.{application_id}", "applicant_id": f"eq.{user.get('id')}", "limit": 1},
+            )
+            if not owned:
+                self.send_json({"error": "Application not found."}, status=404)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id",
+                    "application_id": f"eq.{application_id}",
+                    "permit_document_id": f"eq.{permit_document_id}",
+                    "limit": 1,
+                },
+            )
+            if not rows:
+                self.send_json({"error": "Application document not found."}, status=404)
+                return
+
+            updated = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {"id": f"eq.{rows[0].get('id')}"},
+                method="PATCH",
+                payload={
+                    "file_name": file_name or None,
+                    "file_url": file_url or None,
+                    "upload_status": upload_status,
+                    "uploaded_at": utc_now_iso() if upload_status == "Uploaded" else None,
+                },
+                prefer="return=representation",
+            )
+            self.send_json({"message": "Document updated.", "document": updated[0] if updated else {}})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update document.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update document."}, status=500)
+
     def create_audit_log(self):
         config = self.ensure_authenticated_request()
         if not config:
@@ -1044,19 +2174,38 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Invalid or expired session."}, status=401)
             return None
 
-        app_metadata = actor.get("app_metadata") or {}
-        role = app_metadata.get("role")
-        department_key = app_metadata.get("department_key")
-        department_name = app_metadata.get("department_name") or app_metadata.get("department")
+        profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, actor.get("id"))
+        if not profile:
+            self.send_json({"error": "No centralized user profile was found for this account."}, status=403)
+            return None
 
-        if role != "department" or not department_key:
-            self.send_json({"error": "This page is only for department office accounts."}, status=403)
+        role = normalize_role(profile.get("role"))
+        status = profile_status(profile.get("status"))
+        department = self.load_department_by_id(supabase_url, supabase_service_key, profile.get("department_id"))
+        department_name = (department or {}).get("name") or profile.get("department_name")
+        department_key = profile.get("department_key") or department_key_from_name(department_name)
+
+        if status != "active":
+            self.send_json({"error": f"This account is {status} and cannot access the dashboard."}, status=403)
+            return None
+
+        if role != "department_office" or not department_key:
+            self.send_json(
+                {
+                    "error": (
+                        "This page is only for department office accounts. "
+                        "Ask an admin to assign this account to an active department."
+                    )
+                },
+                status=403,
+            )
             return None
 
         return {
             "supabase_url": supabase_url,
             "supabase_service_key": supabase_service_key,
             "actor": actor,
+            "profile": profile,
             "department_key": department_key,
             "department_name": department_name or department_key.replace("_", " ").title(),
         }
@@ -1105,17 +2254,14 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
 
         actor = config["actor"]
-        metadata = actor.get("user_metadata") or {}
-        first_name = metadata.get("first_name") or ""
-        last_name = metadata.get("last_name") or ""
-        full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+        profile = self.format_profile(config["profile"])
         self.send_json(
             {
                 "user": {
                     "id": actor.get("id"),
                     "email": actor.get("email"),
-                    "name": full_name or actor.get("email") or "Department user",
-                    "role": "department",
+                    "name": profile["name"] or actor.get("email") or "Department user",
+                    "role": profile["role"],
                     "departmentKey": config["department_key"],
                     "departmentName": config["department_name"],
                 }
@@ -1897,7 +3043,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Invalid or expired session."}, status=401)
             return None
 
-        if (actor.get("app_metadata") or {}).get("role") != "treasury":
+        profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, actor.get("id"))
+        if not profile:
+            self.send_json({"error": "No centralized user profile was found for this account."}, status=403)
+            return None
+
+        role = normalize_role(profile.get("role"))
+        status = profile_status(profile.get("status"))
+        if status != "active":
+            self.send_json({"error": f"This account is {status} and cannot access the dashboard."}, status=403)
+            return None
+
+        if role != "treasury":
             self.send_json({"error": "This page is only for Treasury accounts."}, status=403)
             return None
 
@@ -1905,6 +3062,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             "supabase_url": supabase_url,
             "supabase_service_key": supabase_service_key,
             "actor": actor,
+            "profile": profile,
         }
 
     def treasury_error(self, error, fallback):
@@ -1924,9 +3082,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         if not config:
             return
         actor = config["actor"]
-        metadata = actor.get("user_metadata") or {}
-        name = " ".join(part for part in [metadata.get("first_name"), metadata.get("last_name")] if part).strip()
-        self.send_json({"user": {"id": actor.get("id"), "email": actor.get("email"), "name": name or actor.get("email") or "Treasury Staff", "role": "treasury"}})
+        profile = self.format_profile(config["profile"])
+        self.send_json({"user": {"id": actor.get("id"), "email": actor.get("email"), "name": profile["name"] or "Treasury Staff", "role": profile["role"]}})
 
     def format_treasury_record(self, record):
         return {

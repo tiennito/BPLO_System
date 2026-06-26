@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/styles/applicant.css?v=8" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/applicant.js?v=8"></script>
+    <script defer src="/features/applicant.js?v=9"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -55,8 +55,8 @@
           </div>
 
           <div class="permit-tag">
-            <strong>Business Permit</strong>
-            <span>BPLO 01</span>
+            <strong data-checklist-permit-name>Permit</strong>
+            <span data-checklist-permit-code>Code</span>
           </div>
         </div>
 
@@ -80,109 +80,18 @@
         <section class="requirements-workspace" aria-labelledby="upload-title">
           <h2 id="upload-title">UPLOAD REQUIREMENTS</h2>
 
-          <div class="document-grid">
+          <div class="document-grid" data-dynamic-document-grid>
             <article class="document-card">
-              <header>
-                <h3>1. Unified Form / 2x2 Picture</h3>
-                <span class="doc-badge doc-badge--required">Required</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>2. DTI (For Sole Proprietorship) Sec Certificate (For Corporation) CDA Corporation (For Cooperative)</h3>
-                <span class="doc-badge doc-badge--required">Required</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>3. Barangay Clearance For Business</h3>
-                <span class="doc-badge doc-badge--required">Required</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>4. Lease of Contract (For Leasing Property)</h3>
-                <span class="doc-badge doc-badge--optional">Optional</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>5. Statement of Capital Investment (NEW)</h3>
-                <span class="doc-badge doc-badge--required">Required</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>6. Audited Financial Statements / Sworn Statement of Gross Receipt Sale Income Tax Return / Annually / Quarterly / Semi Annual (Renewal)</h3>
-                <span class="doc-badge doc-badge--optional">Optional</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>7. Authorization Letter From the Owner (If the Applicant is not the Owner)</h3>
-                <span class="doc-badge doc-badge--optional">Optional</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
-            </article>
-
-            <article class="document-card">
-              <header>
-                <h3>8. National Agency And Regulation Body / Licenses / Clearance / Certificate</h3>
-                <span class="doc-badge doc-badge--required">Required</span>
-              </header>
-              <button class="upload-slot" type="button">
-                <i data-lucide="file-up" aria-hidden="true"></i>
-                <span>Upload Document</span>
-                <small>JPG, PNG, PDF</small>
-              </button>
+              <p>Loading permit requirements...</p>
             </article>
           </div>
 
           <div class="checklist-actions">
-            <a class="next-step-button" href="/applicant/business-information">
+            <p class="checklist-status" data-requirements-status aria-live="polite"></p>
+            <button class="next-step-button" type="button" data-requirements-next disabled>
               <span>Next Step</span>
               <i data-lucide="arrow-right" aria-hidden="true"></i>
-            </a>
+            </button>
           </div>
         </section>
       </section>
