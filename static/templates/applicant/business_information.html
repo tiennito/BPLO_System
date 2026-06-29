@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Business Information</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=8" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=16" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/applicant.js?v=8"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/applicant.js?v=15"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -30,9 +31,21 @@
               <button type="button" data-logout>Log out</button>
             </div>
           </div>
-          <button class="icon-button" type="button" aria-label="Notifications">
-            <i data-lucide="bell" aria-hidden="true"></i>
-          </button>
+          <div class="notification-menu" data-notification-menu>
+            <button class="icon-button notification-button" type="button" aria-label="Notifications" data-notification-toggle>
+              <i data-lucide="bell" aria-hidden="true"></i>
+              <span class="notification-badge" data-notification-count hidden>0</span>
+            </button>
+            <div class="notification-dropdown" data-notification-dropdown>
+              <header>
+                <strong>Notifications</strong>
+                <button type="button" data-mark-all-notifications-read>Mark all as read</button>
+              </header>
+              <div class="notification-list" data-notification-list>
+                <p class="notification-empty">No notifications yet.</p>
+              </div>
+            </div>
+          </div>
           <span class="avatar" aria-hidden="true"></span>
         </nav>
       </header>
@@ -73,7 +86,7 @@
           <div class="progress-line" aria-hidden="true"></div>
           <div class="progress-step">
             <span>3</span>
-            <small>Review Documents</small>
+            <small>Review Application</small>
           </div>
         </nav>
 
@@ -87,11 +100,11 @@
                 <div class="field-grid field-grid--2">
                   <label class="field">
                     <span>Date of Application <em>*</em></span>
-                    <input type="date" placeholder="mm/dd/yyyy" data-business-field="application_date" />
+                    <input type="date" name="date_of_application" placeholder="mm/dd/yyyy" data-business-field="application_date" />
                   </label>
                   <label class="field">
                     <span>DTI/SEC/CDA Registration No. <em>*</em></span>
-                    <input type="text" placeholder="e.g. CN123456789" data-business-field="registration_number" />
+                    <input type="text" name="dti_registration_no" placeholder="e.g. CN123456789" data-business-field="registration_number" />
                   </label>
                 </div>
                 <div class="field-group">
@@ -109,33 +122,49 @@
                 <p class="section-note">
                   Applicant details are automatically filled from your registration profile. You may update them for this application.
                 </p>
+                <p class="profile-prefill-status" data-profile-prefill-status>Loading saved applicant information...</p>
                 <div class="field-grid field-grid--3">
                   <label class="field">
                     <span>LAST NAME <em>*</em></span>
-                    <input type="text" placeholder="Family name" data-business-field="last_name" />
+                    <input type="text" name="last_name" placeholder="Family name" data-business-field="last_name" />
                   </label>
                   <label class="field">
                     <span>FIRST NAME <em>*</em></span>
-                    <input type="text" placeholder="Given name" data-business-field="first_name" />
+                    <input type="text" name="first_name" placeholder="Given name" data-business-field="first_name" />
                   </label>
                   <label class="field">
                     <span>MIDDLE NAME <em>*</em></span>
-                    <input type="text" placeholder="Middle name or initial" data-business-field="middle_name" />
+                    <input type="text" name="middle_name" placeholder="Middle name or initial" data-business-field="middle_name" />
                   </label>
                 </div>
                 <div class="field-grid field-grid--2">
                   <label class="field">
                     <span>Registered Email Address <em>*</em></span>
-                    <input type="email" placeholder="Registered email" data-business-field="email" />
+                    <input type="email" name="registered_email" placeholder="Registered email" data-business-field="email" />
                   </label>
                   <label class="field">
                     <span>Registered Contact Number <em>*</em></span>
-                    <input type="tel" placeholder="Registered contact number" data-business-field="contact_number" />
+                    <input type="tel" name="registered_contact_number" placeholder="Registered contact number" data-business-field="contact_number" />
+                  </label>
+                </div>
+                <div class="field-grid field-grid--2">
+                  <label class="field">
+                    <span>Gender / Sex</span>
+                    <select name="gender" data-business-field="gender">
+                      <option value="">Select Gender / Sex</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Government ID / ID Details</span>
+                    <input type="text" name="government_id" placeholder="ID type or ID number" data-business-field="government_id" />
                   </label>
                 </div>
                 <label class="field field--full">
                   <span>Home Address <em>*</em></span>
-                  <input type="text" placeholder="Home address" data-business-field="home_address" />
+                  <input type="text" name="home_address" placeholder="Home address" data-business-field="home_address" />
                 </label>
               </article>
 
@@ -148,33 +177,33 @@
                   <div class="field-grid field-grid--2">
                     <label class="field field--full">
                       <span>Business Name <em>*</em></span>
-                      <input type="text" placeholder="Enter your registered business name" data-business-field="business_name" />
+                      <input type="text" name="business_name" placeholder="Enter your registered business name" data-business-field="business_name" />
                     </label>
                     <label class="field field--full">
                       <span>Trade Name / Franchise (if applicable)</span>
-                      <input type="text" placeholder="e.g. ABN, INK, etc." data-business-field="trade_name" />
+                      <input type="text" name="trade_name" placeholder="e.g. ABN, INK, etc." data-business-field="trade_name" />
                     </label>
                   </div>
                   <div class="field-grid field-grid--2">
                     <div class="field-group">
                       <span class="choice-label">Type of Business <em>*</em></span>
                       <div class="checkbox-row">
-                        <label><input type="checkbox" data-business-field="type_of_business" value="SINGLE" /> <span>SINGLE</span></label>
-                        <label><input type="checkbox" data-business-field="type_of_business" value="PARTNERSHIP" /> <span>PARTNERSHIP</span></label>
-                        <label><input type="checkbox" data-business-field="type_of_business" value="CORPORATION" /> <span>CORPORATION</span></label>
-                        <label><input type="checkbox" data-business-field="type_of_business" value="COOPERATIVE" /> <span>COOPERATIVE</span></label>
+                        <label><input type="checkbox" name="business_type" data-business-field="type_of_business" value="SINGLE" /> <span>SINGLE</span></label>
+                        <label><input type="checkbox" name="business_type" data-business-field="type_of_business" value="PARTNERSHIP" /> <span>PARTNERSHIP</span></label>
+                        <label><input type="checkbox" name="business_type" data-business-field="type_of_business" value="CORPORATION" /> <span>CORPORATION</span></label>
+                        <label><input type="checkbox" name="business_type" data-business-field="type_of_business" value="COOPERATIVE" /> <span>COOPERATIVE</span></label>
                       </div>
                     </div>
                     <label class="field">
                       <span>Business Classification <em>*</em></span>
-                      <select data-business-field="business_classification">
+                      <select name="business_classification" data-business-field="business_classification">
                         <option>Select Business Line</option>
                       </select>
                     </label>
                   </div>
                   <label class="field field--half">
                     <span>TIN (Tax Identification Number)</span>
-                    <input type="text" placeholder="Example: 123-456-789" data-business-field="tin" />
+                    <input type="text" name="tin" placeholder="Example: 123-456-789" data-business-field="tin" />
                   </label>
                 </article>
 
@@ -183,22 +212,22 @@
                   <p class="section-note">Provide complete business address and location details.</p>
                   <label class="field field--full">
                     <span>Business Address <em>*</em></span>
-                    <textarea rows="3" placeholder="Complete business address (Street, Barangay, City)" data-business-field="business_address"></textarea>
+                    <textarea rows="3" name="business_address" placeholder="Complete business address (Street, Barangay, City)" data-business-field="business_address"></textarea>
                   </label>
                   <div class="field-grid field-grid--2">
                     <label class="field">
                       <span>Unit / Street / Lot / Location</span>
-                      <input type="text" placeholder="e.g. Lot 1, Garden Ave" data-business-field="location_detail" />
+                      <input type="text" name="location_detail" placeholder="e.g. Lot 1, Garden Ave" data-business-field="location_detail" />
                     </label>
                     <label class="field">
                       <span>Business Barangay <em>*</em></span>
-                      <select data-business-field="business_barangay">
+                      <select name="business_barangay" data-business-field="business_barangay">
                         <option>Select Barangay</option>
                       </select>
                     </label>
                     <label class="field">
                       <span>Business Premise <em>*</em></span>
-                      <select data-business-field="business_premise">
+                      <select name="business_premise" data-business-field="business_premise">
                         <option>Select Business Premise</option>
                       </select>
                     </label>
@@ -211,27 +240,27 @@
                   <div class="field-grid field-grid--2">
                     <label class="field">
                       <span>Business Telephone</span>
-                      <input type="tel" placeholder="(047) 222-3333" data-business-field="business_telephone" />
+                      <input type="tel" name="business_telephone" placeholder="(047) 222-3333" data-business-field="business_telephone" />
                     </label>
                     <label class="field">
                       <span>Business Mobile Number <em>*</em></span>
-                      <input type="tel" placeholder="+63 912-123-1231" data-business-field="business_mobile" />
+                      <input type="tel" name="business_mobile" placeholder="+63 912-123-1231" data-business-field="business_mobile" />
                     </label>
                     <label class="field">
                       <span>Business Email <em>*</em></span>
-                      <input type="email" placeholder="business@example.com" data-business-field="business_email" />
+                      <input type="email" name="business_email" placeholder="business@example.com" data-business-field="business_email" />
                     </label>
                     <label class="field">
                       <span>Owner/Proprietor Contact Number <em>*</em></span>
-                      <input type="tel" placeholder="+63 912-312-3131" data-business-field="owner_contact_number" />
+                      <input type="tel" name="owner_contact_number" placeholder="+63 912-312-3131" data-business-field="owner_contact_number" />
                     </label>
                     <label class="field">
                       <span>In Case of Emergency Contact Person</span>
-                      <input type="text" placeholder="Name of contact person" data-business-field="emergency_contact_person" />
+                      <input type="text" name="emergency_contact_person" placeholder="Name of contact person" data-business-field="emergency_contact_person" />
                     </label>
                     <label class="field">
                       <span>Emergency Contact Number / Email</span>
-                      <input type="text" placeholder="Phone number or email" data-business-field="emergency_contact" />
+                      <input type="text" name="emergency_contact" placeholder="Phone number or email" data-business-field="emergency_contact" />
                     </label>
                   </div>
                 </article>
@@ -246,15 +275,15 @@
                   <div class="field-grid field-grid--2">
                     <label class="field">
                       <span>Business Area (in sq. m.)</span>
-                      <input type="text" placeholder="0.00" data-business-field="business_area" />
+                      <input type="text" name="business_area" placeholder="0.00" data-business-field="business_area" />
                     </label>
                     <label class="field">
                       <span>Total No. of Employees in Establishment</span>
-                      <input type="number" placeholder="0" data-business-field="employees_total" />
+                      <input type="number" name="employees_total" placeholder="0" data-business-field="employees_total" />
                     </label>
                     <label class="field">
                       <span>No. of Employees Residing within LGU</span>
-                      <input type="number" placeholder="0" data-business-field="employees_lgu" />
+                      <input type="number" name="employees_lgu" placeholder="0" data-business-field="employees_lgu" />
                     </label>
                   </div>
                 </article>
@@ -263,16 +292,16 @@
                   <h3>B. BUSINESS ACTIVITY</h3>
                   <label class="field field--full">
                     <span>Description of Business / Main Activity</span>
-                    <input type="text" placeholder="e.g. Retail grocery, hardware sales, etc." data-business-field="business_activity" />
+                    <input type="text" name="business_activity" placeholder="e.g. Retail grocery, hardware sales, etc." data-business-field="business_activity" />
                   </label>
                   <div class="field-grid field-grid--2">
                     <label class="field">
                       <span>Capitalization (For New Business)</span>
-                      <input type="text" placeholder="PHP" data-business-field="capitalization" />
+                      <input type="text" name="capital_investment" placeholder="PHP" data-business-field="capitalization" />
                     </label>
                     <label class="field">
                       <span>Goods Value</span>
-                      <input type="text" placeholder="PHP" data-business-field="goods_value" />
+                      <input type="text" name="goods_value" placeholder="PHP" data-business-field="goods_value" />
                     </label>
                   </div>
                 </article>
@@ -290,7 +319,7 @@
                   </div>
                   <label class="field field--full">
                     <span>Tax Incentive Issuing Entity (if applicable)</span>
-                    <input type="text" placeholder="e.g. Board of Investments, PEZA" data-business-field="tax_incentive_entity" />
+                    <input type="text" name="tax_incentive_entity" placeholder="e.g. Board of Investments, PEZA" data-business-field="tax_incentive_entity" />
                   </label>
                 </article>
               </section>
@@ -312,11 +341,11 @@
             </section>
           </section>
 
-          <section class="review-workspace review-workspace--floating is-hidden" data-review-strip aria-label="Review documents">
+          <section class="review-workspace review-workspace--floating is-hidden" data-review-strip aria-label="Review application">
             <div class="review-header">
               <div>
-                <h2>Review Documents</h2>
-                <p>Review the details below while the full form stays visible above for quick edits.</p>
+                <h2>Review Application</h2>
+                <p>Review your application details before submitting.</p>
               </div>
               <div class="permit-tag permit-tag--review">
                 <strong>Business Permit</strong>
@@ -330,38 +359,106 @@
                 <dl class="review-list">
                   <div><dt>Business Name</dt><dd data-review-value="business_name">Not filled in yet</dd></div>
                   <div><dt>Business Address</dt><dd data-review-value="business_address">Not filled in yet</dd></div>
+                  <div><dt>Owner / Applicant Name</dt><dd data-review-value="owner_name">Not filled in yet</dd></div>
                   <div><dt>Contact Number</dt><dd data-review-value="business_mobile">Not filled in yet</dd></div>
                   <div><dt>Business Email</dt><dd data-review-value="business_email">Not filled in yet</dd></div>
                   <div><dt>Mode of Payment</dt><dd data-review-value="mode_of_payment">Not selected</dd></div>
                 </dl>
               </article>
 
-              <article class="review-card">
-                <h3>Documents for Review</h3>
-                <ul class="review-documents">
-                  <li><span>Unified Form / 2x2 Picture</span><strong>Ready</strong></li>
-                  <li><span>DTI / SEC / CDA Certificate</span><strong>Ready</strong></li>
-                  <li><span>Barangay Clearance</span><strong>Ready</strong></li>
-                  <li><span>Lease of Contract</span><strong>Optional</strong></li>
-                  <li><span>Statement of Capital Investment</span><strong>Ready</strong></li>
-                  <li><span>Audited Financial Statements</span><strong>Optional</strong></li>
-                  <li><span>Authorization Letter From the Owner</span><strong>Optional</strong></li>
-                  <li><span>Licenses / Clearance / Certificate</span><strong>Ready</strong></li>
-                </ul>
+              <article class="review-card review-card--status">
+                <h3>Final Check Status</h3>
+                <p data-review-validation-summary>Complete all required business information before submitting.</p>
+                <ul class="review-validation-list" data-review-validation-list hidden></ul>
               </article>
             </div>
 
-            <div class="review-note">
-              <i data-lucide="file-search" aria-hidden="true"></i>
+            <article class="review-card review-card--full">
+              <h3>Business Information Review</h3>
+              <div class="review-section-grid">
+                <section class="review-section">
+                  <h4>Application Details</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Date of Application</dt><dd data-review-value="application_date">Not filled in yet</dd></div>
+                    <div><dt>DTI/SEC/CDA Registration No.</dt><dd data-review-value="registration_number">Not filled in yet</dd></div>
+                    <div><dt>Mode of Payment</dt><dd data-review-value="mode_of_payment_detail">Not selected</dd></div>
+                  </dl>
+                </section>
+
+                <section class="review-section">
+                  <h4>Owner / Applicant</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Last Name</dt><dd data-review-value="last_name">Not filled in yet</dd></div>
+                    <div><dt>First Name</dt><dd data-review-value="first_name">Not filled in yet</dd></div>
+                    <div><dt>Middle Name</dt><dd data-review-value="middle_name">Not filled in yet</dd></div>
+                    <div><dt>Registered Email</dt><dd data-review-value="email">Not filled in yet</dd></div>
+                    <div><dt>Registered Contact Number</dt><dd data-review-value="contact_number">Not filled in yet</dd></div>
+                    <div><dt>Gender / Sex</dt><dd data-review-value="gender">Not filled in yet</dd></div>
+                    <div><dt>Government ID / ID Details</dt><dd data-review-value="government_id">Not filled in yet</dd></div>
+                    <div><dt>Home Address</dt><dd data-review-value="home_address">Not filled in yet</dd></div>
+                  </dl>
+                </section>
+
+                <section class="review-section">
+                  <h4>Business Details</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Business Name</dt><dd data-review-value="business_name_detail">Not filled in yet</dd></div>
+                    <div><dt>Trade Name / Franchise</dt><dd data-review-value="trade_name">Not filled in yet</dd></div>
+                    <div><dt>Type of Business</dt><dd data-review-value="business_types">Not filled in yet</dd></div>
+                    <div><dt>Business Classification</dt><dd data-review-value="business_classification">Not filled in yet</dd></div>
+                    <div><dt>TIN</dt><dd data-review-value="tin">Not filled in yet</dd></div>
+                  </dl>
+                </section>
+
+                <section class="review-section">
+                  <h4>Business Location</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Business Address</dt><dd data-review-value="business_address_detail">Not filled in yet</dd></div>
+                    <div><dt>Unit / Street / Lot / Location</dt><dd data-review-value="location_detail">Not filled in yet</dd></div>
+                    <div><dt>Business Barangay</dt><dd data-review-value="business_barangay">Not filled in yet</dd></div>
+                    <div><dt>Business Premise</dt><dd data-review-value="business_premise">Not filled in yet</dd></div>
+                  </dl>
+                </section>
+
+                <section class="review-section">
+                  <h4>Contact Information</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Business Telephone</dt><dd data-review-value="business_telephone">Not filled in yet</dd></div>
+                    <div><dt>Business Mobile Number</dt><dd data-review-value="business_mobile_detail">Not filled in yet</dd></div>
+                    <div><dt>Business Email</dt><dd data-review-value="business_email_detail">Not filled in yet</dd></div>
+                    <div><dt>Owner/Proprietor Contact Number</dt><dd data-review-value="owner_contact_number">Not filled in yet</dd></div>
+                    <div><dt>Emergency Contact Person</dt><dd data-review-value="emergency_contact_person">Not filled in yet</dd></div>
+                    <div><dt>Emergency Contact Number / Email</dt><dd data-review-value="emergency_contact">Not filled in yet</dd></div>
+                  </dl>
+                </section>
+
+                <section class="review-section">
+                  <h4>Business Activity and Capitalization</h4>
+                  <dl class="review-list review-list--compact">
+                    <div><dt>Business Area</dt><dd data-review-value="business_area">Not filled in yet</dd></div>
+                    <div><dt>Total No. of Employees</dt><dd data-review-value="employees_total">Not filled in yet</dd></div>
+                    <div><dt>No. of Employees Residing within LGU</dt><dd data-review-value="employees_lgu">Not filled in yet</dd></div>
+                    <div><dt>Business Activity</dt><dd data-review-value="business_activity">Not filled in yet</dd></div>
+                    <div><dt>Capital Investment</dt><dd data-review-value="capitalization">Not filled in yet</dd></div>
+                    <div><dt>Goods Value</dt><dd data-review-value="goods_value">Not filled in yet</dd></div>
+                    <div><dt>Tax Incentive</dt><dd data-review-value="tax_incentive">Not filled in yet</dd></div>
+                    <div><dt>Tax Incentive Issuing Entity</dt><dd data-review-value="tax_incentive_entity">Not filled in yet</dd></div>
+                  </dl>
+                </section>
+              </div>
+            </article>
+
+            <div class="review-note review-note--final">
+              <i data-lucide="circle-check-big" aria-hidden="true"></i>
               <div>
-                <strong>Final pass</strong>
-                <p>Please review the information you entered, then finish the application when you are ready.</p>
+                <strong>Final Confirmation</strong>
+                <p>Please review all application details carefully. Once submitted, your application will be sent to BPLO for verification.</p>
               </div>
             </div>
 
             <div class="review-actions review-actions--end">
               <button class="review-button review-button--primary" type="button" data-finish-application>
-                <span>Finish Application</span>
+                <span>Submit Application</span>
                 <i data-lucide="arrow-right" aria-hidden="true"></i>
               </button>
             </div>

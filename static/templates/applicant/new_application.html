@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Requirements Checklist</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=8" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=16" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="/features/applicant.js?v=9"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/applicant.js?v=15"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -30,9 +31,21 @@
               <button type="button" data-logout>Log out</button>
             </div>
           </div>
-          <button class="icon-button" type="button" aria-label="Notifications">
-            <i data-lucide="bell" aria-hidden="true"></i>
-          </button>
+          <div class="notification-menu" data-notification-menu>
+            <button class="icon-button notification-button" type="button" aria-label="Notifications" data-notification-toggle>
+              <i data-lucide="bell" aria-hidden="true"></i>
+              <span class="notification-badge" data-notification-count hidden>0</span>
+            </button>
+            <div class="notification-dropdown" data-notification-dropdown>
+              <header>
+                <strong>Notifications</strong>
+                <button type="button" data-mark-all-notifications-read>Mark all as read</button>
+              </header>
+              <div class="notification-list" data-notification-list>
+                <p class="notification-empty">No notifications yet.</p>
+              </div>
+            </div>
+          </div>
           <span class="avatar" aria-hidden="true"></span>
         </nav>
       </header>

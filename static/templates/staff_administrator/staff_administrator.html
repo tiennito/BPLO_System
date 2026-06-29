@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Staff Administrator</title>
+    <link rel="stylesheet" href="/styles/admin.css?v=10" />
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+  </head>
+  <body>
+    <main class="staff-admin-shell">
+      <aside class="staff-sidebar" aria-label="Staff administrator navigation">
+        <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span>
+            <strong>BPLO</strong>
+            <small>Staff Administrator</small>
+          </span>
+        </a>
+
+        <nav class="staff-nav">
+          <a class="is-active" href="/admin/staff-administrator">
+            <i data-lucide="layout-grid" aria-hidden="true"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/admin/staff-administrator/applications">
+            <i data-lucide="user-round" aria-hidden="true"></i>
+            <span>Applications</span>
+          </a>
+          <a href="/admin/staff-administrator/renewal-application">
+            <i data-lucide="clipboard" aria-hidden="true"></i>
+            <span>Re-Newal Application</span>
+          </a>
+          <a href="/admin/staff-administrator/notifications">
+            <i data-lucide="bell" aria-hidden="true"></i>
+            <span>Notification</span>
+          </a>
+          <a href="/admin/staff-administrator/reports">
+            <i data-lucide="bar-chart-3" aria-hidden="true"></i>
+            <span>Report</span>
+          </a>
+        </nav>
+
+        <a class="staff-logout" href="/login" data-logout-modal-only>
+          <i data-lucide="log-out" aria-hidden="true"></i>
+          <span>Log out</span>
+        </a>
+      </aside>
+
+      <section class="staff-main">
+        <header class="staff-topbar">
+          <h1>Dashboard</h1>
+          <section class="staff-welcome" aria-label="Signed in staff administrator">
+            <span>Welcome back,</span>
+            <strong>Admin name</strong>
+            <i data-lucide="circle-user-round" aria-hidden="true"></i>
+          </section>
+        </header>
+
+        <section class="staff-dashboard-grid">
+          <section class="staff-panel staff-quick-actions" aria-labelledby="quick-actions-title">
+            <header class="staff-panel-header">
+              <h2 id="quick-actions-title">Quick Actions</h2>
+            </header>
+            <div class="staff-action-grid">
+              <a href="#" class="staff-action-card">
+                <span class="staff-action-icon"><i data-lucide="clipboard-list" aria-hidden="true"></i></span>
+                <span>
+                  <strong>View All Permit</strong>
+                  <small>View and manage all issued permits.</small>
+                </span>
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
+              </a>
+              <a href="#" class="staff-action-card">
+                <span class="staff-action-icon"><i data-lucide="clipboard-check" aria-hidden="true"></i></span>
+                <span>
+                  <strong>View All Application</strong>
+                  <small>Review and manage all applications.</small>
+                </span>
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
+              </a>
+              <a href="#" class="staff-action-card">
+                <span class="staff-action-icon staff-action-icon--chart"><i data-lucide="pie-chart" aria-hidden="true"></i></span>
+                <span>
+                  <strong>Status</strong>
+                  <small>Check application status overview.</small>
+                </span>
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </section>
+
+          <section class="staff-panel staff-renewal-panel" aria-labelledby="renewal-title">
+            <header class="staff-panel-header">
+              <h2 id="renewal-title">Re-Newal Application</h2>
+              <button class="staff-icon-button" type="button" aria-label="Refresh renewal requirements">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              </button>
+            </header>
+            <p class="staff-panel-note">To renew a business permit, please ensure that the following requirements are updated and passed again.</p>
+            <ul class="staff-renewal-list">
+              <li>
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span><strong>Business Permit Copy</strong><small>Updated and valid copy of the current permit.</small></span>
+              </li>
+              <li>
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span><strong>Barangay Clearance</strong><small>Clearance issued within the last 6 months.</small></span>
+              </li>
+              <li>
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span><strong>DTI/SEC Registration</strong><small>Updated DTI or SEC Certificate.</small></span>
+              </li>
+              <li>
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span><strong>Valid ID</strong><small>Government-issued ID of the owner/authorized representative.</small></span>
+              </li>
+              <li>
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span><strong>Other Required Documents</strong><small>Any additional documents required by BPLO.</small></span>
+              </li>
+            </ul>
+            <p class="staff-renewal-tip"><i data-lucide="info" aria-hidden="true"></i> Please ensure all documents are complete and legible to avoid delays in processing.</p>
+          </section>
+
+          <section class="staff-panel staff-applications-panel" aria-labelledby="applications-title">
+            <header class="staff-panel-header">
+              <h2 id="applications-title">Applications</h2>
+              <a class="staff-view-all" href="#">View All <i data-lucide="chevron-right" aria-hidden="true"></i></a>
+            </header>
+            <div class="staff-table-wrap">
+              <table class="staff-table">
+                <thead>
+                  <tr>
+                    <th>Applicant Name</th>
+                    <th>Business Name</th>
+                    <th>Permit Type</th>
+                    <th>Date Submitted</th>
+                    <th>Status</th>
+                    <th><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Juan Dela Cruz</td>
+                    <td>JDC Construction Supply</td>
+                    <td>Building Permit</td>
+                    <td>May 20, 2025</td>
+                    <td><span class="staff-status staff-status--pending">Pending</span></td>
+                    <td><button class="staff-row-button" type="button" aria-label="Application actions"><i data-lucide="more-vertical" aria-hidden="true"></i></button></td>
+                  </tr>
+                  <tr>
+                    <td>Maria Santos</td>
+                    <td>Santos Eatery</td>
+                    <td>Business Permit</td>
+                    <td>May 19, 2025</td>
+                    <td><span class="staff-status staff-status--review">Under Review</span></td>
+                    <td><button class="staff-row-button" type="button" aria-label="Application actions"><i data-lucide="more-vertical" aria-hidden="true"></i></button></td>
+                  </tr>
+                  <tr>
+                    <td>Pedro Reyes</td>
+                    <td>Reyes Hardware</td>
+                    <td>Signage Permit</td>
+                    <td>May 19, 2025</td>
+                    <td><span class="staff-status staff-status--checking">For Checking</span></td>
+                    <td><button class="staff-row-button" type="button" aria-label="Application actions"><i data-lucide="more-vertical" aria-hidden="true"></i></button></td>
+                  </tr>
+                  <tr>
+                    <td>Ana Torres</td>
+                    <td>Torres Printing Services</td>
+                    <td>Business Permit</td>
+                    <td>May 18, 2025</td>
+                    <td><span class="staff-status staff-status--pending">Pending</span></td>
+                    <td><button class="staff-row-button" type="button" aria-label="Application actions"><i data-lucide="more-vertical" aria-hidden="true"></i></button></td>
+                  </tr>
+                  <tr>
+                    <td>Carlo Mendoza</td>
+                    <td>CM Electronics</td>
+                    <td>Electrical Permit</td>
+                    <td>May 17, 2025</td>
+                    <td><span class="staff-status staff-status--review">Under Review</span></td>
+                    <td><button class="staff-row-button" type="button" aria-label="Application actions"><i data-lucide="more-vertical" aria-hidden="true"></i></button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <footer class="staff-table-footer">
+              <span>Showing 1 to 5 of 10 entries</span>
+              <nav aria-label="Application table pagination">
+                <button type="button" aria-label="Previous page"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                <strong>1</strong>
+                <button type="button">2</button>
+                <button type="button" aria-label="Next page"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+              </nav>
+            </footer>
+          </section>
+
+          <section class="staff-panel staff-analytics-panel" aria-labelledby="analytics-title">
+            <header class="staff-panel-header">
+              <h2 id="analytics-title">Analytics &amp; Report</h2>
+              <div class="staff-segmented" aria-label="Analytics time range">
+                <button class="is-active" type="button">Today</button>
+                <button type="button">Week</button>
+                <button type="button">Monthly</button>
+                <button type="button">Yearly</button>
+              </div>
+            </header>
+            <div class="staff-metric-grid">
+              <article class="staff-metric staff-metric--total">
+                <i data-lucide="clipboard-list" aria-hidden="true"></i>
+                <strong>126</strong>
+                <span>Total Applications</span>
+                <small>+12% vs yesterday</small>
+              </article>
+              <article class="staff-metric staff-metric--approved">
+                <i data-lucide="check" aria-hidden="true"></i>
+                <strong>68</strong>
+                <span>Approved</span>
+                <small>+15% vs yesterday</small>
+              </article>
+              <article class="staff-metric staff-metric--pending">
+                <i data-lucide="clock-3" aria-hidden="true"></i>
+                <strong>45</strong>
+                <span>Pending</span>
+                <small>+5% vs yesterday</small>
+              </article>
+              <article class="staff-metric staff-metric--rejected">
+                <i data-lucide="x" aria-hidden="true"></i>
+                <strong>13</strong>
+                <span>Rejected</span>
+                <small>+3% vs yesterday</small>
+              </article>
+            </div>
+          </section>
+
+          <section class="staff-panel staff-trends-panel" aria-labelledby="trends-title">
+            <header class="staff-panel-header">
+              <h2 id="trends-title">Application Trends</h2>
+              <span class="staff-chart-legend"><em></em> Applications</span>
+            </header>
+            <div class="staff-chart" aria-label="Application trends from May 14 to May 20">
+              <div class="staff-chart-scale">
+                <span>100</span>
+                <span>80</span>
+                <span>60</span>
+                <span>40</span>
+                <span>20</span>
+                <span>0</span>
+              </div>
+              <div class="staff-chart-bars">
+                <span style="--bar: 36%"><strong>45</strong><em>May 14</em></span>
+                <span style="--bar: 41%"><strong>52</strong><em>May 15</em></span>
+                <span style="--bar: 38%"><strong>48</strong><em>May 16</em></span>
+                <span style="--bar: 52%"><strong>65</strong><em>May 17</em></span>
+                <span style="--bar: 57%"><strong>72</strong><em>May 18</em></span>
+                <span style="--bar: 70%"><strong>88</strong><em>May 19</em></span>
+                <span style="--bar: 100%"><strong>126</strong><em>May 20</em></span>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

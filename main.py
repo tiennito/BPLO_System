@@ -132,6 +132,21 @@ PAGE_ROUTES = {
     "/admin/dashboard": "/templates/admin/dashboard.html",
     "/admin/dashboard/": "/templates/admin/dashboard.html",
     "/admin/dashboard.html": "/templates/admin/dashboard.html",
+    "/admin/staff-administrator": "/templates/staff_administrator/staff_administrator.html",
+    "/admin/staff-administrator/": "/templates/staff_administrator/staff_administrator.html",
+    "/admin/staff-administrator.html": "/templates/staff_administrator/staff_administrator.html",
+    "/admin/staff-administrator/applications": "/templates/staff_administrator/applications.html",
+    "/admin/staff-administrator/applications/": "/templates/staff_administrator/applications.html",
+    "/admin/staff-administrator/applications.html": "/templates/staff_administrator/applications.html",
+    "/admin/staff-administrator/renewal-application": "/templates/staff_administrator/renewal_application.html",
+    "/admin/staff-administrator/renewal-application/": "/templates/staff_administrator/renewal_application.html",
+    "/admin/staff-administrator/renewal-application.html": "/templates/staff_administrator/renewal_application.html",
+    "/admin/staff-administrator/notifications": "/templates/staff_administrator/notifications.html",
+    "/admin/staff-administrator/notifications/": "/templates/staff_administrator/notifications.html",
+    "/admin/staff-administrator/notifications.html": "/templates/staff_administrator/notifications.html",
+    "/admin/staff-administrator/reports": "/templates/staff_administrator/reports.html",
+    "/admin/staff-administrator/reports/": "/templates/staff_administrator/reports.html",
+    "/admin/staff-administrator/reports.html": "/templates/staff_administrator/reports.html",
     "/admin/create-user": "/templates/admin/create_user.html",
     "/admin/create-user/": "/templates/admin/create_user.html",
     "/admin/create-user.html": "/templates/admin/create_user.html",
@@ -249,6 +264,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.list_admin_audit_logs()
             return
 
+        if request_path == "/admin/api/applications":
+            self.list_admin_applications()
+            return
+
         if request_path == "/admin/api/permits":
             self.list_admin_permits()
             return
@@ -261,6 +280,16 @@ class AppHandler(SimpleHTTPRequestHandler):
         if request_path == "/applicant/api/permits":
             self.list_applicant_permits()
             return
+
+        if request_path == "/applicant/api/notifications":
+            self.list_applicant_notifications()
+            return
+
+        if request_path.startswith("/applicant/api/application/") and request_path.endswith("/ocr-fields"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 5:
+                self.get_applicant_application_ocr_fields(parts[3])
+                return
 
         if request_path.startswith("/applicant/api/permits/"):
             permit_id = request_path.rsplit("/", 1)[-1]
@@ -342,6 +371,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.extract_applicant_document_ocr()
             return
 
+        if request_path == "/applicant/api/submit-application":
+            self.submit_applicant_application()
+            return
+
         if request_path == "/api/audit-logs":
             self.create_audit_log()
             return
@@ -386,6 +419,15 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.update_treasury_record(record_id)
             return
 
+        if request_path == "/applicant/api/notifications/mark-all-read":
+            self.mark_all_applicant_notifications_read()
+            return
+
+        if request_path.startswith("/applicant/api/notifications/") and request_path.endswith("/read"):
+            notification_id = request_path.strip("/").split("/")[-2]
+            self.mark_applicant_notification_read(notification_id)
+            return
+
         if request_path.startswith("/admin/api/departments/"):
             department_id = request_path.rsplit("/", 1)[-1]
             self.update_admin_department(department_id)
@@ -428,6 +470,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         if request_path.startswith("/treasury/api/records/"):
             record_id = request_path.rsplit("/", 1)[-1]
             self.soft_delete_treasury_record(record_id)
+            return
+
+        if request_path.startswith("/applicant/api/notifications/"):
+            notification_id = request_path.rsplit("/", 1)[-1]
+            self.delete_applicant_notification(notification_id)
             return
 
         if request_path.startswith("/admin/api/departments/"):
@@ -490,7 +537,33 @@ class AppHandler(SimpleHTTPRequestHandler):
         image = Image.open(BytesIO(file_bytes))
         return pytesseract.image_to_string(image)
 
+    BAD_BUSINESS_NAME_WORDS = [
+        "registration",
+        "issued",
+        "issue",
+        "republic",
+        "philippines",
+        "secretary",
+        "certificate",
+        "department",
+        "trade and industry",
+        "department of trade",
+        "pursuant",
+        "valid",
+        "business name registration",
+        "this is to certify",
+        "le ma",
+        "cristina",
+        "roque",
+    ]
+
     def clean_ocr_text(self, text):
+        text = (text or "").replace("\r", "\n")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n+", "\n", text)
+        return text.strip()
+
+    def flatten_ocr_text(self, text):
         return re.sub(r"\s+", " ", text or "").strip()
 
     def find_first_match(self, patterns, text):
@@ -500,63 +573,270 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return match.group(1).strip(" :,-")
         return ""
 
+    def is_bad_business_name_candidate(self, value):
+        if not value:
+            return True
+
+        value = re.sub(r"\s+", " ", str(value)).strip()
+        value_lower = value.lower()
+        if len(value_lower) < 3 or len(value_lower) > 80:
+            return True
+
+        if not re.search(r"[a-z]", value_lower):
+            return True
+
+        if re.search(r"\b(?:no|number)\.?\s*\d", value_lower):
+            return True
+
+        if re.fullmatch(r"(?:no\.?\s*)?[a-z0-9\-]{4,}", value_lower) and sum(character.isalpha() for character in value_lower) <= 2:
+            return True
+
+        return any(bad_word in value_lower for bad_word in self.BAD_BUSINESS_NAME_WORDS)
+
+    def normalize_business_name(self, value):
+        if not value:
+            return ""
+
+        value = re.sub(r"\s+", " ", value).strip(" :,-")
+        stop_words = [
+            "Owner",
+            "Proprietor",
+            "Registrant",
+            "Business Address",
+            "Certificate",
+            "Registration",
+            "Date",
+            "Issued",
+            "This is to certify",
+        ]
+        for stop in stop_words:
+            value = re.sub(rf"\b{re.escape(stop)}\b.*", "", value, flags=re.IGNORECASE).strip()
+
+        return value.upper()
+
+    def parse_dti_fields(self, raw_text):
+        text = self.clean_ocr_text(raw_text)
+        flattened_text = self.flatten_ocr_text(text)
+        fields = {}
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        business_name_candidates = []
+
+        for line in lines:
+            match = re.search(r"business\s*name\s*[:\-]?\s*(.+)", line, re.IGNORECASE)
+            if match:
+                candidate = self.normalize_business_name(match.group(1))
+                if not self.is_bad_business_name_candidate(candidate):
+                    business_name_candidates.append((candidate, "high"))
+
+        sentence_match = re.search(
+            r"certify\s+that\s+(.+?)\s+(?:is|has been)\s+(?:registered|granted)",
+            flattened_text,
+            re.IGNORECASE,
+        )
+        if sentence_match:
+            candidate = self.normalize_business_name(sentence_match.group(1))
+            if not self.is_bad_business_name_candidate(candidate):
+                business_name_candidates.append((candidate, "high"))
+
+        for line in lines:
+            candidate = self.normalize_business_name(line)
+            if self.is_bad_business_name_candidate(candidate):
+                continue
+
+            uppercase_ratio = sum(1 for character in candidate if character.isupper()) / max(len(candidate), 1)
+            if uppercase_ratio > 0.5 and len(candidate.split()) >= 2:
+                business_name_candidates.append((candidate, "medium"))
+
+        if business_name_candidates:
+            business_name, confidence = sorted(business_name_candidates, key=lambda item: (item[1] != "high", len(item[0])))[0]
+            fields["business_name"] = business_name
+            fields["business_name_confidence"] = confidence
+        else:
+            fields["business_name_confidence"] = "low"
+
+        registration_number = self.find_first_match(
+            [
+                r"(?:certificate\s+no\.?|registration\s+no\.?|business\s+name\s+no\.?|dti\s+registration\s+no\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
+            ],
+            flattened_text,
+        )
+        if registration_number:
+            fields["registration_number"] = registration_number
+            fields["dti_registration_no"] = registration_number
+
+        owner_match = re.search(
+            r"(?:owner|proprietor|registrant)\s*[:\-]?\s*(.+)",
+            text,
+            re.IGNORECASE,
+        )
+        if owner_match:
+            owner_name = self.normalize_business_name(owner_match.group(1))
+            if owner_name and len(owner_name) <= 80:
+                fields["owner_name"] = owner_name
+                fields.update(self.split_owner_name(owner_name))
+
+        business_address = self.find_first_match(
+            [
+                r"(?:Business Address|Business Location|Address)\s*[:\-]?\s*(.+?)(?: Owner| Proprietor| Registrant| Registration| Certificate|$)",
+            ],
+            flattened_text,
+        )
+        if business_address:
+            fields["business_address"] = re.sub(r"\s+", " ", business_address).strip(" :,-")
+
+        registration_date = self.find_first_match(
+            [
+                r"(?:Registration Date|Date Registered|Date of Registration|Issued on)\s*[:\-]?\s*([A-Za-z0-9 ,/\-]+?)(?: Business| Owner| Address|$)",
+            ],
+            flattened_text,
+        )
+        if registration_date:
+            fields["registration_date"] = registration_date
+
+        business_type = self.find_first_match(
+            [
+                r"\b(SINGLE|SOLE PROPRIETORSHIP|PARTNERSHIP|CORPORATION|COOPERATIVE)\b",
+            ],
+            flattened_text,
+        )
+        if business_type:
+            fields["type_of_business"] = "SINGLE" if business_type.upper() == "SOLE PROPRIETORSHIP" else business_type.upper()
+            fields["business_type"] = fields["type_of_business"]
+
+        return fields
+
+    def split_owner_name(self, owner_name):
+        parts = (owner_name or "").strip().split()
+        if len(parts) >= 2:
+            return {
+                "first_name": parts[0],
+                "middle_name": " ".join(parts[1:-1]),
+                "last_name": parts[-1],
+            }
+        if parts:
+            return {"first_name": parts[0]}
+        return {}
+
+    def normalize_extracted_business_fields(self, fields):
+        alias_map = {
+            "date_of_application": "application_date",
+            "dti_registration_no": "registration_number",
+            "dti_registration_number": "registration_number",
+            "registration_no": "registration_number",
+            "certificate_no": "registration_number",
+            "owner_first_name": "first_name",
+            "owner_middle_name": "middle_name",
+            "owner_last_name": "last_name",
+            "registered_email": "email",
+            "registered_contact_number": "contact_number",
+            "business_type": "type_of_business",
+            "business_types": "type_of_business",
+            "capital_investment": "capitalization",
+        }
+        normalized = {}
+
+        for key, value in (fields or {}).items():
+            if value in (None, ""):
+                continue
+
+            normalized_key = alias_map.get(key, key)
+            normalized[normalized_key] = value
+
+            if key != normalized_key:
+                normalized[key] = value
+
+        owner_name = normalized.get("owner_name")
+        if owner_name:
+            for key, value in self.split_owner_name(owner_name).items():
+                normalized.setdefault(key, value)
+
+        return normalized
+
     def extract_business_fields_from_text(self, raw_text, document_type=""):
         text = self.clean_ocr_text(raw_text)
+        flattened_text = self.flatten_ocr_text(text)
+        document_type_lower = (document_type or "").lower()
+
+        if "dti" in document_type_lower or "business name" in flattened_text.lower():
+            return self.normalize_extracted_business_fields(self.parse_dti_fields(raw_text))
 
         extracted = {
             "registration_number": self.find_first_match(
                 [
                     r"(?:Registration No\.?|Reg\.? No\.?|Certificate No\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
                     r"(?:DTI No\.?|SEC No\.?|CDA No\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
+                    r"(?:DTI Registration No\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
                 ],
-                text,
-            ),
-            "business_name": self.find_first_match(
-                [
-                    r"(?:Business Name|Trade Name)\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]+?)(?: Owner| Proprietor| Address| Registration|$)",
-                ],
-                text,
+                flattened_text,
             ),
             "trade_name": self.find_first_match(
                 [
                     r"(?:Trade Name)\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]+?)(?: Owner| Proprietor| Address| Registration|$)",
                 ],
-                text,
+                flattened_text,
             ),
             "tin": self.find_first_match(
                 [
                     r"(?:TIN|Tax Identification Number)\s*[:\-]?\s*([0-9\-]+)",
                 ],
-                text,
+                flattened_text,
             ),
             "business_address": self.find_first_match(
                 [
                     r"(?:Business Address|Business Location|Address)\s*[:\-]?\s*([A-Za-z0-9 #.,'\-]+?)(?: Barangay| Owner| Registration|$)",
                 ],
-                text,
+                flattened_text,
+            ),
+            "registration_date": self.find_first_match(
+                [
+                    r"(?:Registration Date|Date Registered|Date of Registration)\s*[:\-]?\s*([A-Za-z0-9 ,/\-]+?)(?: Business| Owner| Address|$)",
+                ],
+                flattened_text,
+            ),
+            "type_of_business": self.find_first_match(
+                [
+                    r"\b(SINGLE|SOLE PROPRIETORSHIP|PARTNERSHIP|CORPORATION|COOPERATIVE)\b",
+                ],
+                flattened_text,
             ),
             "first_name": "",
             "middle_name": "",
             "last_name": "",
+            "business_name_confidence": "low",
         }
+
+        business_name = self.find_first_match(
+            [
+                r"(?:Business Name|Trade Name)\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]+?)(?: Owner| Proprietor| Address| Registration|$)",
+            ],
+            flattened_text,
+        )
+        business_name = self.normalize_business_name(business_name)
+        if business_name and not self.is_bad_business_name_candidate(business_name):
+            extracted["business_name"] = business_name
+            extracted["business_name_confidence"] = "medium"
 
         owner_name = self.find_first_match(
             [
                 r"(?:Owner|Proprietor|Registrant|Applicant Name)\s*[:\-]?\s*([A-Za-z .,'\-]+?)(?: Address| Business| Registration|$)",
             ],
-            text,
+            flattened_text,
         )
 
         if owner_name:
-            parts = owner_name.split()
-            if len(parts) >= 2:
-                extracted["first_name"] = parts[0]
-                extracted["last_name"] = parts[-1]
-                extracted["middle_name"] = " ".join(parts[1:-1])
-            else:
-                extracted["first_name"] = owner_name
+            extracted["owner_name"] = owner_name
+            extracted.update(self.split_owner_name(owner_name))
 
-        return {key: value for key, value in extracted.items() if value}
+        if extracted.get("type_of_business") == "SOLE PROPRIETORSHIP":
+            extracted["type_of_business"] = "SINGLE"
+
+        extracted = {key: value for key, value in extracted.items() if value}
+        if extracted.get("registration_number"):
+            extracted["dti_registration_no"] = extracted["registration_number"]
+        if extracted.get("type_of_business"):
+            extracted["business_type"] = extracted["type_of_business"]
+
+        return self.normalize_extracted_business_fields(extracted)
 
     def verify_admin_session(self, access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email):
         if not access_token:
@@ -1591,6 +1871,117 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return message
 
+    def create_notification(self, supabase_url, service_key, user_id, title, message, notification_type="system", source_role="System", application_id=None):
+        if not user_id or not title or not message:
+            return None
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "notifications",
+                method="POST",
+                payload={
+                    "user_id": user_id,
+                    "application_id": application_id,
+                    "title": title,
+                    "message": message,
+                    "type": notification_type,
+                    "source_role": source_role,
+                },
+                prefer="return=representation",
+            )
+            return rows[0] if rows else None
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
+    def get_application_owner_id(self, supabase_url, service_key, application_id):
+        if not application_id:
+            return ""
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applications",
+                {
+                    "select": "id,applicant_id",
+                    "id": f"eq.{application_id}",
+                    "limit": 1,
+                },
+            )
+            return (rows[0] or {}).get("applicant_id") if rows else ""
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return ""
+
+    def find_application_by_reference(self, supabase_url, service_key, reference):
+        reference = (reference or "").strip()
+        if not reference:
+            return None
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applications",
+                {
+                    "select": "id,applicant_id,business_info",
+                    "id": f"eq.{reference}",
+                    "limit": 1,
+                },
+            )
+            if rows:
+                return rows[0]
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            pass
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applications",
+                {
+                    "select": "id,applicant_id,business_info",
+                    "order": "created_at.desc",
+                    "limit": 500,
+                },
+            )
+            reference_lower = reference.lower()
+            for row in rows or []:
+                if (row.get("id") or "").lower().startswith(reference_lower):
+                    return row
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
+        return None
+
+    def notify_application_owner(self, supabase_url, service_key, application_id, title, message, notification_type="system", source_role="System"):
+        user_id = self.get_application_owner_id(supabase_url, service_key, application_id)
+        return self.create_notification(
+            supabase_url,
+            service_key,
+            user_id,
+            title,
+            message,
+            notification_type=notification_type,
+            source_role=source_role,
+            application_id=application_id,
+        )
+
+    def format_notification(self, notification):
+        return {
+            "id": notification.get("id"),
+            "userId": notification.get("user_id"),
+            "applicationId": notification.get("application_id"),
+            "title": notification.get("title") or "",
+            "message": notification.get("message") or "",
+            "type": notification.get("type") or "system",
+            "sourceRole": notification.get("source_role") or "System",
+            "isRead": bool(notification.get("is_read")),
+            "createdAt": notification.get("created_at") or "",
+            "readAt": notification.get("read_at") or "",
+        }
+
     def format_permit_document(self, document):
         requirement_type = document.get("requirement_type") or "Required"
         return {
@@ -1988,6 +2379,116 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return supabase_url, supabase_service_key, user
 
+    def list_applicant_notifications(self):
+        config = self.ensure_applicant_request("notification listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "notifications",
+                {
+                    "select": "id,user_id,application_id,title,message,type,source_role,is_read,created_at,read_at",
+                    "user_id": f"eq.{user.get('id')}",
+                    "order": "created_at.desc",
+                    "limit": 20,
+                },
+            ) or []
+            unread_count = sum(1 for row in rows if not row.get("is_read"))
+            self.send_json(
+                {
+                    "notifications": [self.format_notification(row) for row in rows],
+                    "unreadCount": unread_count,
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load notifications.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load notifications."}, status=500)
+
+    def mark_applicant_notification_read(self, notification_id):
+        config = self.ensure_applicant_request("notification update")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "notifications",
+                {
+                    "id": f"eq.{notification_id}",
+                    "user_id": f"eq.{user.get('id')}",
+                },
+                method="PATCH",
+                payload={"is_read": True, "read_at": utc_now_iso()},
+                prefer="return=representation",
+            )
+            if not rows:
+                self.send_json({"error": "Notification not found."}, status=404)
+                return
+            self.send_json({"message": "Notification marked as read.", "notification": self.format_notification(rows[0])})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update notification.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update notification."}, status=500)
+
+    def mark_all_applicant_notifications_read(self):
+        config = self.ensure_applicant_request("notification update")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "notifications",
+                {
+                    "user_id": f"eq.{user.get('id')}",
+                    "is_read": "eq.false",
+                },
+                method="PATCH",
+                payload={"is_read": True, "read_at": utc_now_iso()},
+                prefer="return=representation",
+            ) or []
+            self.send_json({"message": "Notifications marked as read.", "updated": len(rows)})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update notifications.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update notifications."}, status=500)
+
+    def delete_applicant_notification(self, notification_id):
+        config = self.ensure_applicant_request("notification deletion")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "notifications",
+                {
+                    "id": f"eq.{notification_id}",
+                    "user_id": f"eq.{user.get('id')}",
+                },
+                method="DELETE",
+                prefer="return=representation",
+            )
+            if not rows:
+                self.send_json({"error": "Notification not found."}, status=404)
+                return
+            self.send_json({"message": "Notification deleted.", "notification": self.format_notification(rows[0])})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to delete notification.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to delete notification."}, status=500)
+
     def list_applicant_permits(self):
         config = self.ensure_applicant_request("permit listing")
         if not config:
@@ -2054,7 +2555,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 payload={
                     "permit_id": permit_id,
                     "applicant_id": user.get("id"),
-                    "status": "Requirements",
+                    "status": "Draft",
                     "permit_snapshot": permit,
                 },
                 prefer="return=representation",
@@ -2090,6 +2591,16 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_id=application_id,
                 details={"permitId": permit_id, "permitName": permit.get("permitName")},
             )
+            self.create_notification(
+                supabase_url,
+                supabase_service_key,
+                user.get("id"),
+                "Application Started",
+                "Your business permit application record has been created.",
+                notification_type="system",
+                source_role="System",
+                application_id=application_id,
+            )
             self.send_json({"message": "Application started.", "application": application, "permit": permit}, status=201)
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to start application.")}, status=error.code)
@@ -2121,11 +2632,12 @@ class AppHandler(SimpleHTTPRequestHandler):
                 supabase_url,
                 supabase_service_key,
                 "applications",
-                {"select": "id", "id": f"eq.{application_id}", "applicant_id": f"eq.{user.get('id')}", "limit": 1},
+                {"select": "id,permit_id", "id": f"eq.{application_id}", "applicant_id": f"eq.{user.get('id')}", "limit": 1},
             )
             if not owned:
                 self.send_json({"error": "Application not found."}, status=404)
                 return
+            application = owned[0]
 
             rows = self.supabase_rest_request(
                 supabase_url,
@@ -2139,8 +2651,35 @@ class AppHandler(SimpleHTTPRequestHandler):
                 },
             )
             if not rows:
-                self.send_json({"error": "Application document not found."}, status=404)
-                return
+                permit_documents = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_documents",
+                    {
+                        "select": "id,permit_id,document_name,short_description,requirement_type,accepted_file_types,max_file_size,upload_required,notes,created_at,updated_at",
+                        "id": f"eq.{permit_document_id}",
+                        "permit_id": f"eq.{application.get('permit_id')}",
+                        "limit": 1,
+                    },
+                )
+                if not permit_documents:
+                    self.send_json({"error": "Application document not found."}, status=404)
+                    return
+
+                created_document_rows = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_documents",
+                    method="POST",
+                    payload={
+                        "application_id": application_id,
+                        "permit_document_id": permit_document_id,
+                        "document_snapshot": self.format_permit_document(permit_documents[0]),
+                        "upload_status": "Pending",
+                    },
+                    prefer="return=representation",
+                )
+                rows = created_document_rows or []
 
             updated = self.supabase_rest_request(
                 supabase_url,
@@ -2156,11 +2695,111 @@ class AppHandler(SimpleHTTPRequestHandler):
                 },
                 prefer="return=representation",
             )
+            if upload_status == "Uploaded":
+                self.create_notification(
+                    supabase_url,
+                    supabase_service_key,
+                    user.get("id"),
+                    "Document Uploaded",
+                    f"{file_name or 'Your document'} was uploaded successfully.",
+                    notification_type="document",
+                    source_role="System",
+                    application_id=application_id,
+                )
+            elif upload_status == "Removed":
+                self.create_notification(
+                    supabase_url,
+                    supabase_service_key,
+                    user.get("id"),
+                    "Document Removed",
+                    "A document was removed from your application requirements.",
+                    notification_type="document",
+                    source_role="System",
+                    application_id=application_id,
+                )
             self.send_json({"message": "Document updated.", "document": updated[0] if updated else {}})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to update document.")}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to update document."}, status=500)
+
+    def get_applicant_application_ocr_fields(self, application_id):
+        config = self.ensure_applicant_request("OCR field loading")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        application_id = (application_id or "").strip()
+        if not application_id:
+            self.send_json({"error": "Application is required."}, status=400)
+            return
+
+        try:
+            application_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id,applicant_id",
+                    "id": f"eq.{application_id}",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "limit": 1,
+                },
+            )
+            if not application_rows:
+                self.send_json({"error": "Application not found."}, status=404)
+                return
+
+            merged_fields = {}
+
+            document_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "ocr_extracted_fields",
+                    "application_id": f"eq.{application_id}",
+                    "order": "created_at.asc",
+                },
+            ) or []
+            for row in document_rows:
+                fields = row.get("ocr_extracted_fields") or {}
+                if isinstance(fields, dict):
+                    merged_fields.update(self.normalize_extracted_business_fields(fields))
+
+            ocr_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_ocr_results",
+                {
+                    "select": "extracted_fields",
+                    "application_id": f"eq.{application_id}",
+                    "order": "created_at.asc",
+                },
+            ) or []
+            for row in ocr_rows:
+                fields = row.get("extracted_fields") or {}
+                if isinstance(fields, dict):
+                    merged_fields.update(self.normalize_extracted_business_fields(fields))
+
+            self.send_json(
+                {
+                    "success": True,
+                    "fields": merged_fields,
+                    "extracted_fields": merged_fields,
+                    "extractedFields": merged_fields,
+                    "ocrResultCount": len(ocr_rows or []),
+                    "documentOcrCount": sum(
+                        1
+                        for row in document_rows
+                        if isinstance(row.get("ocr_extracted_fields"), dict) and row.get("ocr_extracted_fields")
+                    ),
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load OCR fields.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load OCR fields."}, status=500)
 
     def extract_applicant_document_ocr(self):
         config = self.ensure_applicant_request("OCR extraction")
@@ -2258,17 +2897,243 @@ class AppHandler(SimpleHTTPRequestHandler):
                 },
                 prefer="return=representation",
             )
+            self.create_notification(
+                supabase_url,
+                supabase_service_key,
+                user.get("id"),
+                "OCR Extraction Completed",
+                f"{file_name or 'Your document'} was read and matched to available form fields.",
+                notification_type="document",
+                source_role="System",
+                application_id=application_id,
+            )
 
             self.send_json(
                 {
+                    "success": True,
                     "message": "OCR completed.",
                     "ocr": ocr_rows[0] if ocr_rows else {},
+                    "extracted_fields": extracted_fields,
                     "extractedFields": extracted_fields,
                 }
             )
 
         except Exception as error:
             self.send_json({"error": str(error) or "Unable to process OCR."}, status=500)
+
+    def submit_applicant_application(self):
+        config = self.ensure_applicant_request("application submission")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("application_id") or payload.get("applicationId") or "").strip()
+            business_info = payload.get("business_info") or payload.get("businessInfo") or {}
+
+            if not application_id:
+                self.send_json({"error": "Missing application_id."}, status=400)
+                return
+
+            if not isinstance(business_info, dict) or not business_info:
+                self.send_json({"error": "Missing business information."}, status=400)
+                return
+
+            required_business_fields = {
+                "business_name": "Business name",
+                "business_address": "Business address",
+                "first_name": "First name",
+                "last_name": "Last name",
+            }
+            missing_business_fields = [
+                label
+                for field_name, label in required_business_fields.items()
+                if not str(business_info.get(field_name) or "").strip()
+            ]
+            if missing_business_fields:
+                self.send_json(
+                    {"error": f"Please complete: {', '.join(missing_business_fields)}."},
+                    status=400,
+                )
+                return
+
+            application_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id,permit_id,applicant_id,status",
+                    "id": f"eq.{application_id}",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "limit": 1,
+                },
+            )
+            if not application_rows:
+                self.send_json({"error": "Application not found."}, status=404)
+                return
+
+            application = application_rows[0]
+            document_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id,file_url,upload_status,document_snapshot,ocr_status",
+                    "application_id": f"eq.{application_id}",
+                },
+            )
+
+            missing_documents = []
+            processing_documents = []
+            for document in document_rows or []:
+                snapshot = document.get("document_snapshot") or {}
+                requirement_type = snapshot.get("requirementType") or snapshot.get("requirement_type") or ""
+                upload_required = snapshot.get("uploadRequired")
+                if upload_required is None:
+                    upload_required = snapshot.get("upload_required", True)
+
+                if requirement_type == "Required" and upload_required is not False:
+                    if not document.get("file_url") or document.get("upload_status") != "Uploaded":
+                        missing_documents.append(document)
+
+                if document.get("upload_status") == "Uploaded" and document.get("ocr_status") == "Processing":
+                    processing_documents.append(document)
+
+            if missing_documents:
+                self.send_json({"error": "Please upload all required documents before submitting."}, status=400)
+                return
+
+            if processing_documents:
+                self.send_json({"error": "Please wait for OCR to finish before submitting."}, status=400)
+                return
+
+            submitted_at = utc_now_iso()
+            updated_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {"id": f"eq.{application_id}"},
+                method="PATCH",
+                payload={
+                    "business_info": business_info,
+                    "status": "Submitted",
+                    "progress": "Submitted",
+                    "submitted_at": submitted_at,
+                },
+                prefer="return=representation",
+            )
+
+            office_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permit_required_offices",
+                {
+                    "select": "office_id",
+                    "permit_id": f"eq.{application.get('permit_id')}",
+                },
+            ) or []
+            office_ids = [row.get("office_id") for row in office_rows if row.get("office_id")]
+
+            departments = []
+            if office_ids:
+                departments = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "departments",
+                    {
+                        "select": "id,name",
+                        "id": f"in.({','.join(office_ids)})",
+                    },
+                ) or []
+
+            created_assignments = []
+            for department in departments:
+                department_key = department_key_from_name(department.get("name"))
+                if not department_key:
+                    continue
+
+                existing_assignment = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "department_application_assignments",
+                    {
+                        "select": "id",
+                        "application_id": f"eq.{application_id}",
+                        "department_key": f"eq.{department_key}",
+                        "limit": 1,
+                    },
+                )
+                if existing_assignment:
+                    continue
+
+                assignment_rows = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "department_application_assignments",
+                    method="POST",
+                    payload={
+                        "application_id": application_id,
+                        "department_key": department_key,
+                        "evaluation_status": "Pending",
+                        "verification_status": "Unverified",
+                        "assigned_by": user.get("id"),
+                    },
+                    prefer="return=representation",
+                )
+                if assignment_rows:
+                    created_assignments.append(assignment_rows[0])
+
+            self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_status_history",
+                method="POST",
+                payload={
+                    "application_id": application_id,
+                    "status": "Submitted",
+                    "remarks": "Application submitted by applicant.",
+                    "created_by": user.get("id"),
+                },
+                prefer="return=minimal",
+            )
+
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "application_submitted",
+                actor=user,
+                entity_type="application",
+                entity_id=application_id,
+                details={
+                    "businessName": business_info.get("business_name"),
+                    "assignedDepartments": [item.get("department_key") for item in created_assignments],
+                },
+            )
+            self.create_notification(
+                supabase_url,
+                supabase_service_key,
+                user.get("id"),
+                "Application Submitted",
+                "Your application has been submitted successfully.",
+                notification_type="status",
+                source_role="System",
+                application_id=application_id,
+            )
+
+            self.send_json(
+                {
+                    "success": True,
+                    "message": "Application submitted successfully.",
+                    "application": updated_rows[0] if updated_rows else {},
+                    "assignments": created_assignments,
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to submit application.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to submit application."}, status=500)
 
     def create_audit_log(self):
         config = self.ensure_authenticated_request()
@@ -2367,6 +3232,108 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": message}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to load audit logs."}, status=500)
+
+    def list_admin_applications(self):
+        config = self.ensure_admin_request("application listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+
+        try:
+            applications = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id,permit_id,applicant_id,status,progress,business_info,permit_snapshot,submitted_at,reviewed_at,created_at,updated_at",
+                    "order": "created_at.desc",
+                    "limit": 200,
+                },
+            ) or []
+
+            application_ids = [application.get("id") for application in applications if application.get("id")]
+            documents_by_application = {}
+            ocr_by_application = {}
+            assignments_by_application = {}
+
+            if application_ids:
+                id_filter = f"in.({','.join(application_ids)})"
+                documents = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_documents",
+                    {
+                        "select": "id,application_id,permit_document_id,file_name,file_url,upload_status,ocr_status,ocr_extracted_fields,created_at,updated_at",
+                        "application_id": id_filter,
+                        "order": "created_at.asc",
+                    },
+                ) or []
+                ocr_results = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_ocr_results",
+                    {
+                        "select": "id,application_id,application_document_id,document_type,extracted_fields,ocr_status,error_message,created_at",
+                        "application_id": id_filter,
+                        "order": "created_at.desc",
+                    },
+                ) or []
+                assignments = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "department_application_assignments",
+                    {
+                        "select": "id,application_id,department_key,evaluation_status,verification_status,remarks,created_at,updated_at",
+                        "application_id": id_filter,
+                        "deleted_at": "is.null",
+                        "order": "created_at.asc",
+                    },
+                ) or []
+
+                for document in documents:
+                    documents_by_application.setdefault(document.get("application_id"), []).append(document)
+                for ocr_result in ocr_results:
+                    ocr_by_application.setdefault(ocr_result.get("application_id"), []).append(ocr_result)
+                for assignment in assignments:
+                    assignments_by_application.setdefault(assignment.get("application_id"), []).append(assignment)
+
+            formatted = []
+            for application in applications:
+                application_id = application.get("id")
+                business_info = application.get("business_info") or {}
+                formatted.append(
+                    {
+                        "id": application_id,
+                        "referenceNumber": (application_id or "")[:8],
+                        "businessName": business_info.get("business_name") or business_info.get("businessName") or "",
+                        "ownerName": business_info.get("owner_name") or " ".join(
+                            part
+                            for part in [
+                                business_info.get("first_name"),
+                                business_info.get("middle_name"),
+                                business_info.get("last_name"),
+                            ]
+                            if part
+                        ).strip(),
+                        "status": application.get("status") or "",
+                        "progress": application.get("progress") or "",
+                        "submittedAt": application.get("submitted_at") or "",
+                        "businessInfo": business_info,
+                        "permit": application.get("permit_snapshot") or {},
+                        "documents": documents_by_application.get(application_id, []),
+                        "ocrResults": ocr_by_application.get(application_id, []),
+                        "officeProgress": assignments_by_application.get(application_id, []),
+                        "createdAt": application.get("created_at") or "",
+                        "updatedAt": application.get("updated_at") or "",
+                    }
+                )
+
+            self.send_json({"applications": formatted, "total": len(formatted)})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load applications.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load applications."}, status=500)
 
     def ensure_department_request(self):
         supabase_url, supabase_client_key, supabase_service_key, _admin_email = self.get_admin_api_config()
@@ -2491,13 +3458,23 @@ class AppHandler(SimpleHTTPRequestHandler):
         )
 
     def format_department_assignment(self, assignment):
-        application = assignment.get("business_permit_applications") or {}
-        payload = application.get("application_payload") or {}
+        application = assignment.get("applications") or {}
+        payload = application.get("business_info") or {}
+        permit_snapshot = application.get("permit_snapshot") or {}
+        applicant_name = " ".join(
+            part
+            for part in [
+                payload.get("first_name") or payload.get("firstName"),
+                payload.get("middle_name") or payload.get("middleName"),
+                payload.get("last_name") or payload.get("lastName"),
+            ]
+            if part
+        ).strip()
         return {
             "assignmentId": assignment.get("id"),
             "applicationId": assignment.get("application_id"),
-            "referenceNumber": application.get("permit_id") or "-",
-            "businessName": application.get("business_name") or "-",
+            "referenceNumber": (application.get("id") or "-")[:8],
+            "businessName": payload.get("business_name") or payload.get("businessName") or "-",
             "status": assignment.get("evaluation_status") or "Pending",
             "remarks": assignment.get("remarks") or "",
             "verificationStatus": assignment.get("verification_status") or "Unverified",
@@ -2506,23 +3483,17 @@ class AppHandler(SimpleHTTPRequestHandler):
             "inspectionRemarks": assignment.get("inspection_remarks") or "",
             "assignedAt": assignment.get("created_at") or "",
             "applicant": {
-                "name": " ".join(
-                    part
-                    for part in [
-                        payload.get("firstName"),
-                        payload.get("middleName"),
-                        payload.get("lastName"),
-                    ]
-                    if part
-                ).strip(),
-                "email": payload.get("email") or payload.get("businessEmail") or "",
-                "contact": payload.get("contactNumber") or payload.get("businessMobile") or "",
-                "address": payload.get("homeAddress") or payload.get("businessAddress") or "",
+                "name": applicant_name or payload.get("owner_name") or "",
+                "email": payload.get("email") or payload.get("business_email") or payload.get("businessEmail") or "",
+                "contact": payload.get("contact_number") or payload.get("business_mobile") or payload.get("businessMobile") or "",
+                "address": payload.get("home_address") or payload.get("business_address") or payload.get("businessAddress") or "",
             },
             "application": {
-                "type": application.get("application_type") or "",
-                "submittedId": application.get("submitted_id") or "",
-                "submittedAt": application.get("created_at") or "",
+                "type": permit_snapshot.get("permitName") or permit_snapshot.get("permit_name") or "",
+                "status": application.get("status") or "",
+                "progress": application.get("progress") or "",
+                "submittedId": (application.get("id") or "")[:8],
+                "submittedAt": application.get("submitted_at") or application.get("created_at") or "",
                 "payload": payload,
             },
         }
@@ -2531,8 +3502,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         select = (
             "id,application_id,department_key,evaluation_status,remarks,verification_status,"
             "inspection_date,inspection_time,inspection_remarks,created_at,updated_at,"
-            "business_permit_applications(id,permit_id,business_name,status,application_type,"
-            "submitted_id,application_payload,created_at,user_id)"
+            "applications(id,permit_id,applicant_id,status,progress,business_info,permit_snapshot,submitted_at,created_at)"
         )
         filters = {
             "select": select,
@@ -2668,6 +3638,22 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_type="department_application_assignment",
                 entity_id=application_id,
                 details={"department": config["department_key"], "status": status, "remarks": remarks},
+            )
+            department_name = config["department_name"]
+            if status == "Approved":
+                notification_message = f"{department_name} has approved your submitted documents."
+            elif status == "Rejected":
+                notification_message = f"{department_name} requested a correction. Please review the remarks."
+            else:
+                notification_message = f"{department_name} updated your application review status to {status}."
+            self.notify_application_owner(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                application_id,
+                "Department Review Updated",
+                notification_message,
+                notification_type="status",
+                source_role=department_name,
             )
             self.send_json({"message": "Application evaluation updated.", "assignment": updated[0] if updated else {}})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
@@ -2817,6 +3803,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_id=created.get("id"),
                 details={"department": config["department_key"], "applicationId": application_id},
             )
+            self.notify_application_owner(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                application_id,
+                "Inspection Scheduled",
+                f"{config['department_name']} scheduled your inspection on {scheduled_date} at {scheduled_time}.",
+                notification_type="inspection",
+                source_role=config["department_name"],
+            )
             self.send_json({"message": "Inspection schedule created.", "inspection": created}, status=201)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to create inspection schedule.")
@@ -2882,6 +3877,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_id=created.get("id"),
                 details={"department": config["department_key"], "applicationId": application_id},
             )
+            self.notify_application_owner(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                application_id,
+                "Office Remark Added",
+                f"{config['department_name']} added a remark to your application.",
+                notification_type="status",
+                source_role=config["department_name"],
+            )
             self.send_json({"message": "Remark created.", "remark": created}, status=201)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to create remark.")
@@ -2930,6 +3934,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_type="department_verification",
                 entity_id=created.get("id"),
                 details={"department": config["department_key"], "applicationId": application_id, "status": status},
+            )
+            self.notify_application_owner(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                application_id,
+                "Document Verification Updated",
+                f"{config['department_name']} marked a requirement as {status}.",
+                notification_type="document",
+                source_role=config["department_name"],
             )
             self.send_json({"message": "Verification record created.", "verification": created}, status=201)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
@@ -3204,6 +4217,29 @@ class AppHandler(SimpleHTTPRequestHandler):
                 entity_id=record_id,
                 details={"department": config["department_key"]},
             )
+            updated_record = rows[0]
+            application_id = updated_record.get("application_id")
+            if table == "department_inspections" and application_id:
+                self.notify_application_owner(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application_id,
+                    "Inspection Updated",
+                    f"{config['department_name']} updated your inspection schedule.",
+                    notification_type="inspection",
+                    source_role=config["department_name"],
+                )
+            elif table == "department_verifications" and application_id:
+                verification_status = updated_record.get("verification_status") or "updated"
+                self.notify_application_owner(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application_id,
+                    "Document Verification Updated",
+                    f"{config['department_name']} marked a requirement as {verification_status}.",
+                    notification_type="document",
+                    source_role=config["department_name"],
+                )
             self.send_json({"message": "Record updated.", "record": rows[0]})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to update record.")
@@ -3375,6 +4411,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             rows = self.service_rest_request(config, "treasury_records", method="POST", payload=record, prefer="return=representation")
             created = rows[0] if rows else {}
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_created", actor=config["actor"], entity_type="treasury_record", entity_id=created.get("id"), details={"applicationNo": record["application_no"]})
+            application = self.find_application_by_reference(config["supabase_url"], config["supabase_service_key"], record["application_no"])
+            if application:
+                self.create_notification(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application.get("applicant_id"),
+                    "Treasury Update",
+                    f"Your treasury record is now {record['status']} for {record['current_step']}.",
+                    notification_type="payment",
+                    source_role="Treasury",
+                    application_id=application.get("id"),
+                )
             self.send_json({"message": "Treasury record created.", "record": self.format_treasury_record(created)}, status=201)
         except ValueError as error:
             self.send_json({"error": str(error)}, status=400)
@@ -3394,6 +4442,31 @@ class AppHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Treasury record not found."}, status=404)
                 return
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_updated", actor=config["actor"], entity_type="treasury_record", entity_id=record_id, details={"applicationNo": payload["application_no"]})
+            application = self.find_application_by_reference(config["supabase_url"], config["supabase_service_key"], payload["application_no"])
+            if application:
+                status = payload["status"]
+                if status == "Paid":
+                    title = "Payment Verified"
+                    message = "Your payment has been verified by Treasury."
+                elif payload["current_step"] == "SOA Generation":
+                    title = "Statement of Account Available"
+                    message = "Your Statement of Account is now available."
+                elif payload["current_step"] == "Official Receipt":
+                    title = "Official Receipt Updated"
+                    message = "Your Official Receipt has been generated or updated."
+                else:
+                    title = "Treasury Update"
+                    message = f"Your treasury record is now {status} for {payload['current_step']}."
+                self.create_notification(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application.get("applicant_id"),
+                    title,
+                    message,
+                    notification_type="payment",
+                    source_role="Treasury",
+                    application_id=application.get("id"),
+                )
             self.send_json({"message": "Treasury record updated.", "record": self.format_treasury_record(rows[0])})
         except ValueError as error:
             self.send_json({"error": str(error)}, status=400)

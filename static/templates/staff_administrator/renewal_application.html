@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Staff Administrator - Re-Newal Application</title>
+    <link rel="stylesheet" href="/styles/admin.css?v=10" />
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+  </head>
+  <body>
+    <main class="staff-admin-shell">
+      <aside class="staff-sidebar" aria-label="Staff administrator navigation">
+        <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Staff Administrator</small></span>
+        </a>
+        <nav class="staff-nav">
+          <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
+          <a href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
+          <a class="is-active" href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
+          <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
+        </nav>
+        <a class="staff-logout" href="/login" data-logout-modal-only><i data-lucide="log-out" aria-hidden="true"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="staff-main">
+        <header class="staff-topbar">
+          <h1>Re-Newal Application</h1>
+          <section class="staff-welcome" aria-label="Signed in staff administrator">
+            <span>Welcome back,</span><strong>Admin name</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+          </section>
+        </header>
+
+        <section class="staff-renewal-page">
+          <section class="staff-panel staff-renewal-search" aria-labelledby="find-permit-title">
+            <header class="staff-panel-header"><h2 id="find-permit-title">Find Existing Permit</h2></header>
+            <div class="staff-renewal-search-grid">
+              <label><span>Business Permit No.</span><input type="text" placeholder="Enter permit number" /></label>
+              <label><span>Business Name</span><input type="text" placeholder="Enter business name" /></label>
+              <label><span>Owner Name</span><input type="text" placeholder="Enter owner name" /></label>
+              <button type="button"><i data-lucide="search" aria-hidden="true"></i> Search Record</button>
+            </div>
+            <p><i data-lucide="info" aria-hidden="true"></i> Search using any of the details above to find an existing permit.</p>
+          </section>
+
+          <section class="staff-panel staff-renewal-process" aria-labelledby="renewal-process-title">
+            <header class="staff-panel-header"><h2 id="renewal-process-title">Renewal Process</h2></header>
+            <div class="staff-process-steps">
+              <article><span><i data-lucide="shield-check" aria-hidden="true"></i></span><strong>1</strong><h3>Verify Previous Permit</h3><p>Confirm and validate your existing permit details.</p></article>
+              <article><span><i data-lucide="file-search" aria-hidden="true"></i></span><strong>2</strong><h3>Review Required Documents</h3><p>Check the list of documents that must be passed again.</p></article>
+              <article><span><i data-lucide="cloud-upload" aria-hidden="true"></i></span><strong>3</strong><h3>Upload Updated Documents</h3><p>Upload updated or new documents as needed.</p></article>
+              <article><span><i data-lucide="send" aria-hidden="true"></i></span><strong>4</strong><h3>Submit for Review</h3><p>Submit your renewal application for evaluation.</p></article>
+            </div>
+          </section>
+
+          <section class="staff-panel staff-permit-info" aria-labelledby="previous-permit-title">
+            <header class="staff-panel-header"><h2 id="previous-permit-title">Previous Permit Information</h2></header>
+            <dl>
+              <div><dt>Business Permit No.</dt><dd>BP-2024-01567</dd></div>
+              <div><dt>Business Name</dt><dd>Dela Cruz Sari-Sari Store</dd></div>
+              <div><dt>Owner Name</dt><dd>Juan Dela Cruz</dd></div>
+              <div><dt>Business Type</dt><dd>Retail / General Merchandise</dd></div>
+              <div><dt>Date Issued</dt><dd>May 27, 2024</dd></div>
+              <div><dt>Expiry Date</dt><dd>May 26, 2025</dd></div>
+              <div><dt>Permit Status</dt><dd><span class="staff-status staff-status--assessment">Active</span></dd></div>
+            </dl>
+          </section>
+
+          <section class="staff-panel staff-required-documents" aria-labelledby="required-documents-title">
+            <header class="staff-panel-header"><h2 id="required-documents-title">Required Documents to Pass Again</h2></header>
+            <ul>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>Business Permit Copy</li>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>Barangay Clearance</li>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>DTI / SEC Registration</li>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>Valid ID</li>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>Community Tax Certificate</li>
+              <li><i data-lucide="check-circle-2" aria-hidden="true"></i>Other Required Documents</li>
+            </ul>
+            <p><i data-lucide="info" aria-hidden="true"></i> These documents are required to be passed again for your business permit renewal.</p>
+          </section>
+
+          <section class="staff-panel staff-upload-requirements" aria-labelledby="upload-requirements-title">
+            <header class="staff-panel-header"><h2 id="upload-requirements-title">Upload Updated Requirements</h2></header>
+            <div class="staff-table-wrap">
+              <table class="staff-table staff-renewal-doc-table">
+                <thead><tr><th>Document</th><th>Requirement</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> Business Permit Copy</td><td>Clear copy of current business permit</td><td><span class="staff-status staff-status--assessment">Uploaded</span></td><td>BP_Copy_2025.pdf</td><td><button>View File</button><a href="#">Replace</a></td></tr>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> Barangay Clearance</td><td>Updated barangay clearance</td><td><span class="staff-status staff-status--assessment">Uploaded</span></td><td>Brgy_Clearance_2025.pdf</td><td><button>View File</button><a href="#">Replace</a></td></tr>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> DTI / SEC Registration</td><td>DTI or SEC registration certificate</td><td><span class="staff-status staff-status--pending">Need Update</span></td><td>DTI_Registration_2024.pdf</td><td><button>View File</button><a href="#">Replace</a></td></tr>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> Valid ID</td><td>Valid government-issued ID</td><td><span class="staff-status staff-status--assessment">Uploaded</span></td><td>ValidID_2025.jpg</td><td><button>View File</button><a href="#">Replace</a></td></tr>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> Community Tax Certificate</td><td>Updated community tax certificate</td><td><span class="staff-status staff-status--revision">Missing</span></td><td>-</td><td><button class="is-filled">Upload File</button></td></tr>
+                  <tr><td><i data-lucide="file-text" aria-hidden="true"></i> Other Required Documents</td><td>Any other required supporting documents</td><td><span class="staff-status staff-status--revision">Missing</span></td><td>-</td><td><button class="is-filled">Upload File</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <aside class="staff-renewal-alert"><i data-lucide="triangle-alert" aria-hidden="true"></i> Ensure all documents are complete, valid, and up to date. Incomplete or outdated documents may delay the renewal process.</aside>
+        </section>
+      </section>
+    </main>
+    <script>window.lucide?.createIcons();</script>
+  </body>
+</html>

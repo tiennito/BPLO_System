@@ -22,6 +22,7 @@ const businessStepPanels = {
 const businessContinueButton = document.querySelector("[data-business-continue]");
 const finishApplicationButton = document.querySelector("[data-finish-application]");
 const reviewStrip = document.querySelector("[data-review-strip]");
+const profilePrefillStatus = document.querySelector("[data-profile-prefill-status]");
 const recentPermitsTableBody = document.querySelector(".permits-table-wrap tbody");
 const activePermitsGrid = document.querySelector("[data-active-permits]");
 const dynamicDocumentGrid = document.querySelector("[data-dynamic-document-grid]");
@@ -29,17 +30,50 @@ const checklistPermitName = document.querySelector("[data-checklist-permit-name]
 const checklistPermitCode = document.querySelector("[data-checklist-permit-code]");
 const requirementsNextButton = document.querySelector("[data-requirements-next]");
 const requirementsStatus = document.querySelector("[data-requirements-status]");
+const notificationMenu = document.querySelector("[data-notification-menu]");
+const notificationToggle = document.querySelector("[data-notification-toggle]");
+const notificationDropdown = document.querySelector("[data-notification-dropdown]");
+const notificationList = document.querySelector("[data-notification-list]");
+const notificationCount = document.querySelector("[data-notification-count]");
+const markAllNotificationsReadButton = document.querySelector("[data-mark-all-notifications-read]");
 
 const PERMIT_STORAGE_KEY = "bplo_recent_business_permits";
 const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
 const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
 const OCR_FIELDS_KEY = "bplo_current_ocr_fields";
+const OCR_SKIP_KEY = "bplo_skip_ocr_fields";
+const BUSINESS_REQUIRED_FIELDS = [
+  ["applicationDate", "Date of Application"],
+  ["registrationNumber", "DTI/SEC/CDA Registration No."],
+  ["modeOfPayment", "Mode of Payment"],
+  ["lastName", "Last Name"],
+  ["firstName", "First Name"],
+  ["middleName", "Middle Name"],
+  ["email", "Registered Email Address"],
+  ["contactNumber", "Registered Contact Number"],
+  ["homeAddress", "Home Address"],
+  ["businessName", "Business Name"],
+  ["businessTypes", "Type of Business"],
+  ["businessClassification", "Business Classification"],
+  ["businessAddress", "Business Address"],
+  ["businessBarangay", "Business Barangay"],
+  ["businessPremise", "Business Premise"],
+  ["businessMobile", "Business Mobile Number"],
+  ["businessEmail", "Business Email"],
+  ["ownerContactNumber", "Owner/Proprietor Contact Number"],
+];
 
 let supabaseClient = null;
 let currentUser = null;
+let currentAccessProfile = null;
+let currentApplicantProfile = null;
+let applicantProfileLoadError = "";
 let activePermitCache = [];
 let checklistDocuments = [];
 let uploadedDocumentNames = new Map();
+let applicantNotifications = [];
+let isApplyingBusinessDefaults = false;
+const editedBusinessFields = new Set();
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -91,6 +125,128 @@ async function applicantApi(path, options = {}) {
     throw new Error(payload.error || "Unable to complete request.");
   }
   return payload;
+}
+
+function formatNotificationTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function updateNotificationBadge(unreadCount = 0) {
+  if (!notificationCount) {
+    return;
+  }
+
+  notificationCount.hidden = unreadCount <= 0;
+  notificationCount.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+}
+
+function renderNotifications(notifications = applicantNotifications) {
+  if (!notificationList) {
+    return;
+  }
+
+  if (!notifications.length) {
+    notificationList.innerHTML = '<p class="notification-empty">No notifications yet.</p>';
+    updateNotificationBadge(0);
+    return;
+  }
+
+  notificationList.innerHTML = notifications
+    .map((notification) => {
+      const stateClass = notification.isRead ? "is-read" : "is-unread";
+      return `
+        <button class="notification-item ${stateClass}" type="button" data-notification-id="${escapeHtml(notification.id)}">
+          <span class="notification-item-title">
+            <span>${escapeHtml(notification.title)}</span>
+            <span class="notification-dot" aria-hidden="true"></span>
+          </span>
+          <p>${escapeHtml(notification.message)}</p>
+          <span class="notification-time">${escapeHtml(formatNotificationTime(notification.createdAt))}</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  updateNotificationBadge(notifications.filter((notification) => !notification.isRead).length);
+}
+
+async function loadApplicantNotifications() {
+  if (!notificationMenu) {
+    return;
+  }
+
+  try {
+    const payload = await applicantApi("/applicant/api/notifications");
+    applicantNotifications = payload.notifications || [];
+    renderNotifications(applicantNotifications);
+    updateNotificationBadge(payload.unreadCount || 0);
+  } catch {
+    renderNotifications([]);
+  }
+}
+
+async function markNotificationRead(notificationId) {
+  if (!notificationId) {
+    return;
+  }
+
+  const notification = applicantNotifications.find((item) => item.id === notificationId);
+  if (notification?.isRead) {
+    return;
+  }
+
+  applicantNotifications = applicantNotifications.map((item) =>
+    item.id === notificationId ? { ...item, isRead: true, readAt: new Date().toISOString() } : item
+  );
+  renderNotifications(applicantNotifications);
+
+  try {
+    await applicantApi(`/applicant/api/notifications/${encodeURIComponent(notificationId)}/read`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+    await loadApplicantNotifications();
+  } catch {
+    // Keep the local read state; the next refresh will reconcile with the server.
+  }
+}
+
+async function markAllNotificationsRead() {
+  if (!applicantNotifications.length) {
+    return;
+  }
+
+  applicantNotifications = applicantNotifications.map((notification) => ({
+    ...notification,
+    isRead: true,
+    readAt: notification.readAt || new Date().toISOString(),
+  }));
+  renderNotifications(applicantNotifications);
+
+  try {
+    await applicantApi("/applicant/api/notifications/mark-all-read", {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+    await loadApplicantNotifications();
+  } catch {
+    // Keep the local read state; the next refresh will reconcile with the server.
+  }
 }
 
 function setField(name, value) {
@@ -216,7 +372,7 @@ async function startPermitApplication(permitId) {
       body: JSON.stringify({ permitId }),
     });
     window.sessionStorage.setItem(SELECTED_PERMIT_KEY, permitId);
-    window.sessionStorage.setItem(CURRENT_APPLICATION_KEY, payload.application?.id || "");
+    setCurrentApplicationId(payload.application?.id || "");
     window.location.href = "/applicant/new-application";
   } catch (error) {
     if (button) {
@@ -244,6 +400,27 @@ function writeStoredPermits(permits) {
   }
 }
 
+function getCurrentApplicationId() {
+  try {
+    return window.sessionStorage.getItem(CURRENT_APPLICATION_KEY) || window.localStorage.getItem(CURRENT_APPLICATION_KEY) || "";
+  } catch {
+    return window.sessionStorage.getItem(CURRENT_APPLICATION_KEY) || "";
+  }
+}
+
+function setCurrentApplicationId(applicationId) {
+  if (!applicationId) {
+    return;
+  }
+
+  window.sessionStorage.setItem(CURRENT_APPLICATION_KEY, applicationId);
+  try {
+    window.localStorage.setItem(CURRENT_APPLICATION_KEY, applicationId);
+  } catch {
+    // Session storage is enough for the active application flow.
+  }
+}
+
 function readStoredOcrFields() {
   try {
     return JSON.parse(window.sessionStorage.getItem(OCR_FIELDS_KEY) || "{}");
@@ -254,8 +431,12 @@ function readStoredOcrFields() {
 
 function writeStoredOcrFields(fields) {
   const current = readStoredOcrFields();
-  const merged = { ...current, ...fields };
+  const merged = { ...current, ...normalizeOcrFieldsForBusinessForm(fields) };
   window.sessionStorage.setItem(OCR_FIELDS_KEY, JSON.stringify(merged));
+}
+
+function clearStoredOcrFields() {
+  window.sessionStorage.removeItem(OCR_FIELDS_KEY);
 }
 
 function updateRequirementsNextState() {
@@ -328,7 +509,7 @@ function sanitizeStorageName(fileName) {
 
 async function uploadApplicationFile(permitDocumentId, file) {
   const client = initSupabase();
-  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  const applicationId = getCurrentApplicationId();
   if (!client || !currentUser?.id || !applicationId) {
     throw new Error("Application session is not ready. Please start the application again.");
   }
@@ -346,7 +527,7 @@ async function uploadApplicationFile(permitDocumentId, file) {
 }
 
 async function persistApplicationDocument(permitDocumentId, fileName, uploadStatus, fileUrl = "") {
-  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  const applicationId = getCurrentApplicationId();
   if (!applicationId) {
     return;
   }
@@ -364,7 +545,7 @@ async function persistApplicationDocument(permitDocumentId, fileName, uploadStat
 }
 
 async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
-  const applicationId = window.sessionStorage.getItem(CURRENT_APPLICATION_KEY);
+  const applicationId = getCurrentApplicationId();
   const documentConfig = checklistDocuments.find((doc) => doc.id === permitDocumentId);
 
   const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
@@ -385,11 +566,20 @@ async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
       }),
     });
 
-    writeStoredOcrFields(payload.extractedFields || {});
+    const extractedFields = payload.extractedFields || payload.extracted_fields || {};
+    writeStoredOcrFields(extractedFields);
+    setSkipOcrAutoFill(false);
+    applyOcrFieldsToBusinessForm(extractedFields);
 
     if (result) {
-      result.textContent = `${fileName} - OCR completed`;
+      result.textContent = Object.keys(normalizeOcrFieldsForBusinessForm(extractedFields)).length
+        ? `${fileName} - OCR completed. Fields will auto-fill on the next step`
+        : `${fileName} - OCR completed, but no readable details were found`;
       result.classList.add("is-uploaded");
+    }
+
+    if (!Object.keys(normalizeOcrFieldsForBusinessForm(extractedFields)).length) {
+      alert("OCR was completed, but no readable business details were found. Please fill out the form manually.");
     }
   } catch (error) {
     if (result) {
@@ -501,8 +691,123 @@ async function loadRequirementsChecklist() {
   }
 }
 
+function normalizeOcrFieldsForBusinessForm(fields = {}) {
+  const aliases = {
+    date_of_application: "application_date",
+    dti_registration_no: "registration_number",
+    dti_registration_number: "registration_number",
+    registration_no: "registration_number",
+    certificate_no: "registration_number",
+    owner_first_name: "first_name",
+    owner_middle_name: "middle_name",
+    owner_last_name: "last_name",
+    registered_email: "email",
+    registered_contact_number: "contact_number",
+    business_type: "type_of_business",
+    business_types: "type_of_business",
+    capital_investment: "capitalization",
+  };
+  const normalized = {};
+
+  Object.entries(fields || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+
+    normalized[aliases[key] || key] = value;
+  });
+
+  if (fields.owner_name && (!normalized.first_name || !normalized.last_name)) {
+    const nameParts = String(fields.owner_name).trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length >= 2) {
+      normalized.first_name ||= nameParts[0];
+      normalized.last_name ||= nameParts.at(-1);
+      normalized.middle_name ||= nameParts.slice(1, -1).join(" ");
+    } else if (nameParts.length === 1) {
+      normalized.first_name ||= nameParts[0];
+    }
+  }
+
+  if (typeof normalized.type_of_business === "string") {
+    normalized.type_of_business = normalized.type_of_business
+      .toUpperCase()
+      .replace("SOLE PROPRIETORSHIP", "SINGLE");
+  }
+
+  return normalized;
+}
+
+function isValidBusinessName(value) {
+  if (!value) {
+    return false;
+  }
+
+  const badWords = [
+    "no.",
+    "number",
+    "registration",
+    "issued",
+    "issue",
+    "philippines",
+    "secretary",
+    "certificate",
+    "department",
+    "trade and industry",
+    "this is to certify",
+    "pursuant",
+    "valid",
+  ];
+  const normalizedValue = String(value).trim();
+  const lowerValue = normalizedValue.toLowerCase();
+
+  if (normalizedValue.length < 3 || normalizedValue.length > 80) {
+    return false;
+  }
+
+  if (!/[a-z]/i.test(normalizedValue)) {
+    return false;
+  }
+
+  if (/\b(?:no|number)\.?\s*\d/i.test(normalizedValue)) {
+    return false;
+  }
+
+  if (/^(?:no\.?\s*)?[a-z0-9-]{4,}$/i.test(normalizedValue) && (normalizedValue.match(/[a-z]/gi) || []).length <= 2) {
+    return false;
+  }
+
+  return !badWords.some((word) => lowerValue.includes(word));
+}
+
+function shouldSkipOcrAutoFill(applicationId = getCurrentApplicationId()) {
+  return window.sessionStorage.getItem(`${OCR_SKIP_KEY}:${applicationId}`) === "1";
+}
+
+function setSkipOcrAutoFill(skip, applicationId = getCurrentApplicationId()) {
+  if (!applicationId) {
+    return;
+  }
+
+  const key = `${OCR_SKIP_KEY}:${applicationId}`;
+  if (skip) {
+    window.sessionStorage.setItem(key, "1");
+  } else {
+    window.sessionStorage.removeItem(key);
+  }
+}
+
+function notifyBusinessFieldChanged(control) {
+  control.dispatchEvent(new Event("input", { bubbles: true }));
+  control.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function setBusinessFieldValue(name, value) {
   if (!businessFormShell || value === undefined || value === null || value === "") {
+    return;
+  }
+
+  if (name === "business_name" && !isValidBusinessName(value)) {
+    console.warn("Rejected invalid business name from OCR:", value);
     return;
   }
 
@@ -512,38 +817,82 @@ function setBusinessFieldValue(name, value) {
     if (control instanceof HTMLInputElement) {
       if (control.type === "radio") {
         control.checked = control.value === value;
+        if (control.checked) {
+          control.classList.add("is-ocr-filled");
+          notifyBusinessFieldChanged(control);
+        }
         return;
       }
 
       if (control.type === "checkbox") {
+        const values = Array.isArray(value) ? value : String(value).split(",").map((item) => item.trim().toUpperCase());
         control.checked = Array.isArray(value)
           ? value.includes(control.value)
-          : control.value === value;
+          : values.includes(control.value);
+        if (control.checked) {
+          control.classList.add("is-ocr-filled");
+          notifyBusinessFieldChanged(control);
+        }
         return;
       }
 
       control.value = value;
       control.classList.add("is-ocr-filled");
+      notifyBusinessFieldChanged(control);
       return;
     }
 
     if (control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement) {
       control.value = value;
       control.classList.add("is-ocr-filled");
+      notifyBusinessFieldChanged(control);
     }
   });
 }
 
-function applyOcrFieldsToBusinessForm() {
-  if (!businessFormShell) {
+function applyOcrFieldsToBusinessForm(fields = readStoredOcrFields()) {
+  if (!businessFormShell || shouldSkipOcrAutoFill()) {
     return;
   }
 
-  const extractedFields = readStoredOcrFields();
+  const extractedFields = normalizeOcrFieldsForBusinessForm(fields);
+  if (
+    extractedFields.business_name &&
+    extractedFields.business_name_confidence &&
+    extractedFields.business_name_confidence !== "high"
+  ) {
+    console.warn("Rejected low-confidence business name from OCR:", extractedFields.business_name);
+    delete extractedFields.business_name;
+  }
 
   Object.entries(extractedFields).forEach(([fieldName, fieldValue]) => {
     setBusinessFieldValue(fieldName, fieldValue);
   });
+}
+
+async function loadOcrFieldsIntoBusinessForm(applicationId) {
+  if (!businessFormShell || !applicationId || shouldSkipOcrAutoFill(applicationId)) {
+    return;
+  }
+
+  try {
+    const result = await applicantApi(`/applicant/api/application/${encodeURIComponent(applicationId)}/ocr-fields`);
+    if (!result.success) {
+      console.warn("No OCR fields found:", result.error);
+      return;
+    }
+
+    const fields = normalizeOcrFieldsForBusinessForm(result.fields || result.extracted_fields || result.extractedFields || {});
+    writeStoredOcrFields(fields);
+    applyOcrFieldsToBusinessForm(fields);
+
+    const hasSavedOcr = Number(result.ocrResultCount || 0) > 0;
+    if (hasSavedOcr && !Object.keys(fields).length) {
+      alert("OCR was completed, but no readable business details were found. Please fill out the form manually.");
+    }
+  } catch (error) {
+    console.error("Failed to load OCR fields:", error);
+  }
 }
 
 function getBusinessFieldValue(name) {
@@ -578,11 +927,59 @@ function getBusinessFieldValue(name) {
   return "";
 }
 
-function setReviewValue(name, value) {
-  const target = document.querySelector(`[data-review-value="${name}"]`);
-  if (target) {
-    target.textContent = value || "Not filled in yet";
+function normalizeReviewValue(value) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).join(", ");
   }
+
+  const text = String(value || "").trim();
+  return text.startsWith("Select ") ? "" : text;
+}
+
+function formatReviewValue(value, fallback = "Not filled in yet") {
+  return normalizeReviewValue(value) || fallback;
+}
+
+function setReviewValue(name, value, fallback = "Not filled in yet") {
+  document.querySelectorAll(`[data-review-value="${name}"]`).forEach((target) => {
+    const formattedValue = formatReviewValue(value, fallback);
+    target.textContent = formattedValue;
+    target.classList.toggle("is-missing", formattedValue === fallback || formattedValue === "Missing information");
+  });
+}
+
+function formatOwnerName(application) {
+  return [application.firstName, application.middleName, application.lastName].filter(Boolean).join(" ");
+}
+
+function getMissingBusinessFields(application) {
+  return BUSINESS_REQUIRED_FIELDS.filter(([key]) => {
+    const value = application[key];
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+    return !normalizeReviewValue(value);
+  }).map(([, label]) => label);
+}
+
+function updateReviewValidation(missingFields = []) {
+  const summary = document.querySelector("[data-review-validation-summary]");
+  const list = document.querySelector("[data-review-validation-list]");
+
+  if (summary) {
+    summary.textContent = missingFields.length
+      ? `${missingFields.length} required field(s) need attention before submission.`
+      : "All required business information is complete. You may submit the application.";
+    summary.classList.toggle("is-ready", missingFields.length === 0);
+    summary.classList.toggle("is-warning", missingFields.length > 0);
+  }
+
+  if (!list) {
+    return;
+  }
+
+  list.hidden = missingFields.length === 0;
+  list.innerHTML = missingFields.map((field) => `<li>${escapeHtml(field)}</li>`).join("");
 }
 
 function collectBusinessApplication() {
@@ -629,11 +1026,47 @@ function collectBusinessApplication() {
 }
 
 function updateReviewCopy(application) {
+  const missingFields = getMissingBusinessFields(application);
+
   setReviewValue("business_name", application.businessName);
+  setReviewValue("business_name_detail", application.businessName);
   setReviewValue("business_address", application.businessAddress || application.homeAddress);
+  setReviewValue("business_address_detail", application.businessAddress);
+  setReviewValue("owner_name", formatOwnerName(application));
   setReviewValue("business_mobile", application.businessMobile || application.contactNumber);
+  setReviewValue("business_mobile_detail", application.businessMobile);
   setReviewValue("business_email", application.businessEmail || application.email);
-  setReviewValue("mode_of_payment", application.modeOfPayment);
+  setReviewValue("business_email_detail", application.businessEmail);
+  setReviewValue("mode_of_payment", application.modeOfPayment, "Not selected");
+  setReviewValue("mode_of_payment_detail", application.modeOfPayment, "Not selected");
+  setReviewValue("application_date", application.applicationDate);
+  setReviewValue("registration_number", application.registrationNumber);
+  setReviewValue("last_name", application.lastName);
+  setReviewValue("first_name", application.firstName);
+  setReviewValue("middle_name", application.middleName);
+  setReviewValue("email", application.email);
+  setReviewValue("contact_number", application.contactNumber);
+  setReviewValue("home_address", application.homeAddress);
+  setReviewValue("trade_name", application.tradeName);
+  setReviewValue("business_types", application.businessTypes);
+  setReviewValue("business_classification", application.businessClassification);
+  setReviewValue("tin", application.tin);
+  setReviewValue("location_detail", application.locationDetail);
+  setReviewValue("business_barangay", application.businessBarangay);
+  setReviewValue("business_premise", application.businessPremise);
+  setReviewValue("business_telephone", application.businessTelephone);
+  setReviewValue("owner_contact_number", application.ownerContactNumber);
+  setReviewValue("emergency_contact_person", application.emergencyContactPerson);
+  setReviewValue("emergency_contact", application.emergencyContact);
+  setReviewValue("business_area", application.businessArea);
+  setReviewValue("employees_total", application.employeesTotal);
+  setReviewValue("employees_lgu", application.employeesLgu);
+  setReviewValue("business_activity", application.businessActivity);
+  setReviewValue("capitalization", application.capitalization);
+  setReviewValue("goods_value", application.goodsValue);
+  setReviewValue("tax_incentive", application.taxIncentive);
+  setReviewValue("tax_incentive_entity", application.taxIncentiveEntity);
+  updateReviewValidation(missingFields);
 }
 
 function setBusinessStep(step) {
@@ -642,7 +1075,7 @@ function setBusinessStep(step) {
   }
 
   const isReview = step === "review";
-  businessStepPanels.form.classList.remove("is-hidden");
+  businessStepPanels.form.classList.toggle("is-hidden", isReview);
   reviewStrip?.classList.toggle("is-hidden", !isReview);
 
   const stepperSteps = document.querySelectorAll(".progress-stepper--business .progress-step");
@@ -680,6 +1113,44 @@ function createPermitRecord(application, userId = "") {
   };
 }
 
+function createBusinessInfoPayload(application) {
+  return {
+    application_date: application.applicationDate,
+    registration_number: application.registrationNumber,
+    mode_of_payment: application.modeOfPayment,
+    last_name: application.lastName,
+    first_name: application.firstName,
+    middle_name: application.middleName,
+    owner_name: [application.firstName, application.middleName, application.lastName].filter(Boolean).join(" "),
+    email: application.email,
+    contact_number: application.contactNumber,
+    home_address: application.homeAddress,
+    business_name: application.businessName,
+    trade_name: application.tradeName,
+    business_types: application.businessTypes,
+    business_classification: application.businessClassification,
+    tin: application.tin,
+    business_address: application.businessAddress,
+    location_detail: application.locationDetail,
+    business_barangay: application.businessBarangay,
+    business_premise: application.businessPremise,
+    business_telephone: application.businessTelephone,
+    business_mobile: application.businessMobile,
+    business_email: application.businessEmail,
+    owner_contact_number: application.ownerContactNumber,
+    emergency_contact_person: application.emergencyContactPerson,
+    emergency_contact: application.emergencyContact,
+    business_area: application.businessArea,
+    employees_total: application.employeesTotal,
+    employees_lgu: application.employeesLgu,
+    business_activity: application.businessActivity,
+    capitalization: application.capitalization,
+    goods_value: application.goodsValue,
+    tax_incentive: application.taxIncentive,
+    tax_incentive_entity: application.taxIncentiveEntity,
+  };
+}
+
 async function renderRecentPermits() {
   if (!recentPermitsTableBody) {
     return;
@@ -691,9 +1162,9 @@ async function renderRecentPermits() {
   if (client && currentUser) {
     try {
       const { data, error } = await client
-        .from("business_permit_applications")
-        .select("*")
-        .eq("user_id", currentUser.id)
+        .from("applications")
+        .select("id,status,progress,submitted_at,created_at,business_info,permit_snapshot")
+        .eq("applicant_id", currentUser.id)
         .order("created_at", { ascending: false })
         .limit(10);
 
@@ -718,13 +1189,17 @@ async function renderRecentPermits() {
   }
 
   permits.forEach((permit) => {
+    const businessInfo = permit.business_info || permit.application_payload || {};
+    const permitSnapshot = permit.permit_snapshot || {};
+    const referenceNumber = permit.permit_id || permit.permitId || permitSnapshot.permitCode || permitSnapshot.permit_code || permit.id || "-";
+    const submittedId = permit.submitted_id || permit.submittedId || (permit.id ? permit.id.slice(0, 8) : "-");
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${permit.permit_id || permit.permitId || "-"}</td>
-      <td>${permit.business_name || permit.businessName || "-"}</td>
-      <td>${permit.status || "Submitted"}</td>
-      <td>${permit.progress || "Review complete"}</td>
-      <td>${permit.submitted_id || permit.submittedId || "-"}</td>
+      <td>${referenceNumber}</td>
+      <td>${businessInfo.business_name || businessInfo.businessName || permit.business_name || permit.businessName || "-"}</td>
+      <td>${permit.status || "Draft"}</td>
+      <td>${permit.progress || "Draft"}</td>
+      <td>${submittedId}</td>
       <td><a href="/applicant/business-information" style="color: var(--green); text-decoration: underline;">View</a></td>
     `;
     recentPermitsTableBody.appendChild(row);
@@ -771,28 +1246,48 @@ function handleBusinessContinue() {
 
 async function handleFinishApplication() {
   const application = collectBusinessApplication();
-  const record = createPermitRecord(application, currentUser?.id || "");
-  const permits = readStoredPermits();
+  const businessInfo = createBusinessInfoPayload(application);
+  const missingFields = getMissingBusinessFields(application);
+  const currentApplicationId = getCurrentApplicationId();
 
-  permits.unshift(record);
-  writeStoredPermits(permits.slice(0, 10));
+  updateReviewCopy(application);
 
-  const client = initSupabase();
-  if (client && currentUser) {
-    try {
-      await client.from("business_permit_applications").insert(record);
-    } catch {
-      // Keep the local record even if the database table is not ready yet.
-    }
+  if (!currentApplicationId) {
+    alert("Application session is missing. Please start the application again.");
+    return;
   }
 
-  await recordApplicantAudit(
-    "business_permit_submitted",
-    { permitId: record.permit_id, businessName: record.business_name },
-    "business_permit_application",
-    record.permit_id
-  );
-  window.location.href = "/applicant/dashboard";
+  if (missingFields.length) {
+    setBusinessStep("review");
+    alert(`Please complete the required information before submitting:\n\n${missingFields.join("\n")}`);
+    return;
+  }
+
+  try {
+    const result = await applicantApi("/applicant/api/submit-application", {
+      method: "POST",
+      body: JSON.stringify({
+        application_id: currentApplicationId,
+        business_info: businessInfo,
+      }),
+    });
+
+    const permits = readStoredPermits();
+    const record = createPermitRecord(application, currentUser?.id || "");
+    permits.unshift(record);
+    writeStoredPermits(permits.slice(0, 10));
+
+    await recordApplicantAudit(
+      "business_permit_submitted",
+      { applicationId: currentApplicationId, businessName: businessInfo.business_name },
+      "application",
+      currentApplicationId
+    );
+    alert(result.message || "Application submitted successfully.");
+    window.location.href = "/applicant/dashboard";
+  } catch (error) {
+    alert(error.message || "Failed to submit application.");
+  }
 }
 
 async function loadApplicantDashboard() {
@@ -855,6 +1350,18 @@ async function loadApplicantDashboard() {
 
 profileToggle?.addEventListener("click", () => {
   profileDropdown?.classList.toggle("is-open");
+  notificationDropdown?.classList.remove("is-open");
+});
+
+notificationToggle?.addEventListener("click", () => {
+  notificationDropdown?.classList.toggle("is-open");
+  profileDropdown?.classList.remove("is-open");
+  void loadApplicantNotifications();
+});
+
+markAllNotificationsReadButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  void markAllNotificationsRead();
 });
 
 document.addEventListener("click", (event) => {
@@ -881,13 +1388,25 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (!profileDropdown?.classList.contains("is-open")) {
+  const notificationItem = clickedElement?.closest("[data-notification-id]");
+  if (notificationItem instanceof HTMLElement) {
+    void markNotificationRead(notificationItem.dataset.notificationId || "");
     return;
   }
 
   const target = event.target;
-  if (target instanceof Node && !profileDropdown.contains(target) && !profileToggle?.contains(target)) {
-    profileDropdown.classList.remove("is-open");
+  if (target instanceof Node) {
+    if (profileDropdown?.classList.contains("is-open") && !profileDropdown.contains(target) && !profileToggle?.contains(target)) {
+      profileDropdown.classList.remove("is-open");
+    }
+
+    if (
+      notificationDropdown?.classList.contains("is-open") &&
+      !notificationDropdown.contains(target) &&
+      !notificationToggle?.contains(target)
+    ) {
+      notificationDropdown.classList.remove("is-open");
+    }
   }
 });
 
@@ -899,6 +1418,13 @@ document.addEventListener("change", (event) => {
 });
 
 logoutButton?.addEventListener("click", async () => {
+  const confirmed = window.BPLOLogoutModal?.confirm
+    ? await window.BPLOLogoutModal.confirm()
+    : true;
+  if (!confirmed) {
+    return;
+  }
+
   const client = initSupabase();
   await recordApplicantAudit("logout", { path: window.location.pathname }, "session");
   await client?.auth.signOut();
@@ -924,6 +1450,13 @@ window.addEventListener("DOMContentLoaded", () => {
   loadApplicantDashboard().then(() => {
     void loadActivePermits();
     void loadRequirementsChecklist();
+    void loadApplicantNotifications();
+    if (notificationMenu) {
+      window.setInterval(() => {
+        void loadApplicantNotifications();
+      }, 60000);
+    }
     applyOcrFieldsToBusinessForm();
+    void loadOcrFieldsIntoBusinessForm(getCurrentApplicationId());
   });
 });

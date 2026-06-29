@@ -4,6 +4,10 @@ const documentDialog = document.querySelector("[data-document-dialog]");
 const documentForm = document.querySelector("[data-document-form]");
 const documentDialogTitle = document.querySelector("[data-document-dialog-title]");
 const draftButton = document.querySelector("[data-save-draft]");
+const permitSuccessModal = document.querySelector("[data-permit-success-modal]");
+const permitSuccessTitle = document.querySelector("[data-permit-success-title]");
+const permitSuccessMessage = document.querySelector("[data-permit-success-message]");
+const closePermitSuccessButton = document.querySelector("[data-close-permit-success]");
 const requiredOfficesContainer = document.querySelector("[data-required-offices]");
 
 const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
@@ -94,6 +98,33 @@ function setPermitStatus(message, isError = false) {
 
   permitStatus.textContent = message;
   permitStatus.style.color = isError ? "#b42318" : "#078d36";
+}
+
+function showPermitSuccessModal({ title, message }) {
+  if (!permitSuccessModal) {
+    return;
+  }
+
+  if (permitSuccessTitle) {
+    permitSuccessTitle.textContent = title;
+  }
+
+  if (permitSuccessMessage) {
+    permitSuccessMessage.textContent = message;
+  }
+
+  permitSuccessModal.hidden = false;
+  document.body.classList.add("modal-open");
+  window.lucide?.createIcons();
+}
+
+function hidePermitSuccessModal() {
+  if (!permitSuccessModal) {
+    return;
+  }
+
+  permitSuccessModal.hidden = true;
+  document.body.classList.remove("modal-open");
 }
 
 function escapeHtml(value) {
@@ -404,7 +435,12 @@ draftButton?.addEventListener("click", async () => {
   try {
     draftButton.disabled = true;
     const permit = await savePermitRecord("Draft");
-    setPermitStatus(`Permit saved as draft${permit?.permitCode ? ` with code ${permit.permitCode}` : ""}.`);
+    const permitCode = permit?.permitCode ? ` with code ${permit.permitCode}` : "";
+    setPermitStatus(`Permit saved as draft${permitCode}.`);
+    showPermitSuccessModal({
+      title: "Permit Draft Saved",
+      message: `The permit draft has been saved${permitCode}. You can activate it later when ready.`,
+    });
   } catch (error) {
     setPermitStatus(error.message || "Unable to save permit draft.", true);
   } finally {
@@ -425,11 +461,33 @@ permitForm?.addEventListener("submit", async (event) => {
     const formData = new FormData(permitForm);
     const status = formData.get("status") ? "Active" : "Inactive";
     const permit = await savePermitRecord(status);
-    setPermitStatus(`Permit created successfully${permit?.permitCode ? ` with code ${permit.permitCode}` : ""}.`);
+    const permitCode = permit?.permitCode ? ` with code ${permit.permitCode}` : "";
+    setPermitStatus(`Permit created successfully${permitCode}.`);
+    showPermitSuccessModal({
+      title: "Permit Created Successfully",
+      message: `The permit has been created${permitCode} and is ready for applicant use.`,
+    });
   } catch (error) {
     setPermitStatus(error.message || "Unable to create permit.", true);
   } finally {
     submitButton.disabled = false;
+  }
+});
+
+closePermitSuccessButton?.addEventListener("click", () => {
+  hidePermitSuccessModal();
+  permitForm?.reset();
+  documents.required = [];
+  documents.optional = [];
+  renderAllDocuments();
+  setPermitStatus("");
+});
+
+permitSuccessModal?.addEventListener("click", (event) => {
+  const clickedBackdrop =
+    event.target instanceof HTMLElement && event.target.classList.contains("success-modal__backdrop");
+  if (event.target === permitSuccessModal || clickedBackdrop) {
+    hidePermitSuccessModal();
   }
 });
 

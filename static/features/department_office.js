@@ -1296,6 +1296,13 @@ function bindSettingsPage() {
 
 async function handleLogout(event) {
   event.preventDefault();
+  const confirmed = window.BPLOLogoutModal?.confirm
+    ? await window.BPLOLogoutModal.confirm()
+    : true;
+  if (!confirmed) {
+    return;
+  }
+
   await initSupabase()?.auth.signOut();
   window.location.assign("/login");
 }

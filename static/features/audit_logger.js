@@ -108,6 +108,13 @@ window.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-audit-logout]").forEach((link) => {
     link.addEventListener("click", async (event) => {
       event.preventDefault();
+      const confirmed = window.BPLOLogoutModal?.confirm
+        ? await window.BPLOLogoutModal.confirm()
+        : true;
+      if (!confirmed) {
+        return;
+      }
+
       await window.BPLOAudit.record("logout", { path: window.location.pathname }, "session");
 
       const client = getAuditClient();

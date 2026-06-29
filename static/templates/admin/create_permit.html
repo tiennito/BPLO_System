@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Create Permit</title>
     <script defer src="/config.js?v=2"></script>
-    <link rel="stylesheet" href="/styles/admin.css?v=8" />
+    <link rel="stylesheet" href="/styles/admin.css?v=10" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
     <script defer src="/features/audit_logger.js?v=2"></script>
-    <script defer src="/features/admin_create_permit.js?v=2"></script>
+    <script defer src="/features/admin_create_permit.js?v=3"></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -245,5 +246,19 @@
         </dialog>
       </section>
     </main>
+
+    <section class="success-modal" data-permit-success-modal hidden aria-labelledby="permit-success-title" role="dialog" aria-modal="true">
+      <div class="success-modal__backdrop"></div>
+      <article class="success-modal__card">
+        <div class="success-badge" aria-hidden="true">
+          <span><i data-lucide="check"></i></span>
+        </div>
+        <h2 id="permit-success-title" data-permit-success-title>Permit Created Successfully</h2>
+        <p data-permit-success-message>The permit has been created and is ready to use.</p>
+        <hr />
+        <a class="success-modal__action" href="/admin">Go to Dashboard</a>
+        <button class="success-modal__secondary" type="button" data-close-permit-success>Create Another Permit</button>
+      </article>
+    </section>
   </body>
 </html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Staff Administrator - Notification</title>
+    <link rel="stylesheet" href="/styles/admin.css?v=10" />
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+  </head>
+  <body>
+    <main class="staff-admin-shell">
+      <aside class="staff-sidebar" aria-label="Staff administrator navigation">
+        <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Staff Administrator</small></span>
+        </a>
+        <nav class="staff-nav">
+          <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
+          <a href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
+          <a href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a class="is-active" href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
+          <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
+        </nav>
+        <a class="staff-logout" href="/login" data-logout-modal-only><i data-lucide="log-out" aria-hidden="true"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="staff-main">
+        <header class="staff-topbar">
+          <h1>Notification</h1>
+          <section class="staff-welcome" aria-label="Signed in staff administrator">
+            <span>Welcome back,</span><strong>Admin name</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+          </section>
+        </header>
+
+        <section class="staff-notification-page">
+          <section class="staff-notification-stats" aria-label="Notification totals">
+            <article><span><i data-lucide="bell" aria-hidden="true"></i></span><small>All Notifications</small><strong>128</strong><em>Total notifications</em><i data-lucide="chevron-right" aria-hidden="true"></i></article>
+            <article><span><i data-lucide="mail" aria-hidden="true"></i></span><small>Unread</small><strong>12</strong><em>Require your attention</em><i data-lucide="chevron-right" aria-hidden="true"></i></article>
+            <article><span><i data-lucide="file-text" aria-hidden="true"></i></span><small>Application Updates</small><strong>74</strong><em>Related to applications</em><i data-lucide="chevron-right" aria-hidden="true"></i></article>
+            <article><span><i data-lucide="building-2" aria-hidden="true"></i></span><small>Office Messages</small><strong>26</strong><em>From BPLO offices</em><i data-lucide="chevron-right" aria-hidden="true"></i></article>
+          </section>
+
+          <section class="staff-notification-list staff-panel" aria-label="Notifications">
+            <header class="staff-notification-toolbar">
+              <nav aria-label="Notification filter">
+                <button class="is-active" type="button">All</button>
+                <button type="button">Unread</button>
+                <button type="button">Applications</button>
+                <button type="button">Transactions</button>
+                <button type="button">Offices</button>
+                <button type="button">System</button>
+              </nav>
+              <label><i data-lucide="search" aria-hidden="true"></i><input type="search" placeholder="Search notifications..." /></label>
+              <button type="button"><i data-lucide="check" aria-hidden="true"></i> Mark all as read</button>
+            </header>
+            <div class="staff-notification-items">
+              <article class="is-selected"><span class="staff-unread-dot"></span><i data-lucide="file-text" aria-hidden="true"></i><div><strong>New application submitted</strong><p>Juan Dela Cruz submitted a new application for Mayor's Permit at Dela Cruz Sari-Sari Store.</p></div><time>May 27, 2025 09:15 AM</time><em class="staff-pill staff-pill--application">Application</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="building-2" aria-hidden="true"></i><div><strong>Engineering Office approved application</strong><p>The Engineering Office has approved the Mayor's Permit application for Reyes Computer Services.</p></div><time>May 27, 2025 08:50 AM</time><em class="staff-pill staff-pill--office">Office Review</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="heart-pulse" aria-hidden="true"></i><div><strong>Health Office requested revision</strong><p>The Health Office requested revision for the application of Santos Food Haus.</p></div><time>May 27, 2025 08:35 AM</time><em class="staff-pill staff-pill--revision">Office Review</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="badge-dollar-sign" aria-hidden="true"></i><div><strong>Payment has been verified</strong><p>Payment for Business Permit application of Mendoza Beauty Salon has been verified.</p></div><time>May 26, 2025 10:25 AM</time><em class="staff-pill staff-pill--payment">Payment</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="refresh-cw" aria-hidden="true"></i><div><strong>Renewal documents uploaded</strong><p>Ana Clara Mendoza uploaded renewal documents for her Business Permit.</p></div><time>May 26, 2025 10:10 AM</time><em class="staff-pill staff-pill--renewal">Renewal</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="calendar-days" aria-hidden="true"></i><div><strong>Inspection schedule set</strong><p>An inspection has been scheduled for Garcia Auto Supply on May 29, 2025 at 10:00 AM.</p></div><time>May 25, 2025 02:30 PM</time><em class="staff-pill staff-pill--inspection">Inspection</em></article>
+              <article><span class="staff-unread-dot"></span><i data-lucide="settings" aria-hidden="true"></i><div><strong>System maintenance alert</strong><p>The system will undergo scheduled maintenance on May 31, 2025 from 12:00 AM to 4:00 AM.</p></div><time>May 24, 2025 05:00 PM</time><em class="staff-pill staff-pill--system">System</em></article>
+              <article><span></span><i data-lucide="building-2" aria-hidden="true"></i><div><strong>Treasurer's Office released official receipt</strong><p>Official receipt has been issued for the payment of Garcia Auto Supply.</p></div><time>May 24, 2025 11:45 AM</time><em class="staff-pill staff-pill--payment">Payment</em></article>
+            </div>
+            <footer class="staff-table-footer">
+              <span>Showing 1 to 8 of 128 notifications</span>
+              <nav aria-label="Notifications pagination"><button><i data-lucide="chevron-left"></i></button><strong>1</strong><button>2</button><button>3</button><span>...</span><button>16</button><button><i data-lucide="chevron-right"></i></button></nav>
+            </footer>
+          </section>
+
+          <aside class="staff-notification-details staff-panel" aria-labelledby="notification-details-title">
+            <header><h2 id="notification-details-title">Notification Details</h2></header>
+            <dl><div><dt>Type</dt><dd><span class="staff-pill staff-pill--application">Application</span></dd></div><div><dt>Date</dt><dd>May 27, 2025 09:15 AM</dd></div></dl>
+            <section><i data-lucide="file-text" aria-hidden="true"></i><h3>New application submitted</h3><p>Juan Dela Cruz submitted a new application for <strong>Mayor's Permit</strong> at <strong>Dela Cruz Sari-Sari Store</strong>.</p></section>
+            <h3>Application Details</h3>
+            <dl class="staff-notification-meta"><div><dt>Application No.</dt><dd>MP-2025-0527-00123</dd></div><div><dt>Business Name</dt><dd>Dela Cruz Sari-Sari Store</dd></div><div><dt>Applicant</dt><dd>Juan Dela Cruz</dd></div><div><dt>Date Submitted</dt><dd>May 27, 2025 09:15 AM</dd></div><div><dt>Status</dt><dd><span class="staff-status staff-status--review">For Checking</span></dd></div></dl>
+            <p>Please review the application and proceed with the checking of the required documents.</p>
+            <button class="staff-primary-action" type="button"><i data-lucide="external-link" aria-hidden="true"></i> View Application</button>
+            <button class="staff-secondary-action" type="button"><i data-lucide="trash-2" aria-hidden="true"></i> Dismiss</button>
+          </aside>
+        </section>
+      </section>
+    </main>
+    <script>window.lucide?.createIcons();</script>
+  </body>
+</html>
