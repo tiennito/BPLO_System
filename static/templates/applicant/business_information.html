@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Business Information</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=16" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=19" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=15"></script>
+    <script defer src="/features/applicant.js?v=19"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -135,6 +135,10 @@
                   <label class="field">
                     <span>MIDDLE NAME <em>*</em></span>
                     <input type="text" name="middle_name" placeholder="Middle name or initial" data-business-field="middle_name" />
+                  </label>
+                  <label class="field">
+                    <span>SUFFIX</span>
+                    <input type="text" name="suffix" placeholder="Jr., Sr., III" data-business-field="suffix" />
                   </label>
                 </div>
                 <div class="field-grid field-grid--2">
@@ -300,8 +304,12 @@
                       <input type="text" name="capital_investment" placeholder="PHP" data-business-field="capitalization" />
                     </label>
                     <label class="field">
-                      <span>Goods Value</span>
+                      <span>Gross Sales / Goods Value</span>
                       <input type="text" name="goods_value" placeholder="PHP" data-business-field="goods_value" />
+                    </label>
+                    <label class="field">
+                      <span>Date Issued</span>
+                      <input type="text" name="date_issued" placeholder="e.g. June 29, 2025" data-business-field="date_issued" />
                     </label>
                   </div>
                 </article>
@@ -391,6 +399,7 @@
                     <div><dt>Last Name</dt><dd data-review-value="last_name">Not filled in yet</dd></div>
                     <div><dt>First Name</dt><dd data-review-value="first_name">Not filled in yet</dd></div>
                     <div><dt>Middle Name</dt><dd data-review-value="middle_name">Not filled in yet</dd></div>
+                    <div><dt>Suffix</dt><dd data-review-value="suffix">Not filled in yet</dd></div>
                     <div><dt>Registered Email</dt><dd data-review-value="email">Not filled in yet</dd></div>
                     <div><dt>Registered Contact Number</dt><dd data-review-value="contact_number">Not filled in yet</dd></div>
                     <div><dt>Gender / Sex</dt><dd data-review-value="gender">Not filled in yet</dd></div>
@@ -440,7 +449,8 @@
                     <div><dt>No. of Employees Residing within LGU</dt><dd data-review-value="employees_lgu">Not filled in yet</dd></div>
                     <div><dt>Business Activity</dt><dd data-review-value="business_activity">Not filled in yet</dd></div>
                     <div><dt>Capital Investment</dt><dd data-review-value="capitalization">Not filled in yet</dd></div>
-                    <div><dt>Goods Value</dt><dd data-review-value="goods_value">Not filled in yet</dd></div>
+                    <div><dt>Gross Sales / Goods Value</dt><dd data-review-value="goods_value">Not filled in yet</dd></div>
+                    <div><dt>Date Issued</dt><dd data-review-value="date_issued">Not filled in yet</dd></div>
                     <div><dt>Tax Incentive</dt><dd data-review-value="tax_incentive">Not filled in yet</dd></div>
                     <div><dt>Tax Incentive Issuing Entity</dt><dd data-review-value="tax_incentive_entity">Not filled in yet</dd></div>
                   </dl>

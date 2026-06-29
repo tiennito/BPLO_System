@@ -1098,6 +1098,16 @@ input {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.16);
 }
 
+.field input.is-ocr-review,
+.field select.is-ocr-review,
+.field textarea.is-ocr-review,
+.radio-row input.is-ocr-review,
+.checkbox-row input.is-ocr-review {
+  border-color: #f59e0b;
+  background-color: #fffbeb;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.16);
+}
+
 .field textarea {
   min-height: 62px;
   resize: vertical;

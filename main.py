@@ -573,6 +573,55 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return match.group(1).strip(" :,-")
         return ""
 
+    def clean_extracted_ocr_value(self, value):
+        value = re.sub(r"[:|_]+", " ", str(value or ""))
+        value = re.sub(r"\s+", " ", value)
+        return value.strip(" :-")
+
+    def field_confidence_value(self, value, confidence):
+        return {
+            "value": value,
+            "confidence": confidence,
+        }
+
+    def extract_labeled_ocr_value(self, labels, lines, flattened_text, stop_labels=None):
+        stop_labels = stop_labels or [
+            "Name of Owner",
+            "Name of Business",
+            "Business Name",
+            "Business Address",
+            "TIN",
+            "Date Issued",
+            "TOTAL SALES",
+            "Total Sales",
+        ]
+        stop_pattern = "|".join(re.escape(label) for label in stop_labels)
+
+        for label_pattern, confidence in labels:
+            same_line_pattern = re.compile(rf"{label_pattern}\s*[:\-|]?\s*(.+)", re.IGNORECASE)
+            for index, line in enumerate(lines):
+                match = same_line_pattern.search(line)
+                if match:
+                    value = self.clean_extracted_ocr_value(match.group(1))
+                    if value:
+                        return value, confidence
+                    if index + 1 < len(lines):
+                        next_value = self.clean_extracted_ocr_value(lines[index + 1])
+                        if next_value:
+                            return next_value, max(confidence - 8, 70)
+
+            block_match = re.search(
+                rf"{label_pattern}\s*[:\-|]?\s*(.+?)(?:\s+(?:{stop_pattern})\b|$)",
+                flattened_text,
+                re.IGNORECASE,
+            )
+            if block_match:
+                value = self.clean_extracted_ocr_value(block_match.group(1))
+                if value:
+                    return value, max(confidence - 5, 70)
+
+        return "", 0
+
     def is_bad_business_name_candidate(self, value):
         if not value:
             return True
@@ -614,33 +663,226 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return value.upper()
 
+    def is_valid_gross_sales_business_name(self, value):
+        if self.is_bad_business_name_candidate(value):
+            return False
+
+        value_lower = str(value or "").lower()
+        address_words = ["street", "st.", "brgy", "barangay", "laguna", "province", "city", "municipality"]
+        label_words = ["name of business", "business name", "business address", "name of owner", "tin"]
+        if any(word in value_lower for word in address_words + label_words):
+            return False
+
+        return True
+
+    def is_valid_business_address_candidate(self, value):
+        value = str(value or "").strip()
+        if len(value) < 8 or len(value) > 180:
+            return False
+        lowered = value.lower()
+        location_words = ["street", "st.", "brgy", "barangay", "victoria", "laguna", "city", "municipality", "province", "road", "ave"]
+        return any(word in lowered for word in location_words)
+
+    def is_valid_tin_candidate(self, value):
+        return bool(re.fullmatch(r"\d{3}-?\d{3}-?\d{3}(?:-?\d{3})?", str(value or "").strip()))
+
+    def is_valid_sales_candidate(self, value):
+        normalized = str(value or "").replace(",", "").strip()
+        return bool(re.fullmatch(r"\d+(?:\.\d{1,2})?", normalized))
+
+    def parse_gross_sales_certificate_fields(self, raw_text):
+        text = self.clean_ocr_text(raw_text)
+        flattened_text = self.flatten_ocr_text(text)
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        fields = {}
+        confidence = {}
+
+        owner_name, owner_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"Name\s+of\s+Owner", 95),
+                (r"Owner\s+Name", 88),
+                (r"\bOwner\b", 78),
+            ],
+            lines,
+            flattened_text,
+        )
+        if owner_name and len(owner_name) <= 90:
+            owner_name = self.normalize_business_name(owner_name)
+            fields["owner_name"] = owner_name
+            fields.update(self.split_owner_name(owner_name))
+            confidence["owner_name"] = owner_confidence
+
+        business_name, business_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"Name\s+of\s+Business", 96),
+                (r"Business\s+Name", 94),
+                (r"Name\s+Business", 88),
+                (r"Name\s+of\s+Buslness", 86),
+                (r"Name\s+of\s+Busmess", 86),
+            ],
+            lines,
+            flattened_text,
+        )
+        business_name = self.normalize_business_name(business_name)
+        if business_name and self.is_valid_gross_sales_business_name(business_name):
+            fields["business_name"] = business_name
+            fields["businessName"] = business_name
+            fields["business_name_confidence"] = "high" if business_confidence >= 90 else "medium"
+            confidence["business_name"] = business_confidence
+            confidence["businessName"] = business_confidence
+        else:
+            fields["business_name_confidence"] = "low"
+
+        business_address, address_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"Business\s+Address", 95),
+                (r"Address\s+of\s+Business", 88),
+                (r"\bAddress\b", 76),
+            ],
+            lines,
+            flattened_text,
+        )
+        if business_address and self.is_valid_business_address_candidate(business_address):
+            fields["business_address"] = business_address
+            fields["businessAddress"] = business_address
+            confidence["business_address"] = address_confidence
+            confidence["businessAddress"] = address_confidence
+
+        tin, tin_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"\bTIN\b", 96),
+                (r"Tax\s+Identification\s+Number", 90),
+            ],
+            lines,
+            flattened_text,
+        )
+        tin_match = re.search(r"\d{3}-?\d{3}-?\d{3}(?:-?\d{3})?", tin or flattened_text)
+        if tin_match:
+            tin_value = tin_match.group(0)
+            if self.is_valid_tin_candidate(tin_value):
+                fields["tin"] = tin_value
+                confidence["tin"] = tin_confidence or 80
+
+        date_issued, date_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"Date\s+Issued", 95),
+                (r"Issued\s+Date", 88),
+                (r"Date\s+of\s+Issue", 86),
+            ],
+            lines,
+            flattened_text,
+        )
+        if date_issued:
+            fields["date_issued"] = date_issued
+            fields["dateIssued"] = date_issued
+            confidence["date_issued"] = date_confidence
+            confidence["dateIssued"] = date_confidence
+
+        gross_sales, sales_confidence = self.extract_labeled_ocr_value(
+            [
+                (r"TOTAL\s+SALES", 96),
+                (r"Total\s+Sales", 96),
+                (r"Gross\s+Sales", 92),
+                (r"Sales", 74),
+            ],
+            lines,
+            flattened_text,
+        )
+        sales_match = re.search(r"\d[\d,]*(?:\.\d{1,2})?", gross_sales or "")
+        if not sales_match:
+            sales_match = re.search(r"(?:TOTAL\s+SALES|Total\s+Sales|Gross\s+Sales)\D+(\d[\d,]*(?:\.\d{1,2})?)", flattened_text, re.IGNORECASE)
+            sales_value = sales_match.group(1) if sales_match else ""
+        else:
+            sales_value = sales_match.group(0)
+        sales_value = sales_value.replace(",", "")
+        if sales_value and self.is_valid_sales_candidate(sales_value):
+            fields["gross_sales"] = sales_value
+            fields["grossSales"] = sales_value
+            fields["goods_value"] = sales_value
+            confidence["gross_sales"] = sales_confidence or 86
+            confidence["grossSales"] = sales_confidence or 86
+            confidence["goods_value"] = sales_confidence or 86
+
+        fields["field_confidence"] = confidence
+        if confidence:
+            fields["confidence_score"] = round(sum(confidence.values()) / len(confidence), 2)
+
+        return fields
+
     def parse_dti_fields(self, raw_text):
         text = self.clean_ocr_text(raw_text)
         flattened_text = self.flatten_ocr_text(text)
         fields = {}
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         business_name_candidates = []
+        owner_name = ""
+
+        for index, line in enumerate(lines):
+            if re.search(r"certificate\s+issued\s+to|issued\s+to", line, re.IGNORECASE):
+                for next_line in lines[index + 1 : index + 4]:
+                    candidate_owner = self.normalize_business_name(next_line)
+                    if candidate_owner and len(candidate_owner) <= 80 and not self.is_bad_business_name_candidate(candidate_owner):
+                        owner_name = candidate_owner
+                        break
+                break
+
+        owner_match = re.search(
+            r"(?:owner|proprietor|registrant)\s*[:\-]?\s*(.+)",
+            text,
+            re.IGNORECASE,
+        )
+        if owner_match:
+            matched_owner = self.normalize_business_name(owner_match.group(1))
+            if matched_owner and len(matched_owner) <= 80:
+                owner_name = matched_owner
+
+        if owner_name:
+            fields["owner_name"] = owner_name
+            fields.update(self.split_owner_name(owner_name))
 
         for line in lines:
             match = re.search(r"business\s*name\s*[:\-]?\s*(.+)", line, re.IGNORECASE)
             if match:
                 candidate = self.normalize_business_name(match.group(1))
-                if not self.is_bad_business_name_candidate(candidate):
+                if candidate != owner_name and not self.is_bad_business_name_candidate(candidate):
                     business_name_candidates.append((candidate, "high"))
 
+        for index, line in enumerate(lines):
+            if not re.search(r"certif(?:y|ies)\s+that", line, re.IGNORECASE):
+                continue
+
+            for next_line in lines[index + 1 : index + 6]:
+                candidate = self.normalize_business_name(next_line)
+                if not candidate or candidate == owner_name or self.is_bad_business_name_candidate(candidate):
+                    continue
+                if re.search(r"^\([^)]+\)$", candidate):
+                    continue
+                if re.search(r"\b(REGION|CALABARZON|LAGUNA|PROVINCE|CITY|MUNICIPALITY|BARANGAY|BRGY)\b", candidate, re.IGNORECASE):
+                    continue
+                business_name_candidates.append((candidate, "high"))
+                break
+
         sentence_match = re.search(
-            r"certify\s+that\s+(.+?)\s+(?:is|has been)\s+(?:registered|granted)",
+            r"certif(?:y|ies)\s+that\s+(.+?)(?:\s+\([^)]+\))?\s+(?:is\s+a\s+business\s+name\s+registered|is|has been)\s+(?:registered|granted)?",
             flattened_text,
             re.IGNORECASE,
         )
         if sentence_match:
             candidate = self.normalize_business_name(sentence_match.group(1))
-            if not self.is_bad_business_name_candidate(candidate):
+            candidate = re.sub(r"\s+\([^)]+\).*$", "", candidate).strip()
+            candidate = re.sub(r"\b(REGION|CALABARZON|LAGUNA|PROVINCE|CITY|MUNICIPALITY|BARANGAY|BRGY)\b.*", "", candidate, flags=re.IGNORECASE).strip()
+            if candidate != owner_name and not self.is_bad_business_name_candidate(candidate):
                 business_name_candidates.append((candidate, "high"))
 
+        before_owner_section = True
         for line in lines:
+            if re.search(r"certificate\s+issued\s+to|issued\s+to|valid\s+from|in\s+testimony", line, re.IGNORECASE):
+                before_owner_section = False
+            if not before_owner_section:
+                continue
+
             candidate = self.normalize_business_name(line)
-            if self.is_bad_business_name_candidate(candidate):
+            if candidate == owner_name or self.is_bad_business_name_candidate(candidate):
                 continue
 
             uppercase_ratio = sum(1 for character in candidate if character.isupper()) / max(len(candidate), 1)
@@ -663,17 +905,6 @@ class AppHandler(SimpleHTTPRequestHandler):
         if registration_number:
             fields["registration_number"] = registration_number
             fields["dti_registration_no"] = registration_number
-
-        owner_match = re.search(
-            r"(?:owner|proprietor|registrant)\s*[:\-]?\s*(.+)",
-            text,
-            re.IGNORECASE,
-        )
-        if owner_match:
-            owner_name = self.normalize_business_name(owner_match.group(1))
-            if owner_name and len(owner_name) <= 80:
-                fields["owner_name"] = owner_name
-                fields.update(self.split_owner_name(owner_name))
 
         business_address = self.find_first_match(
             [
@@ -732,6 +963,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             "business_type": "type_of_business",
             "business_types": "type_of_business",
             "capital_investment": "capitalization",
+            "ownerName": "owner_name",
+            "businessName": "business_name",
+            "businessAddress": "business_address",
+            "dateIssued": "date_issued",
+            "grossSales": "gross_sales",
+            "gross_sales": "goods_value",
         }
         normalized = {}
 
@@ -752,10 +989,93 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return normalized
 
+    def get_ocr_field_confidence_number(self, fields, key):
+        confidence_aliases = {
+            "business_name": ["business_name", "businessName"],
+            "business_address": ["business_address", "businessAddress"],
+            "goods_value": ["goods_value", "gross_sales", "grossSales"],
+            "date_issued": ["date_issued", "dateIssued"],
+            "owner_name": ["owner_name", "ownerName"],
+        }
+        confidence_map = fields.get("field_confidence") or fields.get("fieldConfidence") or {}
+        for confidence_key in confidence_aliases.get(key, [key]):
+            if confidence_key in confidence_map:
+                value = confidence_map.get(confidence_key)
+                if isinstance(value, (int, float)):
+                    return float(value)
+                level = str(value or "").lower()
+                if level == "high":
+                    return 95
+                if level == "medium":
+                    return 80
+                if level == "low":
+                    return 0
+
+        direct_value = fields.get(f"{key}_confidence")
+        if isinstance(direct_value, (int, float)):
+            return float(direct_value)
+        level = str(direct_value or "").lower()
+        if level == "high":
+            return 95
+        if level == "medium":
+            return 80
+        if level == "low":
+            return 0
+
+        return 0
+
+    def merge_extracted_ocr_fields(self, merged_fields, incoming_fields):
+        incoming = self.normalize_extracted_business_fields(incoming_fields or {})
+        confidence_map = merged_fields.setdefault("field_confidence", {})
+        incoming_confidence = incoming.get("field_confidence") or {}
+        metadata_keys = {"field_confidence", "fieldConfidence", "confidence", "confidence_score"}
+
+        for key, value in incoming.items():
+            if key in metadata_keys or key.endswith("_confidence") or value in (None, ""):
+                continue
+
+            if key == "business_name":
+                owner_name = incoming.get("owner_name") or merged_fields.get("owner_name")
+                if owner_name and self.normalize_business_name(value) == self.normalize_business_name(owner_name):
+                    continue
+                if not self.is_valid_gross_sales_business_name(value):
+                    continue
+
+            incoming_score = self.get_ocr_field_confidence_number(incoming, key)
+            existing_value = merged_fields.get(key)
+            existing_score = self.get_ocr_field_confidence_number(merged_fields, key)
+
+            if not existing_value or incoming_score >= existing_score:
+                merged_fields[key] = value
+                if incoming_score:
+                    confidence_map[key] = incoming_score
+
+        for key, value in incoming_confidence.items():
+            normalized_key = self.normalize_extracted_business_fields({key: "x"})
+            confidence_key = next((candidate for candidate, candidate_value in normalized_key.items() if candidate_value == "x"), key)
+            if isinstance(value, (int, float)) and value > confidence_map.get(confidence_key, 0):
+                confidence_map[confidence_key] = value
+
+        for key, value in incoming.items():
+            if key.endswith("_confidence") and key not in merged_fields:
+                merged_fields[key] = value
+
+        return merged_fields
+
     def extract_business_fields_from_text(self, raw_text, document_type=""):
         text = self.clean_ocr_text(raw_text)
         flattened_text = self.flatten_ocr_text(text)
         document_type_lower = (document_type or "").lower()
+
+        is_gross_sales_certificate = (
+            "gross" in document_type_lower
+            or "sales" in document_type_lower
+            or "certification" in document_type_lower
+            or "name of business" in flattened_text.lower()
+            or "total sales" in flattened_text.lower()
+        )
+        if is_gross_sales_certificate:
+            return self.normalize_extracted_business_fields(self.parse_gross_sales_certificate_fields(raw_text))
 
         if "dti" in document_type_lower or "business name" in flattened_text.lower():
             return self.normalize_extracted_business_fields(self.parse_dti_fields(raw_text))
@@ -2765,7 +3085,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             for row in document_rows:
                 fields = row.get("ocr_extracted_fields") or {}
                 if isinstance(fields, dict):
-                    merged_fields.update(self.normalize_extracted_business_fields(fields))
+                    self.merge_extracted_ocr_fields(merged_fields, fields)
 
             ocr_rows = self.supabase_rest_request(
                 supabase_url,
@@ -2780,7 +3100,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             for row in ocr_rows:
                 fields = row.get("extracted_fields") or {}
                 if isinstance(fields, dict):
-                    merged_fields.update(self.normalize_extracted_business_fields(fields))
+                    self.merge_extracted_ocr_fields(merged_fields, fields)
 
             self.send_json(
                 {
@@ -2864,6 +3184,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
             raw_text = self.extract_text_from_file(file_name, file_bytes)
             extracted_fields = self.extract_business_fields_from_text(raw_text, document_type)
+            confidence_score = extracted_fields.get("confidence_score")
 
             self.supabase_rest_request(
                 supabase_url,
@@ -2893,6 +3214,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                     "document_type": document_type,
                     "raw_text": raw_text,
                     "extracted_fields": extracted_fields,
+                    "confidence_score": confidence_score,
                     "ocr_status": "Completed",
                 },
                 prefer="return=representation",

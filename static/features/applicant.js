@@ -278,6 +278,79 @@ function formatAddress(profile, user) {
   return parts.filter(Boolean).join(", ");
 }
 
+function firstPresentValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function normalizeGender(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (["M", "MALE"].includes(normalized)) {
+    return "MALE";
+  }
+  if (["F", "FEMALE"].includes(normalized)) {
+    return "FEMALE";
+  }
+  if (["OTHER", "OTHERS", "NON-BINARY", "NONBINARY"].includes(normalized)) {
+    return "OTHER";
+  }
+  return normalized;
+}
+
+function getTodayDateInputValue() {
+  const today = new Date();
+  const timezoneOffsetMs = today.getTimezoneOffset() * 60000;
+  return new Date(today.getTime() - timezoneOffsetMs).toISOString().slice(0, 10);
+}
+
+function applyTodayApplicationDate() {
+  setBusinessFieldValue("application_date", getTodayDateInputValue(), { className: "is-profile-filled" });
+}
+
+function setProfilePrefillStatus(message, state = "") {
+  if (!profilePrefillStatus) {
+    return;
+  }
+
+  profilePrefillStatus.textContent = message;
+  profilePrefillStatus.classList.toggle("is-ready", state === "ready");
+  profilePrefillStatus.classList.toggle("is-warning", state === "warning");
+  profilePrefillStatus.classList.toggle("is-error", state === "error");
+}
+
+function collectProfileBusinessDefaults(applicantProfile = currentApplicantProfile, accessProfile = currentAccessProfile, user = currentUser) {
+  const metadata = user?.user_metadata || {};
+  const address = formatAddress(applicantProfile, user);
+  const governmentId = firstPresentValue(
+    applicantProfile?.government_id,
+    applicantProfile?.government_id_number,
+    applicantProfile?.id_number,
+    applicantProfile?.valid_id,
+    metadata.government_id,
+    metadata.government_id_number,
+    metadata.id_number,
+    metadata.valid_id
+  );
+
+  return {
+    last_name: firstPresentValue(applicantProfile?.last_name, accessProfile?.lastName, metadata.last_name),
+    first_name: firstPresentValue(applicantProfile?.first_name_raw, applicantProfile?.first_name, accessProfile?.firstName, metadata.first_name),
+    middle_name: firstPresentValue(applicantProfile?.middle_name, accessProfile?.middleName, metadata.middle_name),
+    suffix: firstPresentValue(applicantProfile?.suffix, accessProfile?.suffix, metadata.suffix),
+    email: firstPresentValue(applicantProfile?.email, accessProfile?.email, user?.email),
+    contact_number: firstPresentValue(applicantProfile?.contact_number, accessProfile?.contactNumber, metadata.contact_number),
+    owner_contact_number: firstPresentValue(applicantProfile?.contact_number, accessProfile?.contactNumber, metadata.contact_number),
+    home_address: address,
+    gender: normalizeGender(firstPresentValue(applicantProfile?.gender, applicantProfile?.sex, metadata.gender, metadata.sex)),
+    government_id: governmentId,
+  };
+}
+
 function syncBusinessPermitType() {
   if (!permitSummaryCard) {
     return;
@@ -706,6 +779,12 @@ function normalizeOcrFieldsForBusinessForm(fields = {}) {
     business_type: "type_of_business",
     business_types: "type_of_business",
     capital_investment: "capitalization",
+    ownerName: "owner_name",
+    businessName: "business_name",
+    businessAddress: "business_address",
+    dateIssued: "date_issued",
+    grossSales: "goods_value",
+    gross_sales: "goods_value",
   };
   const normalized = {};
 
@@ -714,11 +793,25 @@ function normalizeOcrFieldsForBusinessForm(fields = {}) {
       return;
     }
 
+    if (key.endsWith("_confidence") || ["field_confidence", "confidence", "confidence_score"].includes(key)) {
+      normalized[key] = value;
+      return;
+    }
+
+    if (typeof value === "object" && !Array.isArray(value) && "value" in value) {
+      normalized[aliases[key] || key] = value.value;
+      normalized.field_confidence = {
+        ...(normalized.field_confidence || {}),
+        [aliases[key] || key]: value.confidence,
+      };
+      return;
+    }
+
     normalized[aliases[key] || key] = value;
   });
 
-  if (fields.owner_name && (!normalized.first_name || !normalized.last_name)) {
-    const nameParts = String(fields.owner_name).trim().split(/\s+/).filter(Boolean);
+  if (normalized.owner_name && (!normalized.first_name || !normalized.last_name)) {
+    const nameParts = String(normalized.owner_name).trim().split(/\s+/).filter(Boolean);
     if (nameParts.length >= 2) {
       normalized.first_name ||= nameParts[0];
       normalized.last_name ||= nameParts.at(-1);
@@ -801,24 +894,109 @@ function notifyBusinessFieldChanged(control) {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function setBusinessFieldValue(name, value) {
+function hasExistingBusinessFieldValue(controls) {
+  return [...controls].some((control) => {
+    if (control instanceof HTMLInputElement) {
+      if (control.type === "radio" || control.type === "checkbox") {
+        return control.checked;
+      }
+      return control.value.trim() !== "";
+    }
+
+    if (control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement) {
+      return control.value.trim() !== "" && !control.value.startsWith("Select ");
+    }
+
+    return false;
+  });
+}
+
+function hasReplaceableOcrFieldValue(controls) {
+  const controlsWithValues = [...controls].filter((control) => {
+    if (control instanceof HTMLInputElement) {
+      if (control.type === "radio" || control.type === "checkbox") {
+        return control.checked;
+      }
+      return control.value.trim() !== "";
+    }
+
+    if (control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement) {
+      return control.value.trim() !== "" && !control.value.startsWith("Select ");
+    }
+
+    return false;
+  });
+
+  return controlsWithValues.length > 0 && controlsWithValues.every((control) =>
+    control.classList.contains("is-ocr-filled") || control.classList.contains("is-ocr-review")
+  );
+}
+
+function isOwnerNameValue(value) {
+  if (!businessFormShell || !value) {
+    return false;
+  }
+
+  const ownerName = [
+    getBusinessFieldValue("first_name"),
+    getBusinessFieldValue("middle_name"),
+    getBusinessFieldValue("last_name"),
+    getBusinessFieldValue("suffix"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+  return ownerName && String(value).replace(/\s+/g, " ").trim().toUpperCase() === ownerName;
+}
+
+function markBusinessFieldTouched(target) {
+  if (isApplyingBusinessDefaults || !(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const control = target.closest("[data-business-field]");
+  if (control instanceof HTMLElement) {
+    const fieldName = control.dataset.businessField || "";
+    if (fieldName) {
+      editedBusinessFields.add(fieldName);
+    }
+  }
+}
+
+function setBusinessFieldValue(name, value, options = {}) {
   if (!businessFormShell || value === undefined || value === null || value === "") {
     return;
   }
 
-  if (name === "business_name" && !isValidBusinessName(value)) {
+  if (name === "business_name" && (!isValidBusinessName(value) || isOwnerNameValue(value))) {
     console.warn("Rejected invalid business name from OCR:", value);
     return;
   }
 
   const controls = businessFormShell.querySelectorAll(`[data-business-field="${CSS.escape(name)}"]`);
+  if (!controls.length) {
+    return;
+  }
 
+  const hasExistingValue = hasExistingBusinessFieldValue(controls);
+  const canReplaceOcrValue = options.allowOcrReplace && hasReplaceableOcrFieldValue(controls);
+  if (!options.force && (editedBusinessFields.has(name) || (hasExistingValue && !canReplaceOcrValue))) {
+    return;
+  }
+
+  const filledClassName = options.className || "is-ocr-filled";
+
+  isApplyingBusinessDefaults = true;
   controls.forEach((control) => {
+    control.classList.remove("is-ocr-filled", "is-ocr-review");
     if (control instanceof HTMLInputElement) {
       if (control.type === "radio") {
         control.checked = control.value === value;
         if (control.checked) {
-          control.classList.add("is-ocr-filled");
+          control.classList.add(filledClassName);
           notifyBusinessFieldChanged(control);
         }
         return;
@@ -830,24 +1008,61 @@ function setBusinessFieldValue(name, value) {
           ? value.includes(control.value)
           : values.includes(control.value);
         if (control.checked) {
-          control.classList.add("is-ocr-filled");
+          control.classList.add(filledClassName);
           notifyBusinessFieldChanged(control);
         }
         return;
       }
 
       control.value = value;
-      control.classList.add("is-ocr-filled");
+      control.classList.add(filledClassName);
       notifyBusinessFieldChanged(control);
       return;
     }
 
     if (control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement) {
       control.value = value;
-      control.classList.add("is-ocr-filled");
+      control.classList.add(filledClassName);
       notifyBusinessFieldChanged(control);
     }
   });
+  isApplyingBusinessDefaults = false;
+}
+
+function normalizeOcrConfidenceLevel(confidence) {
+  if (typeof confidence === "number") {
+    if (confidence >= 90) return "high";
+    if (confidence >= 70) return "medium";
+    return "low";
+  }
+
+  const normalized = String(confidence || "").trim().toLowerCase();
+  if (["high", "medium", "low"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "high";
+}
+
+function getOcrFieldConfidence(fields, fieldName) {
+  const confidenceMap = fields.field_confidence || fields.fieldConfidence || {};
+  const aliases = {
+    business_name: ["business_name", "businessName"],
+    business_address: ["business_address", "businessAddress"],
+    goods_value: ["goods_value", "gross_sales", "grossSales"],
+    date_issued: ["date_issued", "dateIssued"],
+    owner_name: ["owner_name", "ownerName"],
+  };
+  const confidenceKeys = aliases[fieldName] || [fieldName];
+
+  for (const key of confidenceKeys) {
+    if (confidenceMap[key] !== undefined && confidenceMap[key] !== null) {
+      return normalizeOcrConfidenceLevel(confidenceMap[key]);
+    }
+  }
+
+  const directConfidence = fields[`${fieldName}_confidence`];
+  return normalizeOcrConfidenceLevel(directConfidence);
 }
 
 function applyOcrFieldsToBusinessForm(fields = readStoredOcrFields()) {
@@ -856,17 +1071,22 @@ function applyOcrFieldsToBusinessForm(fields = readStoredOcrFields()) {
   }
 
   const extractedFields = normalizeOcrFieldsForBusinessForm(fields);
-  if (
-    extractedFields.business_name &&
-    extractedFields.business_name_confidence &&
-    extractedFields.business_name_confidence !== "high"
-  ) {
-    console.warn("Rejected low-confidence business name from OCR:", extractedFields.business_name);
-    delete extractedFields.business_name;
-  }
 
   Object.entries(extractedFields).forEach(([fieldName, fieldValue]) => {
-    setBusinessFieldValue(fieldName, fieldValue);
+    if (fieldName.endsWith("_confidence") || ["field_confidence", "fieldConfidence", "confidence", "confidence_score"].includes(fieldName)) {
+      return;
+    }
+
+    const confidenceLevel = getOcrFieldConfidence(extractedFields, fieldName);
+    if (confidenceLevel === "low") {
+      console.warn("Skipped low-confidence OCR field:", fieldName, fieldValue);
+      return;
+    }
+
+    setBusinessFieldValue(fieldName, fieldValue, {
+      className: confidenceLevel === "medium" ? "is-ocr-review" : "is-ocr-filled",
+      allowOcrReplace: confidenceLevel === "high",
+    });
   });
 }
 
@@ -892,6 +1112,87 @@ async function loadOcrFieldsIntoBusinessForm(applicationId) {
     }
   } catch (error) {
     console.error("Failed to load OCR fields:", error);
+  }
+}
+
+function applyApplicantProfileToBusinessForm() {
+  if (!businessFormShell || !currentUser) {
+    return 0;
+  }
+
+  const defaults = collectProfileBusinessDefaults();
+  let appliedCount = 0;
+
+  Object.entries(defaults).forEach(([fieldName, fieldValue]) => {
+    if (!fieldValue) {
+      return;
+    }
+
+    const beforeValues = [...businessFormShell.querySelectorAll(`[data-business-field="${CSS.escape(fieldName)}"]`)].map(
+      (control) => {
+        if (control instanceof HTMLInputElement && (control.type === "radio" || control.type === "checkbox")) {
+          return control.checked;
+        }
+        return control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement
+          ? control.value
+          : "";
+      }
+    );
+    setBusinessFieldValue(fieldName, fieldValue, { className: "is-profile-filled" });
+    const afterValues = [...businessFormShell.querySelectorAll(`[data-business-field="${CSS.escape(fieldName)}"]`)].map(
+      (control) => {
+        if (control instanceof HTMLInputElement && (control.type === "radio" || control.type === "checkbox")) {
+          return control.checked;
+        }
+        return control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement
+          ? control.value
+          : "";
+      }
+    );
+
+    if (JSON.stringify(beforeValues) !== JSON.stringify(afterValues)) {
+      appliedCount += 1;
+    }
+  });
+
+  return appliedCount;
+}
+
+async function loadApplicantProfileIntoBusinessForm() {
+  if (!businessFormShell || !currentUser) {
+    return;
+  }
+
+  setProfilePrefillStatus("Loading saved applicant information...", "warning");
+
+  try {
+    const appliedCount = applyApplicantProfileToBusinessForm();
+    const hasAnySavedProfileValue = Object.values(collectProfileBusinessDefaults()).some(Boolean);
+
+    if (applicantProfileLoadError && !hasAnySavedProfileValue) {
+      setProfilePrefillStatus("Saved applicant information could not be loaded. Please complete these fields manually.", "error");
+      return;
+    }
+
+    if (applicantProfileLoadError) {
+      setProfilePrefillStatus("Some saved applicant information was loaded. Please review and complete any missing fields.", "warning");
+      return;
+    }
+
+    if (appliedCount > 0) {
+      setProfilePrefillStatus("Saved applicant information has been filled in. You can still edit it before submitting.", "ready");
+      return;
+    }
+
+    if (hasAnySavedProfileValue) {
+      setProfilePrefillStatus("Saved applicant information is already present in the form.", "ready");
+      return;
+    }
+
+    setProfilePrefillStatus("No saved applicant details were found. Please complete this section manually.", "warning");
+  } catch (error) {
+    console.error("Failed to auto-fill applicant profile:", error);
+    setProfilePrefillStatus("Saved applicant information could not be loaded. Please complete these fields manually.", "error");
   }
 }
 
@@ -949,7 +1250,7 @@ function setReviewValue(name, value, fallback = "Not filled in yet") {
 }
 
 function formatOwnerName(application) {
-  return [application.firstName, application.middleName, application.lastName].filter(Boolean).join(" ");
+  return [application.firstName, application.middleName, application.lastName, application.suffix].filter(Boolean).join(" ");
 }
 
 function getMissingBusinessFields(application) {
@@ -996,8 +1297,11 @@ function collectBusinessApplication() {
     lastName: getBusinessFieldValue("last_name"),
     firstName: getBusinessFieldValue("first_name"),
     middleName: getBusinessFieldValue("middle_name"),
+    suffix: getBusinessFieldValue("suffix"),
     email: getBusinessFieldValue("email"),
     contactNumber: getBusinessFieldValue("contact_number"),
+    gender: getBusinessFieldValue("gender"),
+    governmentId: getBusinessFieldValue("government_id"),
     homeAddress: getBusinessFieldValue("home_address"),
     businessName: getBusinessFieldValue("business_name"),
     tradeName: getBusinessFieldValue("trade_name"),
@@ -1020,6 +1324,8 @@ function collectBusinessApplication() {
     businessActivity: getBusinessFieldValue("business_activity"),
     capitalization: getBusinessFieldValue("capitalization"),
     goodsValue: getBusinessFieldValue("goods_value"),
+    grossSales: getBusinessFieldValue("goods_value"),
+    dateIssued: getBusinessFieldValue("date_issued"),
     taxIncentive: getBusinessFieldValue("tax_incentive"),
     taxIncentiveEntity: getBusinessFieldValue("tax_incentive_entity"),
   };
@@ -1044,8 +1350,11 @@ function updateReviewCopy(application) {
   setReviewValue("last_name", application.lastName);
   setReviewValue("first_name", application.firstName);
   setReviewValue("middle_name", application.middleName);
+  setReviewValue("suffix", application.suffix);
   setReviewValue("email", application.email);
   setReviewValue("contact_number", application.contactNumber);
+  setReviewValue("gender", application.gender);
+  setReviewValue("government_id", application.governmentId);
   setReviewValue("home_address", application.homeAddress);
   setReviewValue("trade_name", application.tradeName);
   setReviewValue("business_types", application.businessTypes);
@@ -1064,6 +1373,7 @@ function updateReviewCopy(application) {
   setReviewValue("business_activity", application.businessActivity);
   setReviewValue("capitalization", application.capitalization);
   setReviewValue("goods_value", application.goodsValue);
+  setReviewValue("date_issued", application.dateIssued);
   setReviewValue("tax_incentive", application.taxIncentive);
   setReviewValue("tax_incentive_entity", application.taxIncentiveEntity);
   updateReviewValidation(missingFields);
@@ -1121,9 +1431,12 @@ function createBusinessInfoPayload(application) {
     last_name: application.lastName,
     first_name: application.firstName,
     middle_name: application.middleName,
-    owner_name: [application.firstName, application.middleName, application.lastName].filter(Boolean).join(" "),
+    suffix: application.suffix,
+    owner_name: [application.firstName, application.middleName, application.lastName, application.suffix].filter(Boolean).join(" "),
     email: application.email,
     contact_number: application.contactNumber,
+    gender: application.gender,
+    government_id: application.governmentId,
     home_address: application.homeAddress,
     business_name: application.businessName,
     trade_name: application.tradeName,
@@ -1146,6 +1459,8 @@ function createBusinessInfoPayload(application) {
     business_activity: application.businessActivity,
     capitalization: application.capitalization,
     goods_value: application.goodsValue,
+    gross_sales: application.grossSales,
+    date_issued: application.dateIssued,
     tax_incentive: application.taxIncentive,
     tax_incentive_entity: application.taxIncentiveEntity,
   };
@@ -1309,6 +1624,7 @@ async function loadApplicantDashboard() {
 
   const profilePayload = await applicantApi("/api/me/profile");
   const accessProfile = profilePayload.profile || {};
+  currentAccessProfile = accessProfile;
   if (accessProfile.status !== "active") {
     alert(`This account is ${accessProfile.status}. Please contact the administrator.`);
     await client.auth.signOut();
@@ -1323,11 +1639,14 @@ async function loadApplicantDashboard() {
 
   currentUser = user;
 
-  const { data: profile } = await client
+  const { data: profile, error: applicantProfileError } = await client
     .from("applicants")
     .select("*")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  currentApplicantProfile = profile || null;
+  applicantProfileLoadError = applicantProfileError?.message || "";
 
   const fullName = formatFullName(profile, user) || "Applicant";
   setField("fullName", fullName);
@@ -1436,6 +1755,14 @@ finishApplicationButton?.addEventListener("click", () => {
   void handleFinishApplication();
 });
 
+businessFormShell?.addEventListener("input", (event) => {
+  markBusinessFieldTouched(event.target);
+});
+
+businessFormShell?.addEventListener("change", (event) => {
+  markBusinessFieldTouched(event.target);
+});
+
 requirementsNextButton?.addEventListener("click", () => {
   updateRequirementsNextState();
   if (!requirementsNextButton.disabled) {
@@ -1456,6 +1783,8 @@ window.addEventListener("DOMContentLoaded", () => {
         void loadApplicantNotifications();
       }, 60000);
     }
+    applyTodayApplicationDate();
+    void loadApplicantProfileIntoBusinessForm();
     applyOcrFieldsToBusinessForm();
     void loadOcrFieldsIntoBusinessForm(getCurrentApplicationId());
   });
