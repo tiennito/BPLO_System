@@ -59,7 +59,7 @@ function getRedirectPath(profilePayload) {
   const status = String(profile.status || "").trim().toLowerCase();
   const redirectPath = profilePayload.redirectPath || {
     super_admin: "/admin/dashboard",
-    bplo_admin: "/admin/dashboard",
+    bplo_admin: "/admin/staff-administrator",
     department_office: "/department/dashboard",
     treasury: "/treasury/dashboard",
     applicant: "/applicant/dashboard",

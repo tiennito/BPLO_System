@@ -44,6 +44,19 @@ a {
   padding: 34px 16px 0;
 }
 
+.register-logo-link {
+  display: inline-flex;
+  border-radius: 50%;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.register-logo-link:hover,
+.register-logo-link:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(0, 150, 60, 0.18);
+  outline: none;
+}
+
 .municipal-seal {
   display: block;
   width: clamp(250px, 36vw, 330px);
@@ -458,11 +471,16 @@ select:focus {
 .code-boxes input {
   width: 26px;
   height: 36px;
+  padding: 0;
   border-radius: 0;
   border: 1px solid #0dd255;
+  background: #ffffff;
+  color: #111111;
+  caret-color: #0c8c36;
   text-align: center;
   font-size: 12px;
   font-weight: 700;
+  line-height: 36px;
 }
 
 .text-button {

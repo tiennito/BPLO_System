@@ -9,7 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=19"></script>
+    <script defer src="/features/applicant.js?v=21"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -51,7 +51,7 @@
       </header>
 
       <section class="business-form-page">
-        <a class="back-link" href="/applicant/new-application">
+        <a class="back-link" href="/applicant/new-application" data-history-back>
           <i data-lucide="arrow-left" aria-hidden="true"></i>
           <span>Back</span>
         </a>
@@ -198,11 +198,24 @@
                         <label><input type="checkbox" name="business_type" data-business-field="type_of_business" value="COOPERATIVE" /> <span>COOPERATIVE</span></label>
                       </div>
                     </div>
-                    <label class="field">
+                    <label class="field business-classification-field">
                       <span>Business Classification <em>*</em></span>
-                      <select name="business_classification" data-business-field="business_classification">
-                        <option>Select Business Line</option>
-                      </select>
+                      <div class="business-classification-combobox" data-business-classification-combobox>
+                        <input type="hidden" name="business_classification_id" data-business-field="business_classification_id" />
+                        <input type="hidden" name="business_classification" data-business-field="business_classification" />
+                        <input
+                          type="text"
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded="false"
+                          aria-controls="business-classification-results"
+                          autocomplete="off"
+                          placeholder="Search or select business line"
+                          data-business-classification-search
+                        />
+                        <div class="business-classification-results" id="business-classification-results" role="listbox" data-business-classification-results hidden></div>
+                      </div>
+                      <small class="classification-status" data-business-classification-status></small>
                     </label>
                   </div>
                   <label class="field field--half">
@@ -226,13 +239,33 @@
                     <label class="field">
                       <span>Business Barangay <em>*</em></span>
                       <select name="business_barangay" data-business-field="business_barangay">
-                        <option>Select Barangay</option>
+                        <option value="">Select Barangay</option>
+                        <option value="Banca-Banca">Banca-Banca</option>
+                        <option value="Daniw">Daniw</option>
+                        <option value="Masapang">Masapang</option>
+                        <option value="Nanhaya (Poblacion)">Nanhaya (Poblacion)</option>
+                        <option value="Pagalangan">Pagalangan</option>
+                        <option value="San Benito">San Benito</option>
+                        <option value="San Felix">San Felix</option>
+                        <option value="San Francisco">San Francisco</option>
+                        <option value="San Roque (Poblacion)">San Roque (Poblacion)</option>
                       </select>
                     </label>
                     <label class="field">
                       <span>Business Premise <em>*</em></span>
                       <select name="business_premise" data-business-field="business_premise">
-                        <option>Select Business Premise</option>
+                        <option value="">Select Business Premise</option>
+                        <option value="Owned Commercial Space">Owned Commercial Space</option>
+                        <option value="Rented Commercial Space">Rented Commercial Space</option>
+                        <option value="Home-Based Business">Home-Based Business</option>
+                        <option value="Market Stall">Market Stall</option>
+                        <option value="Kiosk / Booth">Kiosk / Booth</option>
+                        <option value="Office">Office</option>
+                        <option value="Warehouse">Warehouse</option>
+                        <option value="Factory / Plant">Factory / Plant</option>
+                        <option value="Restaurant / Food Establishment">Restaurant / Food Establishment</option>
+                        <option value="Mobile / Delivery-Based">Mobile / Delivery-Based</option>
+                        <option value="Online Business - No Physical Storefront">Online Business - No Physical Storefront</option>
                       </select>
                     </label>
                   </div>

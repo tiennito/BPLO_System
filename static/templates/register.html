@@ -5,18 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Register</title>
     <script defer src="/config.js"></script>
-    <link rel="stylesheet" href="../styles/register.css" />
+    <link rel="stylesheet" href="../styles/register.css?v=6" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script defer src="../features/register.js"></script>
+    <script defer src="../features/register.js?v=5"></script>
   </head>
   <body>
     <main class="register-page">
       <section class="register-brand" aria-label="Municipality of Victoria, Laguna">
-        <img
-          class="municipal-seal municipal-seal--small"
-          src="../assets/victoria-laguna-seal.png"
-          alt="Municipality of Victoria, Laguna seal"
-        />
+        <a class="register-logo-link" href="/login" aria-label="Return to login page">
+          <img
+            class="municipal-seal municipal-seal--small"
+            src="../assets/victoria-laguna-seal.png"
+            alt="Municipality of Victoria, Laguna seal"
+          />
+        </a>
       </section>
 
       <section class="register-panel" aria-label="BPLO registration form">

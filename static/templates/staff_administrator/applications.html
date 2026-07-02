@@ -4,317 +4,91 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Applications</title>
-    <link rel="stylesheet" href="/styles/admin.css?v=10" />
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_applications.js?v=1"></script>
   </head>
   <body>
     <main class="staff-admin-shell">
       <aside class="staff-sidebar" aria-label="Staff administrator navigation">
         <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
           <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
-          <span>
-            <strong>BPLO</strong>
-            <small>Staff Administrator</small>
-          </span>
+          <span><strong>BPLO</strong><small>Staff Administrator</small></span>
         </a>
-
         <nav class="staff-nav">
-          <a href="/admin/staff-administrator">
-            <i data-lucide="layout-grid" aria-hidden="true"></i>
-            <span>Dashboard</span>
-          </a>
-          <a class="is-active" href="/admin/staff-administrator/applications">
-            <i data-lucide="user-round" aria-hidden="true"></i>
-            <span>Applications</span>
-          </a>
-          <a href="/admin/staff-administrator/renewal-application">
-            <i data-lucide="clipboard" aria-hidden="true"></i>
-            <span>Re-Newal Application</span>
-          </a>
-          <a href="/admin/staff-administrator/notifications">
-            <i data-lucide="bell" aria-hidden="true"></i>
-            <span>Notification</span>
-          </a>
-          <a href="/admin/staff-administrator/reports">
-            <i data-lucide="bar-chart-3" aria-hidden="true"></i>
-            <span>Report</span>
-          </a>
+          <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
+          <a class="is-active" href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
+          <a href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
+          <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
         </nav>
-
-        <a class="staff-logout" href="/login" data-logout-modal-only>
-          <i data-lucide="log-out" aria-hidden="true"></i>
-          <span>Log out</span>
-        </a>
+        <a class="staff-logout" href="/login" data-logout-modal-only><i data-lucide="log-out" aria-hidden="true"></i><span>Log out</span></a>
       </aside>
 
       <section class="staff-main">
         <header class="staff-topbar">
           <h1>Applications</h1>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
-            <span>Welcome back,</span>
-            <strong>Admin name</strong>
-            <i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
           </section>
         </header>
 
         <section class="staff-applications-layout">
           <section class="staff-applications-content" aria-label="Applications overview">
             <section class="staff-stat-grid" aria-label="Application totals">
-              <article class="staff-stat-card">
-                <span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="file-text" aria-hidden="true"></i></span>
-                <span>
-                  <small>Total Applications</small>
-                  <strong>48</strong>
-                  <em class="is-positive">18% vs yesterday</em>
-                </span>
-              </article>
-              <article class="staff-stat-card">
-                <span class="staff-stat-icon staff-stat-icon--yellow"><i data-lucide="clock-3" aria-hidden="true"></i></span>
-                <span>
-                  <small>Pending</small>
-                  <strong>16</strong>
-                  <em class="is-negative">8% vs yesterday</em>
-                </span>
-              </article>
-              <article class="staff-stat-card">
-                <span class="staff-stat-icon staff-stat-icon--orange"><i data-lucide="workflow" aria-hidden="true"></i></span>
-                <span>
-                  <small>Under Review</small>
-                  <strong>12</strong>
-                  <em class="is-positive">9% vs yesterday</em>
-                </span>
-              </article>
-              <article class="staff-stat-card">
-                <span class="staff-stat-icon staff-stat-icon--blue"><i data-lucide="search" aria-hidden="true"></i></span>
-                <span>
-                  <small>For Checking</small>
-                  <strong>20</strong>
-                  <em class="is-positive">15% vs yesterday</em>
-                </span>
-              </article>
+              <article class="staff-stat-card"><span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="file-text" aria-hidden="true"></i></span><span><small>Total Applications</small><strong data-application-count="total">0</strong><em data-application-note="total">No data yet</em></span></article>
+              <article class="staff-stat-card"><span class="staff-stat-icon staff-stat-icon--yellow"><i data-lucide="clock-3" aria-hidden="true"></i></span><span><small>Pending</small><strong data-application-count="pending">0</strong><em data-application-note="pending">No data yet</em></span></article>
+              <article class="staff-stat-card"><span class="staff-stat-icon staff-stat-icon--orange"><i data-lucide="workflow" aria-hidden="true"></i></span><span><small>Under Review</small><strong data-application-count="review">0</strong><em data-application-note="review">No data yet</em></span></article>
+              <article class="staff-stat-card"><span class="staff-stat-icon staff-stat-icon--blue"><i data-lucide="search" aria-hidden="true"></i></span><span><small>For Checking</small><strong data-application-count="checking">0</strong><em data-application-note="checking">No data yet</em></span></article>
             </section>
 
             <section class="staff-filter-panel" aria-label="Application filters">
-              <label class="staff-search-field">
-                <i data-lucide="search" aria-hidden="true"></i>
-                <input type="search" placeholder="Search by applicant, business or control no." />
-              </label>
-              <label>
-                <span>Permit Type</span>
-                <select>
-                  <option>All Permit Types</option>
-                  <option>Mayor's Permit</option>
-                  <option>Business Permit</option>
-                  <option>Signage Permit</option>
-                </select>
-              </label>
-              <label>
-                <span>Status</span>
-                <select>
-                  <option>All Status</option>
-                  <option>For Checking</option>
-                  <option>Under Review</option>
-                  <option>Pending</option>
-                  <option>Needs Revision</option>
-                </select>
-              </label>
-              <div class="staff-filter-group">
-                <span>Date Range</span>
-                <button type="button" class="staff-date-button">
-                  <i data-lucide="calendar-days" aria-hidden="true"></i>
-                  May 20, 2025 - May 27, 2025
-                </button>
-              </div>
-              <button type="button" class="staff-export-button">
-                <i data-lucide="download" aria-hidden="true"></i>
-                Export
-              </button>
+              <label class="staff-search-field"><i data-lucide="search" aria-hidden="true"></i><input type="search" placeholder="Search by applicant, business or control no." data-application-search /></label>
+              <label><span>Permit Type</span><select data-application-permit-filter><option value="">All Permit Types</option></select></label>
+              <label><span>Status</span><select data-application-status-filter><option value="">All Status</option></select></label>
+              <div class="staff-filter-group"><span>Date Range</span><button type="button" class="staff-date-button"><i data-lucide="calendar-days" aria-hidden="true"></i>Select date range</button></div>
+              <button type="button" class="staff-export-button" data-refresh-applications><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh</button>
             </section>
 
             <section class="staff-panel staff-application-list-panel" aria-labelledby="application-list-title">
               <header class="staff-panel-header staff-application-list-header">
-                <span>
-                  <h2 id="application-list-title">Application List</h2>
-                  <small>Applications that need to be checked.</small>
-                </span>
+                <span><h2 id="application-list-title">Application List</h2><small data-application-summary>Loading application records...</small></span>
               </header>
-
               <div class="staff-table-wrap staff-application-table-wrap">
                 <table class="staff-table staff-application-table">
                   <thead>
                     <tr>
-                      <th>Control No.</th>
-                      <th>Applicant Name</th>
-                      <th>Business Name</th>
-                      <th>Permit Type</th>
-                      <th>Date Submitted</th>
-                      <th>Assigned Office</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th>Control No.</th><th>Applicant Name</th><th>Business Name</th><th>Permit Type</th><th>Date Submitted</th><th>Assigned Office</th><th>Status</th><th>Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    <tr class="is-selected">
-                      <td>BPLO-2025-00048</td>
-                      <td>Juan Dela Cruz</td>
-                      <td>Dela Cruz Sari-Sari Store</td>
-                      <td>Mayor's Permit</td>
-                      <td>May 27, 2025 09:15 AM</td>
-                      <td>Central BPLO Office</td>
-                      <td><span class="staff-status staff-status--review">For Checking</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00047</td>
-                      <td>Maria Santos</td>
-                      <td>Santos Food Haus</td>
-                      <td>Business Permit</td>
-                      <td>May 27, 2025 08:45 AM</td>
-                      <td>Central BPLO Office</td>
-                      <td><span class="staff-status staff-status--pending">Under Review</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00046</td>
-                      <td>Mark Anthony Reyes</td>
-                      <td>Reyes Computer Services</td>
-                      <td>Mayor's Permit</td>
-                      <td>May 26, 2025 04:30 PM</td>
-                      <td>North District Office</td>
-                      <td><span class="staff-status staff-status--pending">Pending</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00045</td>
-                      <td>Ana Clara Mendoza</td>
-                      <td>Mendoza Beauty Salon</td>
-                      <td>Business Permit</td>
-                      <td>May 26, 2025 10:20 AM</td>
-                      <td>Central BPLO Office</td>
-                      <td><span class="staff-status staff-status--review">For Checking</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00044</td>
-                      <td>Ronald Garcia</td>
-                      <td>Garcia Auto Supply</td>
-                      <td>Mayor's Permit</td>
-                      <td>May 25, 2025 02:10 PM</td>
-                      <td>South District Office</td>
-                      <td><span class="staff-status staff-status--assessment">Approved for Assessment</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00043</td>
-                      <td>Patricia Lim</td>
-                      <td>Lim Printing Services</td>
-                      <td>Business Permit</td>
-                      <td>May 24, 2025 11:05 AM</td>
-                      <td>Central BPLO Office</td>
-                      <td><span class="staff-status staff-status--revision">Needs Revision</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                    <tr>
-                      <td>BPLO-2025-00042</td>
-                      <td>Alfredo Navarro</td>
-                      <td>Navarro Hardware</td>
-                      <td>Mayor's Permit</td>
-                      <td>May 23, 2025 09:30 AM</td>
-                      <td>North District Office</td>
-                      <td><span class="staff-status staff-status--pending">Pending</span></td>
-                      <td><button class="staff-row-button" type="button" aria-label="Open actions"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button></td>
-                    </tr>
-                  </tbody>
+                  <tbody data-applications-body><tr><td colspan="8" class="staff-empty-cell">Loading applications...</td></tr></tbody>
                 </table>
               </div>
-
-              <footer class="staff-table-footer">
-                <span>Showing 1 to 7 of 48 entries</span>
-                <nav aria-label="Applications pagination">
-                  <button type="button" aria-label="First page"><i data-lucide="chevrons-left" aria-hidden="true"></i></button>
-                  <button type="button" aria-label="Previous page"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
-                  <strong>1</strong>
-                  <button type="button">2</button>
-                  <button type="button">3</button>
-                  <button type="button">4</button>
-                  <button type="button">5</button>
-                  <button type="button" aria-label="Next page"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
-                  <button type="button" aria-label="Last page"><i data-lucide="chevrons-right" aria-hidden="true"></i></button>
-                </nav>
-              </footer>
+              <footer class="staff-table-footer"><span data-application-footer>Showing 0 to 0 of 0 entries</span></footer>
             </section>
           </section>
 
-          <aside class="staff-detail-panel" aria-labelledby="application-details-title">
+          <aside class="staff-detail-panel" aria-labelledby="application-details-title" data-application-detail>
             <header class="staff-detail-header">
               <h2 id="application-details-title">Application Details</h2>
               <button type="button" aria-label="Close details"><i data-lucide="x" aria-hidden="true"></i></button>
             </header>
-
-            <section class="staff-detail-control">
-              <small>Control No.</small>
-              <strong>BPLO-2025-00048</strong>
-              <span class="staff-status staff-status--review">For Checking</span>
-            </section>
-
-            <section class="staff-detail-section">
-              <h3><i data-lucide="user-round" aria-hidden="true"></i> Applicant Information</h3>
-              <dl>
-                <div>
-                  <dt>Applicant Name</dt>
-                  <dd>Juan Dela Cruz</dd>
-                </div>
-                <div>
-                  <dt>Business Name</dt>
-                  <dd>Dela Cruz Sari-Sari Store</dd>
-                </div>
-                <div>
-                  <dt>Permit Type</dt>
-                  <dd>Mayor's Permit</dd>
-                </div>
-                <div>
-                  <dt>Date Submitted</dt>
-                  <dd>May 27, 2025 09:15 AM</dd>
-                </div>
-                <div>
-                  <dt>Assigned Office</dt>
-                  <dd>Central BPLO Office</dd>
-                </div>
-              </dl>
-            </section>
-
-            <section class="staff-detail-section">
-              <div class="staff-documents-heading">
-                <h3><i data-lucide="file-check-2" aria-hidden="true"></i> Submitted Documents</h3>
-                <small>4 of 6 completed</small>
-              </div>
-              <div class="staff-progress-bar" aria-hidden="true"><span style="width: 67%"></span></div>
-              <ul class="staff-document-list">
-                <li class="is-complete"><i data-lucide="check-circle-2" aria-hidden="true"></i> Business Permit Application Form</li>
-                <li class="is-complete"><i data-lucide="check-circle-2" aria-hidden="true"></i> DTI / SEC Registration</li>
-                <li class="is-complete"><i data-lucide="check-circle-2" aria-hidden="true"></i> Barangay Clearance</li>
-                <li class="is-complete"><i data-lucide="check-circle-2" aria-hidden="true"></i> Valid ID</li>
-                <li><i data-lucide="circle" aria-hidden="true"></i> Zoning Clearance</li>
-                <li><i data-lucide="circle" aria-hidden="true"></i> Fire Safety Inspection Certificate</li>
-              </ul>
-            </section>
-
-            <section class="staff-detail-actions" aria-label="Quick actions">
-              <h3>Quick Actions</h3>
-              <div>
-                <button type="button"><i data-lucide="eye" aria-hidden="true"></i> View</button>
-                <button type="button"><i data-lucide="shield-check" aria-hidden="true"></i> Verify</button>
-                <button type="button"><i data-lucide="message-square-plus" aria-hidden="true"></i> Add Remarks</button>
-              </div>
-            </section>
+            <div class="staff-empty-state">
+              <i data-lucide="inbox" aria-hidden="true"></i>
+              <strong>No application selected</strong>
+              <span>Details will appear here after an application record is selected.</span>
+            </div>
           </aside>
         </section>
       </section>
     </main>
-
     <script>
-      window.lucide?.createIcons();
+      window.addEventListener("DOMContentLoaded", () => {
+        window.lucide?.createIcons();
+      });
     </script>
   </body>
 </html>

@@ -9,6 +9,7 @@ create table if not exists public.application_ocr_results (
   raw_text text,
   extracted_fields jsonb not null default '{}'::jsonb,
   confidence_score numeric(5,2),
+  parser_version text,
   ocr_status text not null default 'Pending'
     check (ocr_status in ('Pending', 'Processing', 'Completed', 'Failed')),
   error_message text,
@@ -17,6 +18,11 @@ create table if not exists public.application_ocr_results (
 );
 
 alter table public.application_ocr_results enable row level security;
+
+alter table public.application_ocr_results
+add column if not exists parser_version text;
+
+drop policy if exists "Applicants can view own OCR results" on public.application_ocr_results;
 
 create policy "Applicants can view own OCR results"
 on public.application_ocr_results

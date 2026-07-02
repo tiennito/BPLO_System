@@ -1735,7 +1735,7 @@ body.modal-open {
 .staff-logout svg {
   width: 22px;
   height: 22px;
-  color: #ffffff;
+  color: #000000;
 }
 
 .staff-logout {
@@ -1815,6 +1815,44 @@ body.modal-open {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 8px 18px rgba(17, 37, 24, 0.08);
+}
+
+.staff-empty-state {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  padding: 24px;
+  color: #5d6962;
+  text-align: center;
+}
+
+.staff-empty-state svg {
+  width: 34px;
+  height: 34px;
+  color: #0a8d3b;
+}
+
+.staff-empty-state strong {
+  color: #263129;
+  font-size: 13px;
+}
+
+.staff-empty-state span {
+  max-width: 280px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.staff-empty-state--chart {
+  min-height: 218px;
+}
+
+.staff-empty-cell {
+  height: 86px;
+  color: #68736c;
+  text-align: center !important;
 }
 
 .staff-panel-header {
@@ -2516,6 +2554,22 @@ body.modal-open {
 
 .staff-application-table {
   min-width: 920px;
+}
+
+.business-classifications-table-wrap {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.business-classifications-table-wrap .staff-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.staff-table-footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .staff-application-table tr.is-selected td {

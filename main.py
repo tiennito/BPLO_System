@@ -2,7 +2,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
@@ -10,9 +10,11 @@ import os
 import re
 import tempfile
 
+import cv2
 import fitz
+import numpy as np
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -66,7 +68,7 @@ def profile_status(value):
 def dashboard_path_for_role(role):
     paths = {
         "super_admin": "/admin/dashboard",
-        "bplo_admin": "/admin/dashboard",
+        "bplo_admin": "/admin/staff-administrator",
         "department_office": "/department/dashboard",
         "treasury": "/treasury/dashboard",
         "applicant": "/applicant/dashboard",
@@ -99,6 +101,34 @@ def department_key_from_name(name):
         "engineering": "engineering",
     }
     return seeded_aliases.get(key, key)
+
+
+def normalize_business_classification_value(value):
+    value = (value or "").strip()
+    replacements = {
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u00a0": " ",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    value = re.sub(r"\s+", " ", value).strip().upper()
+    value = re.sub(r"\s*/\s*", " / ", value)
+    value = re.sub(r"\s*-\s*", " - ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def normalize_business_classification_key(value):
+    value = normalize_business_classification_value(value).replace("&", " AND ")
+    value = re.sub(r"\bBAKE\s+SHOP\b", "BAKESHOP", value)
+    value = re.sub(r"\bPHONE\s+CARDS\b", "PHONECARDS", value)
+    value = re.sub(r"\bSMALL\s+LOT\b", "SMALLLOT", value)
+    value = re.sub(r"[^A-Z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
 
 
 HOST = os.getenv("APP_HOST", "127.0.0.1")
@@ -147,6 +177,9 @@ PAGE_ROUTES = {
     "/admin/staff-administrator/reports": "/templates/staff_administrator/reports.html",
     "/admin/staff-administrator/reports/": "/templates/staff_administrator/reports.html",
     "/admin/staff-administrator/reports.html": "/templates/staff_administrator/reports.html",
+    "/admin/staff-administrator/business-classifications": "/templates/staff_administrator/business_classifications.html",
+    "/admin/staff-administrator/business-classifications/": "/templates/staff_administrator/business_classifications.html",
+    "/admin/staff-administrator/business-classifications.html": "/templates/staff_administrator/business_classifications.html",
     "/admin/create-user": "/templates/admin/create_user.html",
     "/admin/create-user/": "/templates/admin/create_user.html",
     "/admin/create-user.html": "/templates/admin/create_user.html",
@@ -198,6 +231,27 @@ PAGE_ROUTES = {
 
 
 class AppHandler(SimpleHTTPRequestHandler):
+    FIELD_LABELS = {
+        "business_name": [
+            r"business\s*name",
+            r"name\s*of\s*business",
+        ],
+        "trade_name": [
+            r"trade\s*name",
+            r"tradename",
+        ],
+        "tin": [
+            r"tin",
+            r"tax\s*identification\s*number",
+            r"taxpayer\s*identification\s*number",
+        ],
+        "business_address": [
+            r"business\s*address",
+            r"business\s*location",
+            r"business\s*office\s*address",
+        ],
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
@@ -252,6 +306,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.get_current_user_profile()
             return
 
+        if request_path == "/api/business-classifications":
+            self.list_business_classifications()
+            return
+
         if request_path == "/admin/api/users":
             self.list_admin_users()
             return
@@ -266,6 +324,10 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if request_path == "/admin/api/applications":
             self.list_admin_applications()
+            return
+
+        if request_path == "/admin/api/business-classifications":
+            self.list_admin_business_classifications()
             return
 
         if request_path == "/admin/api/permits":
@@ -359,6 +421,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.create_admin_permit()
             return
 
+        if request_path == "/admin/api/business-classifications":
+            self.create_admin_business_classification()
+            return
+
         if request_path == "/applicant/api/applications":
             self.start_applicant_application()
             return
@@ -436,6 +502,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         if request_path.startswith("/admin/api/permits/"):
             permit_id = request_path.rsplit("/", 1)[-1]
             self.update_admin_permit(permit_id)
+            return
+
+        if request_path.startswith("/admin/api/business-classifications/"):
+            classification_id = request_path.rsplit("/", 1)[-1]
+            self.update_admin_business_classification(classification_id)
             return
 
         self.send_json({"error": "Endpoint not found."}, status=404)
@@ -518,6 +589,67 @@ class AppHandler(SimpleHTTPRequestHandler):
         with urlopen(request, timeout=30) as response:
             return response.read()
 
+    def prepare_ocr_image_variants(self, image):
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        rgb = np.array(image)
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+
+        height, width = gray.shape[:2]
+        scale = max(1.0, min(4.0, 1800 / max(width, height)))
+        if scale > 1:
+            gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+        denoised = cv2.fastNlMeansDenoising(gray, None, 18, 7, 21)
+        clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8)).apply(denoised)
+        blur = cv2.GaussianBlur(clahe, (3, 3), 0)
+        _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        adaptive = cv2.adaptiveThreshold(
+            blur,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            11,
+        )
+
+        variants = [
+            Image.fromarray(gray),
+            Image.fromarray(clahe),
+            Image.fromarray(otsu),
+            Image.fromarray(adaptive),
+            Image.fromarray(cv2.bitwise_not(otsu)),
+        ]
+
+        enlarged_variants = []
+        for variant in variants:
+            enlarged_variants.append(variant)
+            enlarged_variants.append(variant.resize((variant.width * 2, variant.height * 2), Image.Resampling.LANCZOS))
+
+        return enlarged_variants
+
+    def ocr_image_to_text(self, image):
+        configs = [
+            "--oem 3 --psm 6",
+            "--oem 3 --psm 11",
+            "--oem 3 --psm 7",
+        ]
+        texts = []
+        seen = set()
+
+        for variant in self.prepare_ocr_image_variants(image):
+            for config in configs:
+                try:
+                    text = pytesseract.image_to_string(variant, config=config)
+                except Exception:
+                    continue
+                text = self.clean_ocr_text(text)
+                key = self.flatten_ocr_text(text).lower()
+                if text and key not in seen:
+                    seen.add(key)
+                    texts.append(text)
+
+        return "\n".join(texts)
+
     def extract_text_from_file(self, file_name, file_bytes):
         file_name_lower = (file_name or "").lower()
 
@@ -526,16 +658,16 @@ class AppHandler(SimpleHTTPRequestHandler):
             extracted_pages = []
 
             for page in document:
-                pix = page.get_pixmap(dpi=200)
+                pix = page.get_pixmap(dpi=260)
                 image_bytes = pix.tobytes("png")
                 image = Image.open(BytesIO(image_bytes))
-                text = pytesseract.image_to_string(image)
+                text = self.ocr_image_to_text(image)
                 extracted_pages.append(text)
 
             return "\n".join(extracted_pages)
 
         image = Image.open(BytesIO(file_bytes))
-        return pytesseract.image_to_string(image)
+        return self.ocr_image_to_text(image)
 
     BAD_BUSINESS_NAME_WORDS = [
         "registration",
@@ -566,6 +698,26 @@ class AppHandler(SimpleHTTPRequestHandler):
     def flatten_ocr_text(self, text):
         return re.sub(r"\s+", " ", text or "").strip()
 
+    def get_all_label_patterns(self):
+        labels = []
+        for patterns in self.FIELD_LABELS.values():
+            labels.extend(patterns)
+        return labels
+
+    def build_all_labels_regex(self):
+        return "|".join(f"(?:{pattern})" for pattern in self.get_all_label_patterns())
+
+    def normalize_ocr_text(self, raw_text):
+        text = self.clean_ocr_text(raw_text)
+        for label_pattern in self.get_all_label_patterns():
+            text = re.sub(
+                rf"(?i)\b({label_pattern})\b\s*[:\-]?",
+                r"\n\1: ",
+                text,
+            )
+        text = re.sub(r"\n+", "\n", text)
+        return text.strip()
+
     def find_first_match(self, patterns, text):
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -573,10 +725,153 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return match.group(1).strip(" :,-")
         return ""
 
-    def clean_extracted_ocr_value(self, value):
-        value = re.sub(r"[:|_]+", " ", str(value or ""))
+    def clean_extracted_value(self, value):
+        if not value:
+            return None
+
+        value = str(value).strip()
         value = re.sub(r"\s+", " ", value)
-        return value.strip(" :-")
+        value = value.replace("|", "")
+        value = value.replace("\u201c", "")
+        value = value.replace("\u201d", "")
+        value = value.strip(" :;-")
+        return value.strip() or None
+
+    def clean_extracted_ocr_value(self, value):
+        return self.clean_extracted_value(re.sub(r"[:|_]+", " ", str(value or ""))) or ""
+
+    def extract_value_by_label(self, text, label_patterns):
+        all_labels_regex = self.build_all_labels_regex()
+        current_label_regex = "|".join(f"(?:{pattern})" for pattern in label_patterns)
+        pattern = rf"""
+            (?:^|\n)\s*
+            (?:{current_label_regex})
+            \s*[:\-]?\s*
+            (.*?)
+            (?=
+                \n\s*(?:{all_labels_regex})\s*[:\-]?
+                |
+                $
+            )
+        """
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.VERBOSE)
+        if not match:
+            return None
+        return self.clean_extracted_value(match.group(1))
+
+    def contains_known_label(self, value):
+        if not value:
+            return False
+        all_labels_regex = self.build_all_labels_regex()
+        return re.search(rf"\b(?:{all_labels_regex})\b", str(value), re.IGNORECASE) is not None
+
+    def is_valid_business_name(self, value):
+        if not value:
+            return False
+        value = str(value).strip()
+        if len(value) > 100:
+            return False
+        if self.contains_known_label(value):
+            return False
+
+        bad_words = [
+            "certificate",
+            "registration",
+            "republic",
+            "philippines",
+            "department",
+            "secretary",
+            "issued",
+            "valid",
+        ]
+        lower = value.lower()
+        return not any(word in lower for word in bad_words)
+
+    def clean_tin(self, value):
+        if not value:
+            return None
+
+        match = re.search(r"\b\d{3}[-\s]?\d{3}[-\s]?\d{3}(?:[-\s]?\d{3})?\b", str(value))
+        if not match:
+            return None
+
+        digits = re.sub(r"\D", "", match.group(0))
+        if len(digits) == 9:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:9]}"
+        if len(digits) == 12:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:9]}-{digits[9:12]}"
+        return None
+
+    def is_valid_address(self, value):
+        if not value:
+            return False
+
+        value = str(value).strip()
+        if len(value) < 5 or len(value) > 250:
+            return False
+        if self.contains_known_label(value):
+            return False
+        return True
+
+    def validate_business_info_fields(self, fields):
+        validated = {}
+
+        business_name = self.clean_extracted_value(fields.get("business_name"))
+        trade_name = self.clean_extracted_value(fields.get("trade_name"))
+        tin = self.clean_tin(fields.get("tin"))
+        business_address = self.clean_extracted_value(fields.get("business_address"))
+
+        if self.is_valid_business_name(business_name):
+            validated["business_name"] = business_name.upper()
+
+        if trade_name and len(trade_name) <= 100 and not self.contains_known_label(trade_name):
+            validated["trade_name"] = trade_name.upper()
+
+        if tin:
+            validated["tin"] = tin
+
+        if self.is_valid_address(business_address):
+            validated["business_address"] = business_address.upper()
+
+        return validated
+
+    def score_field(self, field_name, value):
+        if not value:
+            return 0.0
+        if self.contains_known_label(value):
+            return 0.2
+        if field_name == "tin":
+            return 0.95 if self.clean_tin(value) else 0.3
+        if field_name == "business_name":
+            return 0.9 if self.is_valid_business_name(value) else 0.3
+        if field_name == "business_address":
+            return 0.85 if self.is_valid_address(value) else 0.3
+        return 0.8
+
+    def build_confidence(self, fields):
+        return {
+            field_name: self.score_field(field_name, value)
+            for field_name, value in fields.items()
+        }
+
+    def parse_business_info_document(self, raw_text):
+        text = self.normalize_ocr_text(raw_text)
+        fields = {
+            "business_name": self.extract_value_by_label(text, self.FIELD_LABELS["business_name"]),
+            "trade_name": self.extract_value_by_label(text, self.FIELD_LABELS["trade_name"]),
+            "tin": self.extract_value_by_label(text, self.FIELD_LABELS["tin"]),
+            "business_address": self.extract_value_by_label(text, self.FIELD_LABELS["business_address"]),
+        }
+        fields = self.validate_business_info_fields(fields)
+        if not fields:
+            return {}
+
+        confidence = self.build_confidence(fields)
+        fields["field_confidence"] = confidence
+        fields["confidence"] = confidence
+        fields["confidence_score"] = round(sum(confidence.values()) / len(confidence), 2)
+        fields["parser_version"] = "business_info_v1"
+        return fields
 
     def field_confidence_value(self, value, confidence):
         return {
@@ -661,7 +956,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         for stop in stop_words:
             value = re.sub(rf"\b{re.escape(stop)}\b.*", "", value, flags=re.IGNORECASE).strip()
 
-        return value.upper()
+        value = value.upper()
+        value = re.sub(r"(?<=[A-Z])0(?=[A-Z])", "O", value)
+        value = re.sub(r"(?<=[A-Z])1(?=[A-Z])", "I", value)
+        value = re.sub(r"(?<=[A-Z])5(?=[A-Z])", "S", value)
+        value = re.sub(r"(?<=[A-Z])8(?=[A-Z])", "B", value)
+        return value
 
     def is_valid_gross_sales_business_name(self, value):
         if self.is_bad_business_name_candidate(value):
@@ -678,6 +978,8 @@ class AppHandler(SimpleHTTPRequestHandler):
     def is_valid_business_address_candidate(self, value):
         value = str(value or "").strip()
         if len(value) < 8 or len(value) > 180:
+            return False
+        if self.contains_known_label(value):
             return False
         lowered = value.lower()
         location_words = ["street", "st.", "brgy", "barangay", "victoria", "laguna", "city", "municipality", "province", "road", "ave"]
@@ -936,6 +1238,74 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return fields
 
+    def normalize_handwritten_ocr_line(self, line):
+        line = str(line or "")
+        replacements = {
+            "8USINESS": "BUSINESS",
+            "BVSINESS": "BUSINESS",
+            "BUSlNESS": "BUSINESS",
+            "BUS1NESS": "BUSINESS",
+            "BUSl NESS": "BUSINESS",
+            "B U S I N E S S": "BUSINESS",
+            "NANE": "NAME",
+            "MAME": "NAME",
+            "NAHE": "NAME",
+        }
+        normalized = line.upper()
+        for wrong, right in replacements.items():
+            normalized = normalized.replace(wrong, right)
+        normalized = re.sub(r"\s+", " ", normalized)
+        normalized = re.sub(r"\bBUSI\s+NESS\b", "BUSINESS", normalized)
+        normalized = re.sub(r"\bBUS\s*INESS\b", "BUSINESS", normalized)
+        return normalized.strip()
+
+    def parse_freeform_business_fields(self, raw_text):
+        text = self.clean_ocr_text(raw_text)
+        flattened_text = self.flatten_ocr_text(text)
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        candidates = []
+
+        label_patterns = [
+            r"(?:business|bus1ness|busi\s*ness|bvsiness|8usiness)\s*(?:name|nane|mame|nahe)",
+            r"(?:name\s+of\s+business|name\s+business)",
+            r"(?:trade\s+name)",
+        ]
+
+        for line in lines:
+            normalized_line = self.normalize_handwritten_ocr_line(line)
+            for label_pattern in label_patterns:
+                match = re.search(rf"{label_pattern}\s*[:\-|]?\s*(.+)", normalized_line, re.IGNORECASE)
+                if match:
+                    candidate = self.normalize_business_name(match.group(1))
+                    if candidate and not self.is_bad_business_name_candidate(candidate):
+                        candidates.append(candidate)
+
+        normalized_flattened = self.normalize_handwritten_ocr_line(flattened_text)
+        for label_pattern in label_patterns:
+            match = re.search(
+                rf"{label_pattern}\s*[:\-|]?\s*(.+?)(?:\s+(?:OWNER|PROPRIETOR|ADDRESS|TIN|REGISTRATION|PERMIT|DATE)\b|$)",
+                normalized_flattened,
+                re.IGNORECASE,
+            )
+            if match:
+                candidate = self.normalize_business_name(match.group(1))
+                if candidate and not self.is_bad_business_name_candidate(candidate):
+                    candidates.append(candidate)
+
+        if not candidates:
+            return {}
+
+        business_name = sorted(set(candidates), key=lambda value: (-len(value.split()), len(value)))[0]
+        return {
+            "business_name": business_name,
+            "businessName": business_name,
+            "business_name_confidence": "medium",
+            "field_confidence": {
+                "business_name": 78,
+                "businessName": 78,
+            },
+        }
+
     def split_owner_name(self, owner_name):
         parts = (owner_name or "").strip().split()
         if len(parts) >= 2:
@@ -970,10 +1340,15 @@ class AppHandler(SimpleHTTPRequestHandler):
             "grossSales": "gross_sales",
             "gross_sales": "goods_value",
         }
+        metadata_keys = {"field_confidence", "fieldConfidence", "confidence", "confidence_score", "parser_version"}
         normalized = {}
 
         for key, value in (fields or {}).items():
             if value in (None, ""):
+                continue
+
+            if key in metadata_keys:
+                normalized[key] = value
                 continue
 
             normalized_key = alias_map.get(key, key)
@@ -992,17 +1367,19 @@ class AppHandler(SimpleHTTPRequestHandler):
     def get_ocr_field_confidence_number(self, fields, key):
         confidence_aliases = {
             "business_name": ["business_name", "businessName"],
+            "trade_name": ["trade_name", "tradeName"],
+            "tin": ["tin"],
             "business_address": ["business_address", "businessAddress"],
             "goods_value": ["goods_value", "gross_sales", "grossSales"],
             "date_issued": ["date_issued", "dateIssued"],
             "owner_name": ["owner_name", "ownerName"],
         }
-        confidence_map = fields.get("field_confidence") or fields.get("fieldConfidence") or {}
+        confidence_map = fields.get("field_confidence") or fields.get("fieldConfidence") or fields.get("confidence") or {}
         for confidence_key in confidence_aliases.get(key, [key]):
             if confidence_key in confidence_map:
                 value = confidence_map.get(confidence_key)
                 if isinstance(value, (int, float)):
-                    return float(value)
+                    return float(value) * 100 if 0 < float(value) <= 1 else float(value)
                 level = str(value or "").lower()
                 if level == "high":
                     return 95
@@ -1013,7 +1390,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         direct_value = fields.get(f"{key}_confidence")
         if isinstance(direct_value, (int, float)):
-            return float(direct_value)
+            return float(direct_value) * 100 if 0 < float(direct_value) <= 1 else float(direct_value)
         level = str(direct_value or "").lower()
         if level == "high":
             return 95
@@ -1028,7 +1405,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         incoming = self.normalize_extracted_business_fields(incoming_fields or {})
         confidence_map = merged_fields.setdefault("field_confidence", {})
         incoming_confidence = incoming.get("field_confidence") or {}
-        metadata_keys = {"field_confidence", "fieldConfidence", "confidence", "confidence_score"}
+        metadata_keys = {"field_confidence", "fieldConfidence", "confidence", "confidence_score", "parser_version"}
 
         for key, value in incoming.items():
             if key in metadata_keys or key.endswith("_confidence") or value in (None, ""):
@@ -1039,6 +1416,22 @@ class AppHandler(SimpleHTTPRequestHandler):
                 if owner_name and self.normalize_business_name(value) == self.normalize_business_name(owner_name):
                     continue
                 if not self.is_valid_gross_sales_business_name(value):
+                    continue
+                value = self.normalize_business_name(value)
+
+            if key == "trade_name":
+                value = self.clean_extracted_value(value)
+                if not value or len(value) > 100 or self.contains_known_label(value):
+                    continue
+
+            if key == "tin":
+                value = self.clean_tin(value)
+                if not value:
+                    continue
+
+            if key == "business_address":
+                value = self.clean_extracted_value(value)
+                if not self.is_valid_address(value):
                     continue
 
             incoming_score = self.get_ocr_field_confidence_number(incoming, key)
@@ -1066,6 +1459,37 @@ class AppHandler(SimpleHTTPRequestHandler):
         text = self.clean_ocr_text(raw_text)
         flattened_text = self.flatten_ocr_text(text)
         document_type_lower = (document_type or "").lower()
+        business_info_fields = self.parse_business_info_document(raw_text)
+        freeform_fields = self.parse_freeform_business_fields(raw_text)
+
+        def with_freeform_fallback(fields):
+            fields = dict(fields or {})
+            if freeform_fields:
+                if not fields.get("business_name") and freeform_fields.get("business_name"):
+                    fields["business_name"] = freeform_fields["business_name"]
+                    fields["businessName"] = freeform_fields["business_name"]
+                    fields["business_name_confidence"] = freeform_fields.get("business_name_confidence", "medium")
+                confidence = fields.setdefault("field_confidence", {})
+                for key, value in (freeform_fields.get("field_confidence") or {}).items():
+                    confidence.setdefault(key, value)
+
+            if business_info_fields:
+                for key in ("business_name", "trade_name", "tin", "business_address"):
+                    if business_info_fields.get(key):
+                        fields[key] = business_info_fields[key]
+                        if key == "business_name":
+                            fields["businessName"] = business_info_fields[key]
+                        if key == "business_address":
+                            fields["businessAddress"] = business_info_fields[key]
+
+                confidence = fields.setdefault("field_confidence", {})
+                for key, value in (business_info_fields.get("field_confidence") or {}).items():
+                    confidence[key] = value
+
+                fields["confidence"] = business_info_fields.get("confidence", {})
+                fields["confidence_score"] = business_info_fields.get("confidence_score")
+                fields["parser_version"] = business_info_fields.get("parser_version", "business_info_v1")
+            return self.normalize_extracted_business_fields(fields)
 
         is_gross_sales_certificate = (
             "gross" in document_type_lower
@@ -1075,10 +1499,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             or "total sales" in flattened_text.lower()
         )
         if is_gross_sales_certificate:
-            return self.normalize_extracted_business_fields(self.parse_gross_sales_certificate_fields(raw_text))
+            return with_freeform_fallback(self.parse_gross_sales_certificate_fields(raw_text))
 
         if "dti" in document_type_lower or "business name" in flattened_text.lower():
-            return self.normalize_extracted_business_fields(self.parse_dti_fields(raw_text))
+            return with_freeform_fallback(self.parse_dti_fields(raw_text))
 
         extracted = {
             "registration_number": self.find_first_match(
@@ -1156,7 +1580,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         if extracted.get("type_of_business"):
             extracted["business_type"] = extracted["type_of_business"]
 
-        return self.normalize_extracted_business_fields(extracted)
+        return with_freeform_fallback(extracted)
 
     def verify_admin_session(self, access_token, supabase_url, supabase_client_key, supabase_service_key, admin_email):
         if not access_token:
@@ -2191,6 +2615,334 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return message
 
+    def get_query_params(self):
+        return parse_qs(urlsplit(self.path).query, keep_blank_values=False)
+
+    def first_query_value(self, params, key, default=""):
+        values = params.get(key) or []
+        return (values[0] if values else default) or default
+
+    def format_business_classification(self, row, include_admin_fields=False, usage_count=0):
+        payload = {
+            "id": row.get("id"),
+            "code": row.get("code") or "",
+            "name": row.get("name") or "",
+            "parentCategory": row.get("parent_category") or "",
+        }
+        if include_admin_fields:
+            payload.update(
+                {
+                    "normalizedName": row.get("normalized_name") or "",
+                    "description": row.get("description") or "",
+                    "isActive": bool(row.get("is_active")),
+                    "sortOrder": row.get("sort_order") or 0,
+                    "usageCount": usage_count,
+                    "createdAt": row.get("created_at") or "",
+                    "updatedAt": row.get("updated_at") or "",
+                }
+            )
+        return payload
+
+    def business_classification_query(self, active_only=True, include_admin_fields=False):
+        params = self.get_query_params()
+        search = self.first_query_value(params, "search").strip()
+        parent_category = self.first_query_value(params, "parentCategory").strip()
+        page_raw = self.first_query_value(params, "page", "1")
+        limit_raw = self.first_query_value(params, "limit", "20")
+        sort = self.first_query_value(params, "sort", "name.asc").strip().lower()
+
+        try:
+            page = max(1, int(page_raw))
+        except ValueError:
+            page = 1
+
+        try:
+            limit = min(100, max(1, int(limit_raw)))
+        except ValueError:
+            limit = 20
+
+        offset = (page - 1) * limit
+        select_fields = "id,code,name,normalized_name,parent_category,description,is_active,sort_order,created_at,updated_at"
+        query = {
+            "select": select_fields,
+            "limit": limit,
+            "offset": offset,
+        }
+        count_query = {"select": select_fields, "limit": 10000}
+
+        if active_only:
+            query["is_active"] = "eq.true"
+            count_query["is_active"] = "eq.true"
+
+        if parent_category:
+            query["parent_category"] = f"eq.{parent_category}"
+            count_query["parent_category"] = f"eq.{parent_category}"
+
+        if search:
+            sanitized_search = re.sub(r"[^A-Za-z0-9 /&'\\-]+", " ", search)
+            sanitized_search = re.sub(r"\s+", " ", sanitized_search).strip()[:80]
+            normalized_search = normalize_business_classification_key(sanitized_search)
+            terms = [f"name.ilike.*{sanitized_search}*"]
+            if normalized_search:
+                terms.append(f"normalized_name.ilike.*{normalized_search}*")
+            query["or"] = f"({','.join(terms)})"
+            count_query["or"] = query["or"]
+
+        order_options = {
+            "name.asc": "name.asc",
+            "name.desc": "name.desc",
+            "parent.asc": "parent_category.asc,name.asc",
+            "created.desc": "created_at.desc",
+            "sort": "sort_order.asc,name.asc",
+        }
+        query["order"] = order_options.get(sort, "name.asc")
+        count_query["order"] = query["order"]
+
+        return query, count_query, page, limit
+
+    def list_business_classifications(self):
+        config = self.ensure_authenticated_request()
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, _actor = config
+        query, count_query, page, limit = self.business_classification_query(active_only=True)
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                query,
+            ) or []
+            count_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                count_query,
+            ) or []
+            self.send_json(
+                {
+                    "success": True,
+                    "data": [self.format_business_classification(row) for row in rows],
+                    "pagination": {"page": page, "limit": limit, "total": len(count_rows)},
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load business classifications.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load business classifications."}, status=500)
+
+    def get_business_classification_usage_counts(self, supabase_url, service_key):
+        usage_counts = {}
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applications",
+                {"select": "id,business_classification_id", "limit": 10000},
+            ) or []
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return usage_counts
+
+        for row in rows:
+            classification_id = row.get("business_classification_id")
+            if classification_id:
+                usage_counts[classification_id] = usage_counts.get(classification_id, 0) + 1
+        return usage_counts
+
+    def list_admin_business_classifications(self):
+        config = self.ensure_admin_request("business classification listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        query, count_query, page, limit = self.business_classification_query(active_only=False, include_admin_fields=True)
+        params = self.get_query_params()
+        status_filter = self.first_query_value(params, "status").strip()
+        if status_filter == "Active":
+            query["is_active"] = "eq.true"
+            count_query["is_active"] = "eq.true"
+        elif status_filter == "Inactive":
+            query["is_active"] = "eq.false"
+            count_query["is_active"] = "eq.false"
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                query,
+            ) or []
+            count_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                count_query,
+            ) or []
+            usage_counts = self.get_business_classification_usage_counts(supabase_url, supabase_service_key)
+            self.send_json(
+                {
+                    "success": True,
+                    "classifications": [
+                        self.format_business_classification(
+                            row,
+                            include_admin_fields=True,
+                            usage_count=usage_counts.get(row.get("id"), 0),
+                        )
+                        for row in rows
+                    ],
+                    "pagination": {"page": page, "limit": limit, "total": len(count_rows)},
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load business classifications.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load business classifications."}, status=500)
+
+    def normalize_business_classification_payload(self, payload, existing_id=""):
+        name = normalize_business_classification_value(payload.get("name"))
+        parent_category = (payload.get("parentCategory") or payload.get("parent_category") or "").strip()
+        description = (payload.get("description") or "").strip()
+        is_active = bool(payload.get("isActive", payload.get("is_active", True)))
+        sort_order_raw = payload.get("sortOrder", payload.get("sort_order", 0))
+
+        if not name:
+            raise ValueError("Business classification name is required.")
+
+        normalized_name = normalize_business_classification_key(name)
+        if not normalized_name:
+            raise ValueError("Business classification name is invalid.")
+
+        try:
+            sort_order = max(0, int(sort_order_raw or 0))
+        except (TypeError, ValueError):
+            sort_order = 0
+
+        return {
+            "code": (payload.get("code") or "").strip() or None,
+            "name": name,
+            "normalized_name": normalized_name,
+            "parent_category": parent_category or None,
+            "description": description or None,
+            "is_active": is_active,
+            "sort_order": sort_order,
+        }
+
+    def business_classification_exists(self, supabase_url, service_key, normalized_name, excluded_id=""):
+        query = {"select": "id", "normalized_name": f"eq.{normalized_name}", "limit": 1}
+        rows = self.supabase_rest_request(supabase_url, service_key, "business_classifications", query) or []
+        return any(row.get("id") != excluded_id for row in rows)
+
+    def create_admin_business_classification(self):
+        config = self.ensure_admin_request("business classification creation")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            payload = self.normalize_business_classification_payload(self.read_json_body())
+            if self.business_classification_exists(supabase_url, supabase_service_key, payload["normalized_name"]):
+                self.send_json({"error": "This business classification already exists."}, status=409)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                method="POST",
+                payload=payload,
+                prefer="return=representation",
+            )
+            actor = self.get_request_actor(supabase_url)
+            created = rows[0] if rows else {}
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "business_classification_created",
+                actor=actor,
+                entity_type="business_classification",
+                entity_id=created.get("id"),
+                details={"name": created.get("name")},
+            )
+            self.send_json({"message": "Business classification created.", "classification": self.format_business_classification(created, True)}, status=201)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to create business classification.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to create business classification."}, status=500)
+
+    def update_admin_business_classification(self, classification_id):
+        config = self.ensure_admin_request("business classification update")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key = config
+        try:
+            classification_id = (classification_id or "").strip()
+            if not classification_id:
+                self.send_json({"error": "Business classification is required."}, status=400)
+                return
+
+            payload = self.normalize_business_classification_payload(self.read_json_body(), existing_id=classification_id)
+            if self.business_classification_exists(supabase_url, supabase_service_key, payload["normalized_name"], excluded_id=classification_id):
+                self.send_json({"error": "This business classification already exists."}, status=409)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "business_classifications",
+                {"id": f"eq.{classification_id}"},
+                method="PATCH",
+                payload=payload,
+                prefer="return=representation",
+            )
+            if not rows:
+                self.send_json({"error": "Business classification not found."}, status=404)
+                return
+
+            actor = self.get_request_actor(supabase_url)
+            updated = rows[0]
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "business_classification_updated",
+                actor=actor,
+                entity_type="business_classification",
+                entity_id=classification_id,
+                details={
+                    "name": updated.get("name"),
+                    "isActive": updated.get("is_active"),
+                    "parentCategory": updated.get("parent_category"),
+                },
+            )
+            self.send_json({"message": "Business classification updated.", "classification": self.format_business_classification(updated, True)})
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update business classification.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update business classification."}, status=500)
+
+    def get_active_business_classification(self, supabase_url, service_key, classification_id):
+        classification_id = (classification_id or "").strip()
+        if not classification_id:
+            return None
+
+        rows = self.supabase_rest_request(
+            supabase_url,
+            service_key,
+            "business_classifications",
+            {
+                "select": "id,name,parent_category,is_active",
+                "id": f"eq.{classification_id}",
+                "is_active": "eq.true",
+                "limit": 1,
+            },
+        ) or []
+        return rows[0] if rows else None
+
     def create_notification(self, supabase_url, service_key, user_id, title, message, notification_type="system", source_role="System", application_id=None):
         if not user_id or not title or not message:
             return None
@@ -3183,6 +3935,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
 
             raw_text = self.extract_text_from_file(file_name, file_bytes)
+            print("RAW OCR TEXT:")
+            print(raw_text)
             extracted_fields = self.extract_business_fields_from_text(raw_text, document_type)
             confidence_score = extracted_fields.get("confidence_score")
 
@@ -3200,25 +3954,43 @@ class AppHandler(SimpleHTTPRequestHandler):
                 prefer="return=representation",
             )
 
-            ocr_rows = self.supabase_rest_request(
-                supabase_url,
-                supabase_service_key,
-                "application_ocr_results",
-                method="POST",
-                payload={
-                    "application_id": application_id,
-                    "application_document_id": application_document_id,
-                    "permit_document_id": permit_document_id,
-                    "file_name": file_name,
-                    "file_url": file_url,
-                    "document_type": document_type,
-                    "raw_text": raw_text,
-                    "extracted_fields": extracted_fields,
-                    "confidence_score": confidence_score,
-                    "ocr_status": "Completed",
-                },
-                prefer="return=representation",
-            )
+            ocr_payload = {
+                "application_id": application_id,
+                "application_document_id": application_document_id,
+                "permit_document_id": permit_document_id,
+                "file_name": file_name,
+                "file_url": file_url,
+                "document_type": document_type,
+                "raw_text": raw_text,
+                "extracted_fields": extracted_fields,
+                "confidence_score": confidence_score,
+                "parser_version": extracted_fields.get("parser_version", "business_info_v1"),
+                "ocr_status": "Completed",
+            }
+            try:
+                ocr_rows = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_ocr_results",
+                    method="POST",
+                    payload=ocr_payload,
+                    prefer="return=representation",
+                )
+            except HTTPError as error:
+                response_body = error.read().decode("utf-8")
+                if error.code == 400 and "parser_version" in response_body:
+                    fallback_payload = dict(ocr_payload)
+                    fallback_payload.pop("parser_version", None)
+                    ocr_rows = self.supabase_rest_request(
+                        supabase_url,
+                        supabase_service_key,
+                        "application_ocr_results",
+                        method="POST",
+                        payload=fallback_payload,
+                        prefer="return=representation",
+                    )
+                else:
+                    raise
             self.create_notification(
                 supabase_url,
                 supabase_service_key,
@@ -3268,6 +4040,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 "business_address": "Business address",
                 "first_name": "First name",
                 "last_name": "Last name",
+                "business_classification_id": "Business classification",
             }
             missing_business_fields = [
                 label
@@ -3280,6 +4053,19 @@ class AppHandler(SimpleHTTPRequestHandler):
                     status=400,
                 )
                 return
+
+            classification = self.get_active_business_classification(
+                supabase_url,
+                supabase_service_key,
+                business_info.get("business_classification_id"),
+            )
+            if not classification:
+                self.send_json({"error": "Please select a valid business classification."}, status=400)
+                return
+
+            business_info["business_classification"] = classification.get("name") or business_info.get("business_classification")
+            business_info["business_classification_id"] = classification.get("id")
+            business_info["business_classification_parent_category"] = classification.get("parent_category") or ""
 
             application_rows = self.supabase_rest_request(
                 supabase_url,
@@ -3340,6 +4126,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 method="PATCH",
                 payload={
                     "business_info": business_info,
+                    "business_classification_id": classification.get("id"),
                     "status": "Submitted",
                     "progress": "Submitted",
                     "submitted_at": submitted_at,

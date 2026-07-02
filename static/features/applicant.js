@@ -36,12 +36,23 @@ const notificationDropdown = document.querySelector("[data-notification-dropdown
 const notificationList = document.querySelector("[data-notification-list]");
 const notificationCount = document.querySelector("[data-notification-count]");
 const markAllNotificationsReadButton = document.querySelector("[data-mark-all-notifications-read]");
+const businessClassificationCombobox = document.querySelector("[data-business-classification-combobox]");
+const businessClassificationSearch = document.querySelector("[data-business-classification-search]");
+const businessClassificationResults = document.querySelector("[data-business-classification-results]");
+const businessClassificationStatus = document.querySelector("[data-business-classification-status]");
 
 const PERMIT_STORAGE_KEY = "bplo_recent_business_permits";
 const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
 const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
 const OCR_FIELDS_KEY = "bplo_current_ocr_fields";
 const OCR_SKIP_KEY = "bplo_skip_ocr_fields";
+const OCR_FORM_FIELD_MAP = {
+  business_name: '[name="business_name"]',
+  trade_name: '[name="trade_name"]',
+  tin: '[name="tin"]',
+  business_address: '[name="business_address"]',
+};
+const OCR_METADATA_KEYS = new Set(["field_confidence", "fieldConfidence", "confidence", "confidence_score", "parser_version"]);
 const BUSINESS_REQUIRED_FIELDS = [
   ["applicationDate", "Date of Application"],
   ["registrationNumber", "DTI/SEC/CDA Registration No."],
@@ -71,9 +82,16 @@ let applicantProfileLoadError = "";
 let activePermitCache = [];
 let checklistDocuments = [];
 let uploadedDocumentNames = new Map();
+let uploadedDocumentOcrStatus = new Map();
 let applicantNotifications = [];
 let isApplyingBusinessDefaults = false;
 const editedBusinessFields = new Set();
+const businessClassificationState = {
+  activeIndex: -1,
+  options: [],
+  selected: null,
+  searchTimer: null,
+};
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -125,6 +143,199 @@ async function applicantApi(path, options = {}) {
     throw new Error(payload.error || "Unable to complete request.");
   }
   return payload;
+}
+
+function setBusinessClassificationStatus(message, isError = false) {
+  if (!businessClassificationStatus) {
+    return;
+  }
+  businessClassificationStatus.textContent = message || "";
+  businessClassificationStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+function setBusinessClassificationExpanded(expanded) {
+  if (businessClassificationSearch) {
+    businessClassificationSearch.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+  if (businessClassificationResults) {
+    businessClassificationResults.hidden = !expanded;
+  }
+}
+
+function highlightMatch(value, query) {
+  const text = String(value || "");
+  const search = String(query || "").trim();
+  if (!search) {
+    return escapeHtml(text);
+  }
+  const index = text.toLowerCase().indexOf(search.toLowerCase());
+  if (index < 0) {
+    return escapeHtml(text);
+  }
+  return `${escapeHtml(text.slice(0, index))}<mark>${escapeHtml(text.slice(index, index + search.length))}</mark>${escapeHtml(text.slice(index + search.length))}`;
+}
+
+function syncBusinessClassificationHiddenFields(classification) {
+  const idInput = businessFormShell?.querySelector('[data-business-field="business_classification_id"]');
+  const nameInput = businessFormShell?.querySelector('[data-business-field="business_classification"]');
+  if (idInput instanceof HTMLInputElement) {
+    idInput.value = classification?.id || "";
+  }
+  if (nameInput instanceof HTMLInputElement) {
+    nameInput.value = classification?.name || "";
+  }
+}
+
+function renderBusinessClassificationOptions(query = "") {
+  if (!businessClassificationResults) {
+    return;
+  }
+
+  if (!businessClassificationState.options.length) {
+    businessClassificationResults.innerHTML =
+      '<div class="business-classification-empty">No matching business classification found.</div>';
+    setBusinessClassificationExpanded(true);
+    return;
+  }
+
+  businessClassificationResults.innerHTML = businessClassificationState.options
+    .map((classification, index) => {
+      const activeClass = index === businessClassificationState.activeIndex ? " is-active" : "";
+      const category = classification.parentCategory ? `<small>${escapeHtml(classification.parentCategory)}</small>` : "";
+      return `
+        <button class="business-classification-option${activeClass}" type="button" role="option" data-classification-index="${index}">
+          ${highlightMatch(classification.name, query)}
+          ${category}
+        </button>
+      `;
+    })
+    .join("");
+  setBusinessClassificationExpanded(true);
+}
+
+async function loadBusinessClassifications(query = "") {
+  if (!businessClassificationResults) {
+    return;
+  }
+
+  setBusinessClassificationStatus("Loading classifications...");
+  businessClassificationResults.innerHTML = '<div class="business-classification-empty">Loading...</div>';
+  setBusinessClassificationExpanded(true);
+
+  try {
+    const params = new URLSearchParams({
+      limit: "20",
+      sort: "name.asc",
+    });
+    if (query.trim()) {
+      params.set("search", query.trim());
+    }
+    const payload = await applicantApi(`/api/business-classifications?${params.toString()}`);
+    businessClassificationState.options = Array.isArray(payload.data) ? payload.data : [];
+    businessClassificationState.activeIndex = businessClassificationState.options.length ? 0 : -1;
+    renderBusinessClassificationOptions(query);
+    setBusinessClassificationStatus(
+      businessClassificationState.options.length
+        ? `${businessClassificationState.options.length} result${businessClassificationState.options.length === 1 ? "" : "s"} shown.`
+        : ""
+    );
+  } catch (error) {
+    businessClassificationState.options = [];
+    businessClassificationState.activeIndex = -1;
+    businessClassificationResults.innerHTML =
+      '<div class="business-classification-empty">Unable to load business classifications.</div>';
+    setBusinessClassificationExpanded(true);
+    setBusinessClassificationStatus(error.message || "Unable to load business classifications.", true);
+  }
+}
+
+function selectBusinessClassification(classification) {
+  if (!classification) {
+    return;
+  }
+  businessClassificationState.selected = classification;
+  if (businessClassificationSearch) {
+    businessClassificationSearch.value = classification.name || "";
+  }
+  syncBusinessClassificationHiddenFields(classification);
+  setBusinessClassificationExpanded(false);
+  setBusinessClassificationStatus("");
+  if (businessClassificationSearch instanceof HTMLElement) {
+    markBusinessFieldTouched(businessClassificationSearch);
+  }
+}
+
+function queueBusinessClassificationSearch() {
+  window.clearTimeout(businessClassificationState.searchTimer);
+  businessClassificationState.searchTimer = window.setTimeout(() => {
+    void loadBusinessClassifications(businessClassificationSearch?.value || "");
+  }, 300);
+}
+
+function handleBusinessClassificationKeydown(event) {
+  if (!businessClassificationResults || businessClassificationResults.hidden) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      void loadBusinessClassifications(businessClassificationSearch?.value || "");
+    }
+    return;
+  }
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    businessClassificationState.activeIndex = Math.min(
+      businessClassificationState.options.length - 1,
+      businessClassificationState.activeIndex + 1
+    );
+    renderBusinessClassificationOptions(businessClassificationSearch?.value || "");
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    businessClassificationState.activeIndex = Math.max(0, businessClassificationState.activeIndex - 1);
+    renderBusinessClassificationOptions(businessClassificationSearch?.value || "");
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    selectBusinessClassification(businessClassificationState.options[businessClassificationState.activeIndex]);
+  } else if (event.key === "Escape") {
+    setBusinessClassificationExpanded(false);
+  }
+}
+
+function initializeBusinessClassificationCombobox() {
+  if (!businessClassificationCombobox || !businessClassificationSearch || !businessClassificationResults) {
+    return;
+  }
+
+  businessClassificationSearch.addEventListener("focus", () => {
+    void loadBusinessClassifications(businessClassificationSearch.value || "");
+  });
+
+  businessClassificationSearch.addEventListener("input", () => {
+    businessClassificationState.selected = null;
+    syncBusinessClassificationHiddenFields(null);
+    queueBusinessClassificationSearch();
+  });
+
+  businessClassificationSearch.addEventListener("keydown", handleBusinessClassificationKeydown);
+
+  businessClassificationResults.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const option = target.closest("[data-classification-index]");
+    if (!(option instanceof HTMLElement)) {
+      return;
+    }
+    const index = Number(option.getAttribute("data-classification-index"));
+    selectBusinessClassification(businessClassificationState.options[index]);
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof Node && !businessClassificationCombobox.contains(target)) {
+      setBusinessClassificationExpanded(false);
+    }
+  });
 }
 
 function formatNotificationTime(value) {
@@ -374,6 +585,20 @@ function syncBusinessPermitType() {
   }
 }
 
+function enforceBusinessPermitTypeSelection() {
+  if (!permitSummaryCard) {
+    return false;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("type")) {
+    return false;
+  }
+
+  window.location.replace("/applicant/application-type");
+  return true;
+}
+
 function renderActivePermits(permits) {
   if (!activePermitsGrid) {
     return;
@@ -520,13 +745,32 @@ function updateRequirementsNextState() {
   const missingRequired = checklistDocuments.filter(
     (doc) => doc.requirementType === "Required" && !uploadedDocumentNames.get(doc.id)
   );
-  requirementsNextButton.disabled = missingRequired.length > 0;
+  const requiredWaitingForOcr = checklistDocuments.filter((doc) => {
+    if (doc.requirementType !== "Required" || !uploadedDocumentNames.get(doc.id)) {
+      return false;
+    }
+
+    const status = uploadedDocumentOcrStatus.get(doc.id);
+    return status !== "Completed";
+  });
+  const requiredOcrFailed = requiredWaitingForOcr.filter((doc) => uploadedDocumentOcrStatus.get(doc.id) === "Failed");
+
+  requirementsNextButton.disabled = missingRequired.length > 0 || requiredWaitingForOcr.length > 0;
 
   if (requirementsStatus) {
-    requirementsStatus.textContent = missingRequired.length
-      ? `${missingRequired.length} required document(s) still missing.`
-      : "All required documents uploaded. You may continue.";
-    requirementsStatus.classList.toggle("is-ready", missingRequired.length === 0);
+    if (missingRequired.length) {
+      requirementsStatus.textContent = `${missingRequired.length} required document(s) still missing.`;
+    } else if (requiredOcrFailed.length) {
+      requirementsStatus.textContent = `${requiredOcrFailed.length} required document(s) failed OCR. Please re-upload a clearer file.`;
+    } else if (requiredWaitingForOcr.length) {
+      requirementsStatus.textContent = `Waiting for OCR to complete on ${requiredWaitingForOcr.length} required document(s).`;
+    } else {
+      requirementsStatus.textContent = "All required documents uploaded and OCR completed. You may continue.";
+    }
+    requirementsStatus.classList.toggle(
+      "is-ready",
+      missingRequired.length === 0 && requiredWaitingForOcr.length === 0
+    );
   }
 }
 
@@ -537,6 +781,7 @@ function renderChecklistDocuments(documents) {
 
   checklistDocuments = documents || [];
   uploadedDocumentNames = new Map();
+  uploadedDocumentOcrStatus = new Map();
 
   if (!checklistDocuments.length) {
     dynamicDocumentGrid.innerHTML = `
@@ -626,6 +871,8 @@ async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
   if (result) {
     result.textContent = `${fileName} - Reading document...`;
   }
+  uploadedDocumentOcrStatus.set(permitDocumentId, "Processing");
+  updateRequirementsNextState();
 
   try {
     const payload = await applicantApi("/applicant/api/ocr-extract", {
@@ -654,11 +901,15 @@ async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
     if (!Object.keys(normalizeOcrFieldsForBusinessForm(extractedFields)).length) {
       alert("OCR was completed, but no readable business details were found. Please fill out the form manually.");
     }
+    uploadedDocumentOcrStatus.set(permitDocumentId, "Completed");
+    updateRequirementsNextState();
   } catch (error) {
+    uploadedDocumentOcrStatus.set(permitDocumentId, "Failed");
     if (result) {
       result.textContent = `${fileName} - Uploaded, but OCR failed`;
       result.classList.add("is-uploaded");
     }
+    updateRequirementsNextState();
 
     console.error("OCR error:", error);
   }
@@ -680,6 +931,7 @@ async function handleChecklistFileSelected(input) {
   try {
     const fileUrl = await uploadApplicationFile(permitDocumentId, file);
     uploadedDocumentNames.set(permitDocumentId, file.name);
+    uploadedDocumentOcrStatus.set(permitDocumentId, "Pending");
     if (result) {
       result.textContent = file.name;
       result.classList.add("is-uploaded");
@@ -692,6 +944,7 @@ async function handleChecklistFileSelected(input) {
     await runOcrForUploadedDocument(permitDocumentId, file.name, fileUrl);
   } catch (error) {
     uploadedDocumentNames.delete(permitDocumentId);
+    uploadedDocumentOcrStatus.delete(permitDocumentId);
     if (result) {
       result.textContent = error.message || "Unable to upload file.";
       result.classList.remove("is-uploaded");
@@ -709,6 +962,7 @@ async function handleChecklistFileSelected(input) {
 
 async function removeChecklistUpload(permitDocumentId) {
   uploadedDocumentNames.delete(permitDocumentId);
+  uploadedDocumentOcrStatus.delete(permitDocumentId);
   const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
   const removeButton = document.querySelector(`[data-remove-upload="${CSS.escape(permitDocumentId)}"]`);
   const input = document.querySelector(`[data-file-input="${CSS.escape(permitDocumentId)}"]`);
@@ -793,7 +1047,7 @@ function normalizeOcrFieldsForBusinessForm(fields = {}) {
       return;
     }
 
-    if (key.endsWith("_confidence") || ["field_confidence", "confidence", "confidence_score"].includes(key)) {
+    if (key.endsWith("_confidence") || OCR_METADATA_KEYS.has(key)) {
       normalized[key] = value;
       return;
     }
@@ -870,6 +1124,40 @@ function isValidBusinessName(value) {
   }
 
   return !badWords.some((word) => lowerValue.includes(word));
+}
+
+function containsLabelText(value) {
+  if (!value) {
+    return false;
+  }
+
+  const labels = [
+    "business name",
+    "trade name",
+    "tradename",
+    "tin",
+    "business address",
+    "business location",
+  ];
+  const lowerValue = String(value).toLowerCase();
+  return labels.some((label) => lowerValue.includes(label));
+}
+
+function isValidBusinessAddress(value) {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = String(value).trim();
+  if (normalizedValue.length > 250) {
+    return false;
+  }
+
+  if (containsLabelText(normalizedValue)) {
+    return false;
+  }
+
+  return true;
 }
 
 function shouldSkipOcrAutoFill(applicationId = getCurrentApplicationId()) {
@@ -976,7 +1264,13 @@ function setBusinessFieldValue(name, value, options = {}) {
     return;
   }
 
-  const controls = businessFormShell.querySelectorAll(`[data-business-field="${CSS.escape(name)}"]`);
+  if (name === "business_address" && !isValidBusinessAddress(value)) {
+    console.warn("Rejected invalid business address from OCR:", value);
+    return;
+  }
+
+  const selector = OCR_FORM_FIELD_MAP[name] || `[data-business-field="${CSS.escape(name)}"]`;
+  const controls = businessFormShell.querySelectorAll(selector);
   if (!controls.length) {
     return;
   }
@@ -1031,6 +1325,11 @@ function setBusinessFieldValue(name, value, options = {}) {
 
 function normalizeOcrConfidenceLevel(confidence) {
   if (typeof confidence === "number") {
+    if (confidence <= 1) {
+      if (confidence >= 0.8) return "high";
+      if (confidence >= 0.6) return "medium";
+      return "low";
+    }
     if (confidence >= 90) return "high";
     if (confidence >= 70) return "medium";
     return "low";
@@ -1045,9 +1344,11 @@ function normalizeOcrConfidenceLevel(confidence) {
 }
 
 function getOcrFieldConfidence(fields, fieldName) {
-  const confidenceMap = fields.field_confidence || fields.fieldConfidence || {};
+  const confidenceMap = fields.field_confidence || fields.fieldConfidence || fields.confidence || {};
   const aliases = {
     business_name: ["business_name", "businessName"],
+    trade_name: ["trade_name", "tradeName"],
+    tin: ["tin"],
     business_address: ["business_address", "businessAddress"],
     goods_value: ["goods_value", "gross_sales", "grossSales"],
     date_issued: ["date_issued", "dateIssued"],
@@ -1073,13 +1374,18 @@ function applyOcrFieldsToBusinessForm(fields = readStoredOcrFields()) {
   const extractedFields = normalizeOcrFieldsForBusinessForm(fields);
 
   Object.entries(extractedFields).forEach(([fieldName, fieldValue]) => {
-    if (fieldName.endsWith("_confidence") || ["field_confidence", "fieldConfidence", "confidence", "confidence_score"].includes(fieldName)) {
+    if (fieldName.endsWith("_confidence") || OCR_METADATA_KEYS.has(fieldName)) {
       return;
     }
 
     const confidenceLevel = getOcrFieldConfidence(extractedFields, fieldName);
     if (confidenceLevel === "low") {
       console.warn("Skipped low-confidence OCR field:", fieldName, fieldValue);
+      return;
+    }
+
+    if (fieldName === "business_address" && confidenceLevel !== "high") {
+      console.warn("Skipped uncertain business address from OCR:", fieldValue);
       return;
     }
 
@@ -1306,6 +1612,7 @@ function collectBusinessApplication() {
     businessName: getBusinessFieldValue("business_name"),
     tradeName: getBusinessFieldValue("trade_name"),
     businessTypes: checkedBusinessTypes,
+    businessClassificationId: getBusinessFieldValue("business_classification_id"),
     businessClassification: getBusinessFieldValue("business_classification"),
     tin: getBusinessFieldValue("tin"),
     businessAddress: getBusinessFieldValue("business_address"),
@@ -1405,6 +1712,33 @@ function setBusinessStep(step) {
   }
 }
 
+function isBusinessReviewStepVisible() {
+  return Boolean(reviewStrip && !reviewStrip.classList.contains("is-hidden"));
+}
+
+function handleHistoryBack(event) {
+  const target = event.currentTarget;
+  if (!(target instanceof HTMLAnchorElement)) {
+    return;
+  }
+
+  if (isBusinessReviewStepVisible()) {
+    event.preventDefault();
+    setBusinessStep("form");
+    businessFormShell?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  try {
+    if (window.history.length > 1 && document.referrer && new URL(document.referrer).origin === window.location.origin) {
+      event.preventDefault();
+      window.history.back();
+    }
+  } catch {
+    // Keep the anchor href as the fallback destination.
+  }
+}
+
 function createPermitRecord(application, userId = "") {
   const createdAt = new Date();
   const permitSuffix = `${createdAt.getTime()}`.slice(-6);
@@ -1441,6 +1775,7 @@ function createBusinessInfoPayload(application) {
     business_name: application.businessName,
     trade_name: application.tradeName,
     business_types: application.businessTypes,
+    business_classification_id: application.businessClassificationId,
     business_classification: application.businessClassification,
     tin: application.tin,
     business_address: application.businessAddress,
@@ -1555,6 +1890,9 @@ function handleBusinessContinue() {
   }
 
   const application = collectBusinessApplication();
+  if (!application.businessClassificationId) {
+    setBusinessClassificationStatus("Please select a valid business classification.", true);
+  }
   updateReviewCopy(application);
   setBusinessStep("review");
 }
@@ -1573,8 +1911,17 @@ async function handleFinishApplication() {
   }
 
   if (missingFields.length) {
+    if (!application.businessClassificationId) {
+      setBusinessClassificationStatus("Please select a valid business classification.", true);
+    }
     setBusinessStep("review");
     alert(`Please complete the required information before submitting:\n\n${missingFields.join("\n")}`);
+    return;
+  }
+
+  if (!application.businessClassificationId) {
+    setBusinessClassificationStatus("Please select a valid business classification.", true);
+    alert("Please select a valid business classification.");
     return;
   }
 
@@ -1754,6 +2101,9 @@ businessContinueButton?.addEventListener("click", handleBusinessContinue);
 finishApplicationButton?.addEventListener("click", () => {
   void handleFinishApplication();
 });
+document.querySelectorAll("[data-history-back]").forEach((link) => {
+  link.addEventListener("click", handleHistoryBack);
+});
 
 businessFormShell?.addEventListener("input", (event) => {
   markBusinessFieldTouched(event.target);
@@ -1772,7 +2122,11 @@ requirementsNextButton?.addEventListener("click", () => {
 
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
+  if (enforceBusinessPermitTypeSelection()) {
+    return;
+  }
   syncBusinessPermitType();
+  initializeBusinessClassificationCombobox();
 
   loadApplicantDashboard().then(() => {
     void loadActivePermits();

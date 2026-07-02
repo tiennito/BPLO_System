@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Report</title>
-    <link rel="stylesheet" href="/styles/admin.css?v=10" />
+    <link rel="stylesheet" href="/styles/admin.css?v=11" />
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
   </head>
@@ -29,29 +29,29 @@
         <header class="staff-topbar">
           <h1>Report</h1>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
-            <span>Welcome back,</span><strong>Admin name</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
           </section>
         </header>
 
         <section class="staff-report-page">
           <section class="staff-report-stats" aria-label="Report totals">
-            <article><span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="file-text"></i></span><small>Total Applications</small><strong>248</strong><em class="is-positive">12% vs yesterday</em></article>
-            <article><span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="check"></i></span><small>Approved</small><strong>102</strong><em class="is-positive">18% vs yesterday</em></article>
-            <article><span class="staff-stat-icon staff-stat-icon--yellow"><i data-lucide="clock-3"></i></span><small>Pending</small><strong>76</strong><em class="is-negative">5% vs yesterday</em></article>
-            <article><span class="staff-stat-icon staff-stat-icon--red"><i data-lucide="circle-x"></i></span><small>Rejected</small><strong>23</strong><em class="is-negative">2% vs yesterday</em></article>
-            <article><span class="staff-stat-icon staff-stat-icon--blue"><i data-lucide="refresh-cw"></i></span><small>Renewals Processed</small><strong>47</strong><em class="is-positive">15% vs yesterday</em></article>
+            <article><span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="file-text"></i></span><small>Total Applications</small><strong>0</strong><em>No data yet</em></article>
+            <article><span class="staff-stat-icon staff-stat-icon--green"><i data-lucide="check"></i></span><small>Approved</small><strong>0</strong><em>No data yet</em></article>
+            <article><span class="staff-stat-icon staff-stat-icon--yellow"><i data-lucide="clock-3"></i></span><small>Pending</small><strong>0</strong><em>No data yet</em></article>
+            <article><span class="staff-stat-icon staff-stat-icon--red"><i data-lucide="circle-x"></i></span><small>Rejected</small><strong>0</strong><em>No data yet</em></article>
+            <article><span class="staff-stat-icon staff-stat-icon--blue"><i data-lucide="refresh-cw"></i></span><small>Renewals Processed</small><strong>0</strong><em>No data yet</em></article>
           </section>
 
           <section class="staff-report-controls" aria-label="Report controls">
             <nav class="staff-report-tabs"><button class="is-active">Today</button><button>Week</button><button>Monthly</button><button>Yearly</button></nav>
-            <div><button class="staff-primary-action"><i data-lucide="file-plus-2"></i> Generate Report</button><button class="staff-secondary-action staff-pdf-button"><i data-lucide="file-text"></i> Export PDF</button><button class="staff-secondary-action"><i data-lucide="sheet"></i> Download CSV</button></div>
+            <div><button class="staff-primary-action"><i data-lucide="file-plus-2"></i>Generate Report</button><button class="staff-secondary-action staff-pdf-button"><i data-lucide="file-text"></i>Export PDF</button><button class="staff-secondary-action"><i data-lucide="sheet"></i>Download CSV</button></div>
           </section>
 
           <section class="staff-report-chart-grid" aria-label="Report charts">
-            <article class="staff-panel staff-mini-chart"><h2>Application Trends</h2><svg viewBox="0 0 260 145" role="img" aria-label="Application trend line"><path d="M20 118 H240 M20 88 H240 M20 58 H240 M20 28 H240" stroke="#e5ebe7" /><polyline points="20,112 55,94 88,84 122,66 150,26 178,64 210,78 238,86" fill="none" stroke="#09893a" stroke-width="3" /><g fill="#ffffff" stroke="#09893a" stroke-width="2"><circle cx="20" cy="112" r="4"/><circle cx="55" cy="94" r="4"/><circle cx="88" cy="84" r="4"/><circle cx="122" cy="66" r="4"/><circle cx="150" cy="26" r="4"/><circle cx="178" cy="64" r="4"/><circle cx="210" cy="78" r="4"/><circle cx="238" cy="86" r="4"/></g></svg><p><i data-lucide="trending-up"></i><strong>Peak Time: 12:00 PM</strong><span>35 applications</span></p></article>
-            <article class="staff-panel staff-donut-card"><h2>Permit Type Distribution</h2><div class="staff-css-donut"><strong>248</strong><span>Total</span></div><ul><li><em class="green"></em>Mayor's Permit 34% (84)</li><li><em class="blue"></em>Business Permit 28% (69)</li><li><em class="yellow"></em>Barangay Clearance 18% (45)</li><li><em class="violet"></em>DTI / SEC Registration 12% (30)</li><li><em class="gray"></em>Others 8% (20)</li></ul></article>
-            <article class="staff-panel staff-approval-card"><h2>Approval Rate</h2><div class="staff-approval-ring"><strong>66%</strong><span>Approval Rate</span></div><p><i data-lucide="trending-up"></i><strong>6% vs yesterday</strong><span>102 approved out of 154 decided</span></p></article>
-            <article class="staff-panel staff-renewal-bars"><h2>Renewal Activity</h2><div><span style="height:32%"></span><span style="height:45%"></span><span style="height:38%"></span><span style="height:52%"></span><span style="height:76%"></span><span style="height:100%"></span><span style="height:70%"></span><span style="height:42%"></span><span style="height:36%"></span><span style="height:40%"></span><span style="height:28%"></span></div><p><i data-lucide="refresh-cw"></i><strong>47 renewals processed</strong><span>15% vs yesterday</span></p></article>
+            <article class="staff-panel staff-mini-chart"><h2>Application Trends</h2><div class="staff-empty-state"><i data-lucide="line-chart" aria-hidden="true"></i><strong>No trend data yet</strong><span>Trend reports will appear after application data is available.</span></div></article>
+            <article class="staff-panel staff-donut-card"><h2>Permit Type Distribution</h2><div class="staff-empty-state"><i data-lucide="pie-chart" aria-hidden="true"></i><strong>No permit data yet</strong><span>Permit distribution will appear after records are available.</span></div></article>
+            <article class="staff-panel staff-approval-card"><h2>Approval Rate</h2><div class="staff-empty-state"><i data-lucide="activity" aria-hidden="true"></i><strong>No approval data yet</strong><span>Approval rate will appear after decisions are recorded.</span></div></article>
+            <article class="staff-panel staff-renewal-bars"><h2>Renewal Activity</h2><div class="staff-empty-state"><i data-lucide="refresh-cw" aria-hidden="true"></i><strong>No renewal data yet</strong><span>Renewal activity will appear after renewal records are available.</span></div></article>
           </section>
 
           <section class="staff-panel staff-recent-reports" aria-labelledby="recent-reports-title">
@@ -59,19 +59,17 @@
             <div class="staff-table-wrap">
               <table class="staff-table">
                 <thead><tr><th>Report Name</th><th>Coverage</th><th>Generated By</th><th>Date Generated</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                  <tr><td><i data-lucide="file-text"></i> Daily Application Summary</td><td>May 27, 2025</td><td>Admin name</td><td>May 27, 2025 09:15 AM</td><td><span class="staff-status staff-status--assessment">Completed</span></td><td><button class="staff-row-button"><i data-lucide="ellipsis-vertical"></i></button></td></tr>
-                  <tr><td><i data-lucide="file-text"></i> Weekly Application Report</td><td>May 19 - May 25, 2025</td><td>Admin name</td><td>May 26, 2025 08:45 AM</td><td><span class="staff-status staff-status--assessment">Completed</span></td><td><button class="staff-row-button"><i data-lucide="ellipsis-vertical"></i></button></td></tr>
-                  <tr><td><i data-lucide="file-text"></i> Monthly Application Report</td><td>April 2025</td><td>Admin name</td><td>May 1, 2025 10:30 AM</td><td><span class="staff-status staff-status--assessment">Completed</span></td><td><button class="staff-row-button"><i data-lucide="ellipsis-vertical"></i></button></td></tr>
-                  <tr><td><i data-lucide="file-text"></i> Permit Type Analysis Report</td><td>May 2025</td><td>Admin name</td><td>May 27, 2025 11:00 AM</td><td><span class="staff-status staff-status--review">Processing</span></td><td><button class="staff-row-button"><i data-lucide="ellipsis-vertical"></i></button></td></tr>
-                  <tr><td><i data-lucide="file-text"></i> Renewal Activity Report</td><td>May 2025</td><td>Admin name</td><td>May 27, 2025 11:20 AM</td><td><span class="staff-status staff-status--assessment">Completed</span></td><td><button class="staff-row-button"><i data-lucide="ellipsis-vertical"></i></button></td></tr>
-                </tbody>
+                <tbody><tr><td colspan="6" class="staff-empty-cell">No generated reports available.</td></tr></tbody>
               </table>
             </div>
           </section>
         </section>
       </section>
     </main>
-    <script>window.lucide?.createIcons();</script>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        window.lucide?.createIcons();
+      });
+    </script>
   </body>
 </html>

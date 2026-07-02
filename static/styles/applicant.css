@@ -1113,6 +1113,72 @@ input {
   resize: vertical;
 }
 
+.business-classification-field {
+  position: relative;
+}
+
+.business-classification-combobox {
+  position: relative;
+}
+
+.business-classification-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #d7dee8;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.business-classification-option,
+.business-classification-empty {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  background: #ffffff;
+  color: #111111;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.business-classification-option {
+  cursor: pointer;
+}
+
+.business-classification-option small {
+  display: block;
+  margin-top: 2px;
+  color: #5f6b7a;
+  font-size: 10px;
+}
+
+.business-classification-option mark {
+  padding: 0;
+  background: #fff3b0;
+  color: inherit;
+}
+
+.business-classification-option:hover,
+.business-classification-option.is-active {
+  background: #eef8f1;
+}
+
+.classification-status {
+  min-height: 14px;
+  color: #5f6b7a;
+  font-size: 11px;
+}
+
+.classification-status.is-error {
+  color: #b42318;
+}
+
 .field--full {
   grid-column: 1 / -1;
 }
