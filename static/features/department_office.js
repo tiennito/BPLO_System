@@ -12,6 +12,7 @@ let selectedApplicationId = "";
 let inspectionCache = [];
 let reportCache = [];
 let settingsCache = null;
+let workspaceCache = {};
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -297,16 +298,299 @@ function inspectionStatusPill(status) {
   return `<span class="inspection-status inspection-status--${statusClass(display).replace("status-", "")}">${escapeHtml(display)}</span>`;
 }
 
+function createEmptyAssessmentItem() {
+  return {
+    id: "",
+    fee_name: "",
+    category: "",
+    amount: "",
+    penalty: "",
+    remarks: "",
+  };
+}
+
+function assessmentRowTemplate(item = {}) {
+  const normalized = {
+    id: item.id || "",
+    fee_name: item.fee_name || item.feeName || "",
+    category: item.category || "",
+    amount: item.amount ?? "",
+    penalty: item.penalty ?? "",
+  };
+  return `
+    <div class="assessment-row" data-assessment-row data-assessment-item-id="${escapeHtml(normalized.id)}">
+      <input name="feeDescription" placeholder="Department fee" value="${escapeHtml(normalized.fee_name)}" />
+      <input name="category" placeholder="Code" value="${escapeHtml(normalized.category)}" />
+      <input name="amount" type="number" min="0" step="0.01" placeholder="0.00" value="${escapeHtml(normalized.amount)}" />
+      <input name="penalty" type="number" min="0" step="0.01" placeholder="0.00" value="${escapeHtml(normalized.penalty)}" />
+      <button class="assessment-row-remove" type="button" data-remove-assessment-row aria-label="Remove fee row">
+        <i data-lucide="trash-2"></i>
+      </button>
+    </div>
+  `;
+}
+
+function getAssessmentRows() {
+  return Array.from(document.querySelectorAll("[data-assessment-row]"));
+}
+
+function collectAssessmentItems(form) {
+  const rows = getAssessmentRows();
+  const remarks = form?.elements.assessmentRemarks?.value?.trim() || "";
+  return rows
+    .map((row) => {
+      const inputs = row.querySelectorAll("input");
+      const [feeInput, categoryInput, amountInput, penaltyInput] = inputs;
+      return {
+        id: row.dataset.assessmentItemId || "",
+        feeName: feeInput?.value?.trim() || "",
+        category: categoryInput?.value?.trim() || "",
+        amount: Number(amountInput?.value || 0),
+        penalty: Number(penaltyInput?.value || 0),
+        remarks,
+      };
+    })
+    .filter((item) => item.feeName || item.category || item.amount || item.penalty);
+}
+
+function updateAssessmentRowActions() {
+  const rows = getAssessmentRows();
+  rows.forEach((row) => {
+    const removeButton = row.querySelector("[data-remove-assessment-row]");
+    if (removeButton) {
+      removeButton.hidden = rows.length <= 1;
+    }
+  });
+}
+
+function renderAssessmentRows(items = []) {
+  const container = document.querySelector("[data-assessment-rows]");
+  if (!container) {
+    return;
+  }
+  const rows = items.length ? items : [createEmptyAssessmentItem()];
+  container.innerHTML = rows.map((item) => assessmentRowTemplate(item)).join("");
+  updateAssessmentRowActions();
+  window.lucide?.createIcons();
+}
+
+function addAssessmentRow(item = createEmptyAssessmentItem()) {
+  const container = document.querySelector("[data-assessment-rows]");
+  if (!container) {
+    return;
+  }
+  container.insertAdjacentHTML("beforeend", assessmentRowTemplate(item));
+  updateAssessmentRowActions();
+  window.lucide?.createIcons();
+}
+
 function syncAssessmentTotals() {
   const form = document.querySelector("[data-assessment-form]");
   if (!form) {
     return;
   }
-  const amount = Number(form.elements.amount?.value || 0);
-  const penalty = Number(form.elements.penalty?.value || 0);
+  const items = collectAssessmentItems(form);
+  const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const penalty = items.reduce((sum, item) => sum + Number(item.penalty || 0), 0);
   form.elements.amountSummary.value = formatMoney(amount);
   form.elements.penaltySummary.value = formatMoney(penalty);
   form.elements.totalSummary.value = formatMoney(amount + penalty);
+}
+
+function normalizeTimeInput(value) {
+  return value ? String(value).slice(0, 5) : "";
+}
+
+function getInspectionProofFiles(form) {
+  const savedFiles = workspaceCache[selectedApplicationId]?.inspection?.proof_files || [];
+  const files = Array.from(form?.elements.inspectionProof?.files || []);
+  if (!files.length) {
+    return savedFiles;
+  }
+  return files.map((file) => ({
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    savedAt: new Date().toISOString(),
+  }));
+}
+
+function renderInspectionProofFiles(files = []) {
+  const list = document.querySelector("[data-inspection-proof-list]");
+  if (!list) {
+    return;
+  }
+  if (!files.length) {
+    list.hidden = true;
+    list.textContent = "";
+    return;
+  }
+  list.hidden = false;
+  list.innerHTML = files
+    .map((file) => `<span>${escapeHtml(file.name || "Inspection proof")}</span>`)
+    .join("");
+}
+
+function populateAssessmentForm(items = [], item = null) {
+  const form = document.querySelector("[data-assessment-form]");
+  if (!form) {
+    return;
+  }
+  const normalizedItems = Array.isArray(items) && items.length ? items : item ? [item] : [createEmptyAssessmentItem()];
+  renderAssessmentRows(normalizedItems);
+  form.elements.assessmentRemarks.value = normalizedItems[0]?.remarks || item?.remarks || "";
+  syncAssessmentTotals();
+}
+
+function populateInspectionForm(inspection) {
+  const form = document.querySelector("[data-staff-inspection-form]");
+  if (!form) {
+    return;
+  }
+  const application = getSelectedApplication();
+  const payload = application?.application?.payload || {};
+  form.elements.scheduledDate.value = inspection?.scheduled_date || "";
+  form.elements.scheduledTime.value = normalizeTimeInput(inspection?.scheduled_time);
+  form.elements.endTime.value = normalizeTimeInput(inspection?.end_time);
+  form.elements.status.value = inspection?.status || "Draft";
+  form.elements.locationAddress.value = inspection?.location_address || payload.businessAddress || application?.applicant?.address || "";
+  form.elements.remarks.value = inspection?.remarks || "";
+  renderInspectionProofFiles(inspection?.proof_files || []);
+}
+
+async function loadSelectedApplicationWorkspace(applicationId = selectedApplicationId) {
+  if (!applicationId) {
+    return null;
+  }
+  const result = await apiFetch(`/department/api/applications/${encodeURIComponent(applicationId)}/workspace`);
+  workspaceCache[applicationId] = result;
+  if (applicationId === selectedApplicationId) {
+    populateAssessmentForm(result.assessmentItems, result.assessmentItem);
+    populateInspectionForm(result.inspection);
+  }
+  return result;
+}
+
+function setAssessmentSubmitModalOpen(isOpen) {
+  const modal = document.querySelector("[data-assessment-submit-modal]");
+  if (!modal) {
+    return;
+  }
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-assessment-submit]")?.focus();
+  }
+}
+
+function showAssessmentSubmitModal(form) {
+  const application = getSelectedApplication();
+  const items = collectAssessmentItems(form);
+  const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const penalty = items.reduce((sum, item) => sum + Number(item.penalty || 0), 0);
+  const categories = new Set(items.map((item) => item.category).filter(Boolean));
+  const values = {
+    application: application?.referenceNumber || application?.businessName || "Selected application",
+    description: items.length > 1 ? `${items.length} fee items` : items[0]?.feeName || "Department fee",
+    category: categories.size > 1 ? "Multiple categories" : items[0]?.category || "-",
+    amount: formatMoney(amount),
+    penalty: formatMoney(penalty),
+    total: formatMoney(amount + penalty),
+  };
+
+  Object.entries(values).forEach(([key, value]) => {
+    document.querySelector(`[data-assessment-modal-${key}]`)?.replaceChildren(document.createTextNode(value));
+  });
+  setAssessmentSubmitModalOpen(true);
+  window.lucide?.createIcons();
+}
+
+function setInspectionNotifyModalOpen(isOpen) {
+  const modal = document.querySelector("[data-inspection-notify-modal]");
+  if (!modal) {
+    return;
+  }
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-confirm-inspection-notify]")?.focus();
+  }
+}
+
+function getInspectionNotificationPayload(form) {
+  const application = getSelectedApplication();
+  if (!application || !form) {
+    return null;
+  }
+  const formData = new FormData(form);
+  return {
+    applicationId: application.applicationId,
+    applicationLabel: application.referenceNumber || application.businessName || "Selected application",
+    scheduledDate: formData.get("scheduledDate").toString(),
+    scheduledTime: formData.get("scheduledTime").toString(),
+    endTime: formData.get("endTime").toString(),
+    status: formData.get("status").toString(),
+    locationAddress: formData.get("locationAddress").toString(),
+    remarks: formData.get("remarks").toString().trim(),
+  };
+}
+
+function showInspectionNotifyModal(payload) {
+  const values = {
+    application: payload.applicationLabel,
+    date: payload.scheduledDate || "-",
+    time: payload.scheduledTime || "-",
+    "end-time": payload.endTime || "-",
+    status: payload.status || "Draft",
+    location: payload.locationAddress || "-",
+  };
+
+  Object.entries(values).forEach(([key, value]) => {
+    document.querySelector(`[data-inspection-notify-${key}]`)?.replaceChildren(document.createTextNode(value));
+  });
+  const message = document.querySelector("[data-inspection-notify-message]");
+  if (message) {
+    message.textContent = "Notify the applicant and BPLO staff admin about this inspection schedule.";
+    message.classList.remove("is-error", "is-ready");
+  }
+  const confirmButton = document.querySelector("[data-confirm-inspection-notify]");
+  if (confirmButton) {
+    confirmButton.hidden = false;
+    confirmButton.style.display = "";
+    confirmButton.disabled = false;
+    confirmButton.textContent = "Send Notification";
+  }
+  setInspectionNotifyModalOpen(true);
+  window.lucide?.createIcons();
+}
+
+function setCompletionModalOpen(isOpen) {
+  const modal = document.querySelector("[data-completion-modal]");
+  if (!modal) {
+    return;
+  }
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-completion-modal]")?.focus();
+  }
+}
+
+function showCompletionModal({ title, message, status }) {
+  const application = getSelectedApplication();
+  const values = {
+    title: title || "Completed Successfully",
+    message: message || "The selected application has been completed.",
+    application: application?.referenceNumber || application?.businessName || "Selected application",
+    status: status || "Complete",
+  };
+
+  document.querySelector("[data-completion-modal-title]")?.replaceChildren(document.createTextNode(values.title));
+  document.querySelector("[data-completion-modal-message]")?.replaceChildren(document.createTextNode(values.message));
+  document.querySelector("[data-completion-modal-application]")?.replaceChildren(document.createTextNode(values.application));
+  document.querySelector("[data-completion-modal-status]")?.replaceChildren(document.createTextNode(values.status));
+  setCompletionModalOpen(true);
+  window.lucide?.createIcons();
 }
 
 function renderApplicationWorkspace() {
@@ -342,6 +626,11 @@ function renderApplicationWorkspace() {
   if (locationInput) {
     locationInput.value = payload.businessAddress || application.applicant?.address || "";
   }
+  populateAssessmentForm(null);
+  populateInspectionForm(null);
+  void loadSelectedApplicationWorkspace(selectedApplicationId).catch((error) => {
+    setStatus(error.message || "Unable to load saved department form data.", true);
+  });
 
   const evaluationForm = document.querySelector("[data-staff-evaluation-form]");
   if (evaluationForm) {
@@ -883,11 +1172,71 @@ function bindApplicationsWorkspace() {
   });
 
   const assessmentForm = document.querySelector("[data-assessment-form]");
+  renderAssessmentRows();
   assessmentForm?.addEventListener("input", syncAssessmentTotals);
-  assessmentForm?.addEventListener("submit", (event) => {
+  assessmentForm?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.closest("[data-add-assessment-row]")) {
+      addAssessmentRow();
+      return;
+    }
+    const removeButton = target.closest("[data-remove-assessment-row]");
+    if (removeButton instanceof HTMLElement) {
+      removeButton.closest("[data-assessment-row]")?.remove();
+      if (!getAssessmentRows().length) {
+        renderAssessmentRows();
+      } else {
+        updateAssessmentRowActions();
+        window.lucide?.createIcons();
+      }
+      syncAssessmentTotals();
+    }
+  });
+  assessmentForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const application = getSelectedApplication();
+    if (!application) {
+      setStatus("Select an application before saving assessment.", true);
+      return;
+    }
     syncAssessmentTotals();
-    setStatus("Assessment fee prepared for the selected application.");
+    const formData = new FormData(assessmentForm);
+    const items = collectAssessmentItems(assessmentForm);
+    if (!items.length) {
+      setStatus("Add at least one fee item before saving assessment.", true);
+      return;
+    }
+    setStatus("Saving department assessment...");
+    const result = await apiFetch(`/department/api/applications/${encodeURIComponent(application.applicationId)}/assessment`, {
+      method: "POST",
+      body: JSON.stringify({
+        applicationId: application.applicationId,
+        remarks: formData.get("assessmentRemarks").toString().trim(),
+        items,
+      }),
+    });
+    workspaceCache[application.applicationId] = {
+      ...(workspaceCache[application.applicationId] || {}),
+      assessment: result.assessment,
+      assessmentItems: result.items || [],
+      assessmentItem: result.item,
+    };
+    populateAssessmentForm(result.items, result.item);
+    showAssessmentSubmitModal(assessmentForm);
+    setStatus(result.message || "Department assessment saved.");
+  });
+
+  document.querySelectorAll("[data-close-assessment-submit]").forEach((button) => {
+    button.addEventListener("click", () => setAssessmentSubmitModalOpen(false));
+  });
+
+  document.querySelector("[data-assessment-submit-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setAssessmentSubmitModalOpen(false);
+    }
   });
 
   document.querySelector("[data-preview-assessment]")?.addEventListener("click", () => {
@@ -896,6 +1245,97 @@ function bindApplicationsWorkspace() {
   });
 
   const staffInspectionForm = document.querySelector("[data-staff-inspection-form]");
+  document.querySelector("[data-notify-inspection]")?.addEventListener("click", () => {
+    const application = getSelectedApplication();
+    if (!application) {
+      setStatus("Select an application before sending inspection notification.", true);
+      return;
+    }
+    if (!staffInspectionForm) {
+      setStatus("Inspection form is unavailable.", true);
+      return;
+    }
+
+    const formData = new FormData(staffInspectionForm);
+    const scheduledDate = formData.get("scheduledDate").toString();
+    const scheduledTime = formData.get("scheduledTime").toString();
+    if (!scheduledDate || !scheduledTime) {
+      setStatus("Inspection date and start time are required before notifying.", true);
+      return;
+    }
+
+    showInspectionNotifyModal(getInspectionNotificationPayload(staffInspectionForm));
+  });
+
+  document.querySelectorAll("[data-close-inspection-notify]").forEach((button) => {
+    button.addEventListener("click", () => setInspectionNotifyModalOpen(false));
+  });
+
+  document.querySelector("[data-inspection-notify-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setInspectionNotifyModalOpen(false);
+    }
+  });
+
+  document.querySelectorAll("[data-close-completion-modal]").forEach((button) => {
+    button.addEventListener("click", () => setCompletionModalOpen(false));
+  });
+
+  document.querySelector("[data-completion-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setCompletionModalOpen(false);
+    }
+  });
+
+  document.querySelector("[data-confirm-inspection-notify]")?.addEventListener("click", async () => {
+    const payload = getInspectionNotificationPayload(staffInspectionForm);
+    const message = document.querySelector("[data-inspection-notify-message]");
+    const confirmButton = document.querySelector("[data-confirm-inspection-notify]");
+    if (!payload?.scheduledDate || !payload?.scheduledTime) {
+      setStatus("Inspection date and start time are required before notifying.", true);
+      setInspectionNotifyModalOpen(false);
+      return;
+    }
+
+    if (confirmButton) {
+      confirmButton.disabled = true;
+      confirmButton.textContent = "Sending...";
+    }
+    if (message) {
+      message.textContent = "Sending notification...";
+      message.classList.remove("is-error");
+    }
+
+    try {
+      setStatus("Sending inspection notification...");
+      const result = await apiFetch("/department/api/inspection-notifications", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setStatus(result.message || "Inspection notification sent.");
+      if (message) {
+        message.textContent = result.message || "Inspection notification sent to the applicant and BPLO staff.";
+        message.classList.add("is-ready");
+      }
+      if (confirmButton) {
+        confirmButton.textContent = "Sent";
+        confirmButton.style.display = "none";
+      }
+      window.setTimeout(() => setInspectionNotifyModalOpen(false), 700);
+    } catch (error) {
+      setStatus(error.message || "Unable to send inspection notification.", true);
+      if (message) {
+        message.textContent = error.message || "Unable to send inspection notification.";
+        message.classList.add("is-error");
+      }
+      if (confirmButton) {
+        confirmButton.style.display = "";
+        confirmButton.disabled = false;
+        confirmButton.textContent = "Try Again";
+      }
+    }
+  });
+
   staffInspectionForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const application = getSelectedApplication();
@@ -913,17 +1353,34 @@ function bindApplicationsWorkspace() {
     }
 
     setStatus("Saving inspection schedule...");
+    const status = event.submitter?.dataset?.inspectionStatus || formData.get("status").toString();
     await apiFetch("/department/api/inspections", {
       method: "POST",
       body: JSON.stringify({
         applicationId: application.applicationId,
         scheduledDate,
         scheduledTime,
-        status: formData.get("status").toString(),
+        endTime: formData.get("endTime").toString(),
+        locationAddress: formData.get("locationAddress").toString().trim(),
+        status,
         remarks: formData.get("remarks").toString().trim(),
+        proofFiles: getInspectionProofFiles(staffInspectionForm),
       }),
     });
+    const workspace = await loadSelectedApplicationWorkspace(application.applicationId);
+    renderInspectionProofFiles(workspace?.inspection?.proof_files || []);
     setStatus("Inspection schedule saved.");
+    if (status === "Completed") {
+      showCompletionModal({
+        title: "Inspection Completed",
+        message: "The inspection has been marked as completed for this application.",
+        status,
+      });
+    }
+  });
+
+  staffInspectionForm?.elements.inspectionProof?.addEventListener("change", () => {
+    renderInspectionProofFiles(getInspectionProofFiles(staffInspectionForm));
   });
 
   const evaluationForm = document.querySelector("[data-staff-evaluation-form]");
@@ -957,6 +1414,13 @@ function bindApplicationsWorkspace() {
     populateApplicationPicker(applicationCache);
     renderApplicationWorkspace();
     setStatus(`Application marked as ${status}.`);
+    if (status === "Approved") {
+      showCompletionModal({
+        title: "Department Review Complete",
+        message: "The application has been approved by your department.",
+        status,
+      });
+    }
   });
 
   document.querySelectorAll("[data-upload-placeholder]").forEach((button) => {

@@ -20,11 +20,23 @@ const previewContent = document.querySelector("[data-preview-content]");
 const previewFileName = document.querySelector("[data-preview-file-name]");
 const routingModal = document.querySelector("[data-routing-modal]");
 const routingContent = document.querySelector("[data-routing-content]");
+const releasePermitButton = document.querySelector('[data-action="release-permit"]');
+const printPermitButton = document.querySelector('[data-action="print-permit"]');
+const actionModal = document.querySelector("[data-action-modal]");
+const actionModalSubtitle = document.querySelector("[data-action-modal-subtitle]");
+const actionModalCopy = document.querySelector("[data-action-modal-copy]");
+const actionModalRemarks = document.querySelector("[data-action-modal-remarks]");
+const actionModalRemarksLabel = document.querySelector("[data-action-modal-remarks-label]");
+const actionModalRemarksInput = document.querySelector("[data-action-modal-remarks-input]");
+const actionModalConfirm = document.querySelector("[data-confirm-action-modal]");
+const actionModalSecondary = document.querySelector("[data-action-modal-secondary]");
 
 let reviewClient = null;
 let reviewSession = null;
 let reviewData = null;
 let activePreviewUrl = "";
+let pendingAction = "";
+let releasePrintCompleted = false;
 
 function applicationIdFromPath() {
   const parts = window.location.pathname.split("/").filter(Boolean);
@@ -89,7 +101,7 @@ function setMessage(message, isError = false) {
 
 function statusTone(value) {
   const status = String(value || "").toLowerCase();
-  if (status.includes("submitted") || status.includes("verified") || status.includes("paid") || status.includes("complete") || status.includes("ready") || status.includes("active") || status.includes("uploaded")) {
+  if (status.includes("submitted") || status.includes("verified") || status.includes("paid") || status.includes("complete") || status.includes("ready") || status.includes("active") || status.includes("uploaded") || status.includes("released")) {
     return "success";
   }
   if (status.includes("unpaid") || status.includes("pending") || status.includes("draft")) {
@@ -192,6 +204,174 @@ function latestReviewForDocument(documentId) {
 
 function documentById(documentId) {
   return (reviewData?.documents || []).find((document) => String(document.id) === String(documentId)) || null;
+}
+
+function syncPermitActionButtons(app, permit) {
+  const hasPermit = Boolean(permit?.permit_number);
+  const canRelease = hasPermit && ["Permit Ready for Release", "For Pickup"].includes(app?.status || "");
+  const canPrint = hasPermit && ["For Pickup", "Released"].includes(app?.status || "");
+  if (releasePermitButton) {
+    releasePermitButton.hidden = !canRelease;
+    releasePermitButton.disabled = !canRelease;
+  }
+  if (printPermitButton) {
+    printPermitButton.hidden = !canPrint;
+    printPermitButton.disabled = !canPrint;
+  }
+}
+
+function closeActionModal() {
+  if (!actionModal) {
+    return;
+  }
+  actionModal.hidden = true;
+  actionModal.setAttribute("aria-hidden", "true");
+  pendingAction = "";
+  releasePrintCompleted = false;
+  if (actionModalRemarksInput) {
+    actionModalRemarksInput.value = "";
+  }
+  if (actionModalSecondary) {
+    actionModalSecondary.hidden = true;
+  }
+  if (actionModalConfirm) {
+    actionModalConfirm.disabled = false;
+  }
+}
+
+function openActionModal(action) {
+  if (!actionModal || !actionModalCopy || !actionModalConfirm) {
+    return;
+  }
+  const modalConfig = {
+    "approve-initial-review": {
+      subtitle: "Approve the application",
+      copy: "This will approve the initial review and continue the application to the next processing stage.",
+      confirm: "Approve",
+    },
+    "request-revision": {
+      subtitle: "Request a revision",
+      copy: "Add revision notes so the applicant knows what needs to be corrected before the review can continue.",
+      confirm: "Send Revision Request",
+      requiresRemarks: true,
+      remarksLabel: "Revision notes",
+      placeholder: "What needs to be revised?",
+    },
+    "reject": {
+      subtitle: "Reject the application",
+      copy: "Add a clear reason for rejection. This will stop the current review until a new or corrected submission is made.",
+      confirm: "Reject Application",
+      requiresRemarks: true,
+      remarksLabel: "Reason for rejection",
+      placeholder: "Enter the reason for rejection",
+    },
+    "complete-assessment": {
+      subtitle: "Complete the assessment",
+      copy: "This will lock the assessment and route the application to Treasury for payment processing.",
+      confirm: "Complete Assessment",
+    },
+    "finalize": {
+      subtitle: "Finalize the application",
+      copy: "This will generate the business permit record for this application.",
+      confirm: "Finalize",
+    },
+    "release-permit": {
+      subtitle: "Release the business permit",
+      copy: "Print the business permit from this modal first. After printing, complete the release to mark it for pickup and notify the applicant.",
+      confirm: "Complete Release",
+      requiresPrint: true,
+    },
+    "print-permit": {
+      subtitle: "Print the business permit",
+      copy: "This will open a printable version of the released business permit.",
+      confirm: "Print Permit",
+    },
+  };
+  const config = modalConfig[action];
+  if (!config) {
+    return;
+  }
+  pendingAction = action;
+  actionModalSubtitle.textContent = config.subtitle;
+  actionModalCopy.textContent = config.copy;
+  actionModalConfirm.textContent = config.confirm;
+  releasePrintCompleted = false;
+  if (actionModalRemarks && actionModalRemarksInput && actionModalRemarksLabel) {
+    const requiresRemarks = Boolean(config.requiresRemarks);
+    actionModalRemarks.hidden = !requiresRemarks;
+    actionModalRemarksLabel.textContent = config.remarksLabel || "Remarks";
+    actionModalRemarksInput.placeholder = config.placeholder || "Enter remarks";
+    actionModalRemarksInput.value = "";
+  }
+  if (actionModalSecondary) {
+    actionModalSecondary.hidden = !config.requiresPrint;
+    actionModalSecondary.textContent = config.requiresPrint ? "Print Permit" : "";
+    if (config.requiresPrint) {
+      actionModalSecondary.innerHTML = '<i data-lucide="printer" aria-hidden="true"></i>Print Permit';
+    }
+  }
+  if (actionModalConfirm) {
+    actionModalConfirm.disabled = Boolean(config.requiresPrint);
+  }
+  actionModal.hidden = false;
+  actionModal.setAttribute("aria-hidden", "false");
+  (actionModalRemarks?.hidden ? (config.requiresPrint ? actionModalSecondary : actionModalConfirm) : actionModalRemarksInput)?.focus();
+  window.lucide?.createIcons();
+}
+
+function printBusinessPermit() {
+  const app = reviewData || {};
+  const permit = app.businessPermit || {};
+  if (!permit?.permit_number) {
+    setMessage("No business permit is available for printing yet.", true);
+    return false;
+  }
+  const printWindow = window.open("", "_blank", "width=960,height=780");
+  if (!printWindow) {
+    setMessage("Allow pop-ups to print the business permit.", true);
+    return false;
+  }
+  const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Business Permit</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; margin: 28px; color: #0f1b3d; }
+      h1 { margin: 0 0 8px; }
+      .sheet { padding: 24px; border: 1px solid #d7deea; border-radius: 14px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+      .card { padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafcff; }
+      .card span { display: block; margin-bottom: 6px; color: #667085; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+      .card strong, .card p { margin: 0; font-size: 15px; }
+      .wide { grid-column: 1 / -1; }
+      @media print { body { margin: 14px; } }
+    </style>
+  </head>
+  <body>
+    <section class="sheet">
+      <h1>Business Permit</h1>
+      <p>${escapeHtml(app.business?.name || "-")}</p>
+      <div class="grid">
+        <div class="card"><span>Permit Number</span><strong>${escapeHtml(permit.permit_number || "-")}</strong></div>
+        <div class="card"><span>Status</span><strong>${escapeHtml(permit.status || "-")}</strong></div>
+        <div class="card"><span>Control No.</span><strong>${escapeHtml(app.controlNumber || "-")}</strong></div>
+        <div class="card"><span>Owner</span><strong>${escapeHtml(app.applicant?.name || "-")}</strong></div>
+        <div class="card"><span>Business Address</span><strong>${escapeHtml(app.business?.address || "-")}</strong></div>
+        <div class="card"><span>Permit Type</span><strong>${escapeHtml(app.permitType || "-")}</strong></div>
+        <div class="card"><span>Issue Date</span><strong>${escapeHtml(permit.issue_date || "-")}</strong></div>
+        <div class="card"><span>Expiration Date</span><strong>${escapeHtml(permit.expiration_date || "-")}</strong></div>
+        <div class="card wide"><span>Verification Code</span><p>${escapeHtml(permit.verification_code || "-")}</p></div>
+      </div>
+    </section>
+  </body>
+</html>`;
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  return true;
 }
 
 function render() {
@@ -330,6 +510,7 @@ function render() {
   finalSummary.textContent = permit.permit_number
     ? `Permit ${permit.permit_number} is ${permit.status}.`
     : "Permit is generated after Treasury payment confirmation.";
+  syncPermitActionButtons(app, permit);
 
   window.lucide?.createIcons();
 }
@@ -350,21 +531,19 @@ async function loadReview() {
 async function runApplicationAction(action) {
   const id = applicationIdFromPath();
   let body = {};
+  if (action === "print-permit") {
+    printBusinessPermit();
+    return;
+  }
+  if (action === "release-permit" && !releasePrintCompleted) {
+    throw new Error("Print the business permit before completing the release.");
+  }
   if (action === "reject" || action === "request-revision") {
-    const remarks = window.prompt(action === "reject" ? "Reason for rejection" : "What needs revision?");
+    const remarks = (actionModalRemarksInput?.value || "").trim();
     if (!remarks) {
-      return;
+      throw new Error(action === "reject" ? "A rejection reason is required." : "Revision notes are required.");
     }
     body = { remarks };
-  } else {
-    const labels = {
-      "approve-initial-review": "Approve initial review?",
-      "complete-assessment": "Complete the assessment and send it to Treasury?",
-      "finalize": "Finalize and generate the business permit?",
-    };
-    if (!window.confirm(labels[action] || "Continue?")) {
-      return;
-    }
   }
 
   try {
@@ -374,11 +553,13 @@ async function runApplicationAction(action) {
       body: JSON.stringify(body),
     });
     await loadReview();
+    setMessage(result.message || "Action completed successfully.");
     if (action === "approve-initial-review") {
       showRoutingConfirmation(result);
     }
   } catch (error) {
     setMessage(error.message || "Unable to save action.", true);
+    throw error;
   }
 }
 
@@ -559,7 +740,7 @@ document.addEventListener("click", async (event) => {
   }
   const actionButton = target.closest("[data-action]");
   if (actionButton instanceof HTMLElement) {
-    await runApplicationAction(actionButton.dataset.action || "");
+    openActionModal(actionButton.dataset.action || "");
     return;
   }
   const documentButton = target.closest("[data-review-document]");
@@ -578,6 +759,33 @@ document.addEventListener("click", async (event) => {
   }
   if (target.closest("[data-close-routing]")) {
     closeRoutingConfirmation();
+    return;
+  }
+  if (target.closest("[data-close-action-modal]")) {
+    closeActionModal();
+    return;
+  }
+  if (target.closest("[data-confirm-action-modal]")) {
+    try {
+      await runApplicationAction(pendingAction);
+      closeActionModal();
+    } catch (_error) {
+      // keep modal open so the user can adjust input or retry
+    }
+    return;
+  }
+  if (target.closest("[data-action-modal-secondary]")) {
+    const printed = printBusinessPermit();
+    if (printed) {
+      releasePrintCompleted = true;
+      if (actionModalConfirm) {
+        actionModalConfirm.disabled = false;
+      }
+      if (actionModalCopy && pendingAction === "release-permit") {
+        actionModalCopy.textContent = "Printing completed. You can now finalize the release to mark the permit for pickup and notify the applicant.";
+      }
+      setMessage("Permit print opened. Complete the release to finish the pickup process.");
+    }
     return;
   }
   const deleteButton = target.closest("[data-delete-fee]");
@@ -608,6 +816,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && routingModal && !routingModal.hidden) {
     closeRoutingConfirmation();
+  }
+  if (event.key === "Escape" && actionModal && !actionModal.hidden) {
+    closeActionModal();
   }
 });
 

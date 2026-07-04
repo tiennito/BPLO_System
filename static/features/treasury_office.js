@@ -6,6 +6,9 @@ let supabaseClient = null;
 let session = null;
 let recordCache = [];
 let selectedRecordId = "";
+let paymentDetailsRecordId = "";
+let receiptModalRecordId = "";
+let printConfirmationRecordId = "";
 
 function initSupabase() {
   if (!window.supabase?.createClient) return null;
@@ -35,10 +38,6 @@ function money(value) {
 
 function moneyAscii(value) {
   return `PHP ${Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function isEmptyDataPage() {
-  return ["processing", "payment-records", "official-receipts", "treasury-reports", "treasury-settings"].includes(document.body.dataset.page || "");
 }
 
 function statusClass(value) {
@@ -154,6 +153,23 @@ function orStatus(record) {
   return "Not Issued";
 }
 
+function getIssuedReceiptRecords() {
+  return recordCache.filter((record) => {
+    return Boolean(record.orNo) || orStatus(record) === "Issued" || record.currentStep === "Official Receipt";
+  });
+}
+
+function soaNumber(record) {
+  const applicationNo = String(record?.applicationNo || "").trim();
+  if (!applicationNo) {
+    return "SOA-000000";
+  }
+  if (applicationNo.includes("APP")) {
+    return applicationNo.replace("APP", "SOA");
+  }
+  return `SOA-${applicationNo}`;
+}
+
 function actionLabel(record) {
   if (record.currentStep === "Assessment") return "View Assessment";
   if (record.currentStep === "SOA Generation") return "Generate SOA";
@@ -161,6 +177,22 @@ function actionLabel(record) {
   if (record.currentStep === "Payment") return "Verify Payment";
   if (record.currentStep === "Official Receipt") return record.status === "Ready" ? "Issue OR" : "View OR";
   return "Process";
+}
+
+function nextProcessMeta(record) {
+  if (record.currentStep === "Assessment") {
+    return { label: "Next Process", nextStep: "SOA Generation", target: "/treasury/processing", message: "This will move the transaction to SOA Generation." };
+  }
+  if (record.currentStep === "SOA Generation") {
+    return { label: "Next Process", nextStep: "Payment", target: "/treasury/payment-records", message: "This will move the transaction into Payment processing." };
+  }
+  if (record.currentStep === "Payment") {
+    return { label: "Next Process", nextStep: "Official Receipt", target: `/treasury/official-receipts?id=${encodeURIComponent(record.id || "")}`, message: "This will save the payment progress and route the transaction to Official Receipts." };
+  }
+  if (record.currentStep === "Official Receipt" && record.status !== "Accepted") {
+    return { label: "Next Process", nextStep: "Completed", target: `/treasury/official-receipts?id=${encodeURIComponent(record.id || "")}`, message: "This will finalize the official receipt workflow for this transaction." };
+  }
+  return { label: "Workflow Complete", nextStep: "Completed", target: `/treasury/official-receipts?id=${encodeURIComponent(record.id || "")}`, message: "This transaction is already at the final workflow stage. Click to open its official receipt." };
 }
 
 function renderProcessingAmounts() {
@@ -272,11 +304,40 @@ function renderPaymentRecords(records = getFilteredPaymentRecords()) {
   if (count) count.textContent = `Showing 1 to ${records.length} of ${recordCache.length} entries`;
 }
 
-function renderOfficialReceipts(records = []) {
+function getFilteredOfficialReceipts() {
+  const search = (document.querySelector("[data-receipt-search]")?.value || "").toLowerCase();
+  const status = document.querySelector("[data-receipt-status-filter]")?.value || "";
+  return getIssuedReceiptRecords().filter((record) => {
+    const derivedStatus = orStatus(record);
+    const haystack = `${record.orNo} ${record.applicant} ${record.businessName}`.toLowerCase();
+    return haystack.includes(search) && (!status || derivedStatus === status);
+  });
+}
+
+function getRequestedRecordId() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("id") || "").trim();
+}
+
+function renderOfficialReceipts(records = getFilteredOfficialReceipts()) {
   const table = document.querySelector("[data-receipts-table]");
   if (!table) return;
-  document.querySelectorAll("[data-receipt-count]").forEach((node) => {
-    node.textContent = "0";
+  const issuedRecords = getIssuedReceiptRecords();
+  const today = new Date().toISOString().slice(0, 10);
+  const issuedToday = issuedRecords.filter((record) => record.transactionDate === today).length;
+  const currentMonth = today.slice(0, 7);
+  const issuedMonth = issuedRecords.filter((record) => (record.transactionDate || "").startsWith(currentMonth)).length;
+  const cancelled = issuedRecords.filter((record) => ["Cancelled", "Void"].includes(record.status)).length;
+  const receiptCounts = {
+    issuedToday,
+    issuedMonth,
+    reprinted: 0,
+    cancelled,
+  };
+  Object.entries(receiptCounts).forEach(([key, value]) => {
+    document.querySelectorAll(`[data-receipt-count="${key}"]`).forEach((node) => {
+      node.textContent = value;
+    });
   });
   if (!records.length) {
     table.innerHTML = '<tr><td class="payment-empty-state" colspan="8">No official receipts yet.</td></tr>';
@@ -286,17 +347,82 @@ function renderOfficialReceipts(records = []) {
     if (details) {
       details.innerHTML = '<i data-lucide="receipt-text"></i><strong>No receipt selected</strong><p>Receipt details will appear here after records are available.</p><button class="action-button" type="button" disabled>View Full Receipt</button>';
     }
+    window.lucide?.createIcons();
+    return;
   }
+  table.innerHTML = records.map((record) => `
+    <tr>
+      <td>${escapeHtml(record.orNo || "-")}</td>
+      <td>${escapeHtml(record.applicant)}</td>
+      <td>${escapeHtml(record.businessName)}</td>
+      <td>${escapeHtml(record.transactionDate || "-")}</td>
+      <td>${money(record.amount)}</td>
+      <td><span class="status-pill ${statusClass(orStatus(record))}">${escapeHtml(orStatus(record))}</span></td>
+      <td>${escapeHtml(record.cashier || "Treasury Staff")}</td>
+      <td><button class="action-button" type="button" data-view-receipt="${record.id}">View</button></td>
+    </tr>
+  `).join("");
+  const count = document.querySelector("[data-receipt-entry-count]");
+  if (count) count.textContent = `Showing 1 to ${records.length} of ${issuedRecords.length} entries`;
+  const details = document.querySelector("[data-receipt-details]");
+  if (details) {
+    const requestedId = getRequestedRecordId();
+    const selected = records.find((record) => record.id === requestedId)
+      || records.find((record) => record.id === selectedRecordId)
+      || records[0];
+    selectedRecordId = selected.id;
+    details.innerHTML = `
+      <div class="selected-detail-grid">
+        <div class="selected-detail"><span>OR No.</span><strong>${escapeHtml(selected.orNo || "-")}</strong></div>
+        <div class="selected-detail"><span>Applicant</span><strong>${escapeHtml(selected.applicant)}</strong></div>
+        <div class="selected-detail"><span>Business Name</span><strong>${escapeHtml(selected.businessName)}</strong></div>
+        <div class="selected-detail"><span>Payment Date</span><strong>${escapeHtml(selected.transactionDate || "-")}</strong></div>
+        <div class="selected-detail"><span>Amount</span><strong>${money(selected.amount)}</strong></div>
+        <div class="selected-detail"><span>Receipt Status</span><strong>${escapeHtml(orStatus(selected))}</strong></div>
+        <div class="selected-detail wide"><button class="action-button" type="button" data-edit-record="${selected.id}">View Full Receipt</button></div>
+      </div>
+    `;
+  }
+  window.lucide?.createIcons();
 }
 
-function renderTreasuryReports(records = []) {
+function getFilteredTreasuryReports() {
+  const search = (document.querySelector("[data-report-search]")?.value || "").toLowerCase();
+  const type = document.querySelector("[data-report-type-filter]")?.value || "";
+  const status = document.querySelector("[data-report-status-filter]")?.value || "";
+  const derived = recordCache.map((record) => ({
+    id: `RPT-${record.applicationNo || record.id || ""}`,
+    reportType: record.currentStep === "Official Receipt"
+      ? "Official Receipts Report"
+      : record.currentStep === "Payment"
+        ? "Payment Summary"
+        : record.currentStep === "SOA Generation"
+          ? "Treasury Transactions"
+          : "Collection Summary",
+    coveredPeriod: record.transactionDate || record.createdAt?.slice(0, 10) || "-",
+    totalAmount: Number(record.amount || 0),
+    status: ["Paid", "Accepted"].includes(record.status) ? "Completed" : ["Ready", "Generated"].includes(record.status) ? "Processing" : "Pending",
+    generatedBy: "Treasury Staff",
+    generatedOn: record.createdAt ? record.createdAt.slice(0, 10) : (record.transactionDate || "-"),
+    sourceId: record.id,
+  }));
+  return derived.filter((report) => {
+    const haystack = `${report.id} ${report.generatedBy}`.toLowerCase();
+    return haystack.includes(search) && (!type || report.reportType === type) && (!status || report.status === status);
+  });
+}
+
+function renderTreasuryReports(records = getFilteredTreasuryReports()) {
   const table = document.querySelector("[data-reports-table]");
   if (!table) return;
+  const totalCollections = recordCache
+    .filter((record) => record.status === "Paid" || record.status === "Accepted")
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0);
   const values = {
-    collections: moneyAscii(0),
-    transactions: 0,
-    receipts: 0,
-    pending: 0,
+    collections: moneyAscii(totalCollections),
+    transactions: recordCache.length,
+    receipts: getIssuedReceiptRecords().length,
+    pending: recordCache.filter((record) => ["Pending", "Ready"].includes(record.status)).length,
   };
   Object.entries(values).forEach(([key, value]) => {
     document.querySelectorAll(`[data-report-count="${key}"]`).forEach((node) => {
@@ -307,7 +433,24 @@ function renderTreasuryReports(records = []) {
     table.innerHTML = '<tr><td class="payment-empty-state" colspan="8">No treasury reports yet.</td></tr>';
     const count = document.querySelector("[data-report-entry-count]");
     if (count) count.textContent = "Showing 0 entries";
+    window.lucide?.createIcons();
+    return;
   }
+  table.innerHTML = records.map((report) => `
+    <tr>
+      <td>${escapeHtml(report.id)}</td>
+      <td>${escapeHtml(report.reportType)}</td>
+      <td>${escapeHtml(report.coveredPeriod)}</td>
+      <td>${moneyAscii(report.totalAmount)}</td>
+      <td><span class="status-pill ${statusClass(report.status)}">${escapeHtml(report.status)}</span></td>
+      <td>${escapeHtml(report.generatedBy)}</td>
+      <td>${escapeHtml(report.generatedOn)}</td>
+      <td><button class="action-button" type="button" data-edit-record="${report.sourceId}">View</button></td>
+    </tr>
+  `).join("");
+  const count = document.querySelector("[data-report-entry-count]");
+  if (count) count.textContent = `Showing 1 to ${records.length} of ${records.length} entries`;
+  window.lucide?.createIcons();
 }
 
 function renderSelectedTransaction(record) {
@@ -337,6 +480,226 @@ function renderSelectedTransaction(record) {
   `;
 }
 
+function setPaymentDetailsModalOpen(isOpen) {
+  const modal = document.querySelector("[data-payment-details-modal]");
+  if (!modal) return;
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-payment-details]")?.focus();
+  }
+}
+
+function renderPaymentDetails(record) {
+  const body = document.querySelector("[data-payment-details-body]");
+  const actionButton = document.querySelector("[data-payment-next-process]");
+  if (!body || !actionButton || !record) return;
+  paymentDetailsRecordId = record.id;
+  const meta = nextProcessMeta(record);
+  body.innerHTML = `
+    <div class="payment-details-grid">
+      <article class="payment-detail-card"><span>OR No.</span><strong>${escapeHtml(record.orNo || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Application No.</span><strong>${escapeHtml(record.applicationNo || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Applicant</span><strong>${escapeHtml(record.applicant || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Business Name</span><strong>${escapeHtml(record.businessName || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Amount</span><strong>${money(record.amount)}</strong></article>
+      <article class="payment-detail-card"><span>Payment Method</span><strong>${escapeHtml(record.paymentMethod || record.method || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Current Step</span><strong>${escapeHtml(record.currentStep || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Status</span><strong>${escapeHtml(record.status || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Payment Date</span><strong>${escapeHtml(record.transactionDate || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Cashier</span><strong>${escapeHtml(record.cashier || "Treasury Staff")}</strong></article>
+      <article class="payment-detail-card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "No remarks recorded.")}</p></article>
+    </div>
+    <section class="payment-process-note">
+      <i data-lucide="arrow-right-circle"></i>
+      <div>
+        <strong>Next Stage: ${escapeHtml(meta.nextStep)}</strong>
+        <p>${escapeHtml(meta.message)}</p>
+      </div>
+    </section>
+  `;
+  actionButton.textContent = meta.label;
+  actionButton.disabled = Boolean(meta.disabled);
+  actionButton.dataset.target = meta.target;
+  window.lucide?.createIcons();
+}
+
+function openPaymentDetails(record) {
+  if (!record) return;
+  renderPaymentDetails(record);
+  setPaymentDetailsModalOpen(true);
+}
+
+function setReceiptModalOpen(isOpen) {
+  const modal = document.querySelector("[data-receipt-modal]");
+  if (!modal) return;
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-receipt-modal]")?.focus();
+  }
+}
+
+function setPrintConfirmationModalOpen(isOpen) {
+  const modal = document.querySelector("[data-print-confirmation-modal]");
+  if (!modal) return;
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-print-confirmation]")?.focus();
+  }
+}
+
+function renderReceiptModal(record) {
+  const body = document.querySelector("[data-receipt-modal-body]");
+  if (!body || !record) return;
+  receiptModalRecordId = record.id;
+  body.innerHTML = `
+    <div class="payment-details-grid">
+      <article class="payment-detail-card"><span>OR No.</span><strong>${escapeHtml(record.orNo || "-")}</strong></article>
+      <article class="payment-detail-card"><span>SOA No.</span><strong>${escapeHtml(soaNumber(record))}</strong></article>
+      <article class="payment-detail-card"><span>Application No.</span><strong>${escapeHtml(record.applicationNo || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Applicant</span><strong>${escapeHtml(record.applicant || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Business Name</span><strong>${escapeHtml(record.businessName || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Payment Date</span><strong>${escapeHtml(record.transactionDate || "-")}</strong></article>
+      <article class="payment-detail-card"><span>Amount</span><strong>${money(record.amount)}</strong></article>
+      <article class="payment-detail-card"><span>Receipt Status</span><strong>${escapeHtml(orStatus(record))}</strong></article>
+      <article class="payment-detail-card"><span>Issued By</span><strong>${escapeHtml(record.cashier || "Treasury Staff")}</strong></article>
+      <article class="payment-detail-card"><span>Current Step</span><strong>${escapeHtml(record.currentStep || "-")}</strong></article>
+      <article class="payment-detail-card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "No remarks recorded.")}</p></article>
+    </div>
+    <section class="payment-process-note">
+      <i data-lucide="badge-check"></i>
+      <div>
+        <strong>Mark as Paid</strong>
+        <p>Set this transaction to paid first, then print the Statement of Account and Official Receipt from the confirmation modal.</p>
+      </div>
+    </section>
+  `;
+  window.lucide?.createIcons();
+}
+
+function openReceiptModal(record) {
+  if (!record) return;
+  renderReceiptModal(record);
+  setReceiptModalOpen(true);
+}
+
+function printReceiptBundle(record) {
+  if (!record) {
+    setStatus("Unable to find the selected receipt for printing.", true);
+    return false;
+  }
+  const printWindow = window.open("", "_blank", "width=960,height=780");
+  if (!printWindow) {
+    setStatus("Allow pop-ups to print the SOA and official receipt.", true);
+    return false;
+  }
+  const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SOA and Official Receipt</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; margin: 28px; color: #0f1b3d; }
+      h1, h2 { margin: 0 0 10px; }
+      .sheet { margin-bottom: 34px; padding: 22px; border: 1px solid #d7deea; border-radius: 12px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .card { padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafcff; }
+      .card span { display: block; margin-bottom: 6px; color: #667085; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+      .card strong, .card p { margin: 0; font-size: 15px; }
+      .wide { grid-column: 1 / -1; }
+      .amount { color: #0b55e7; }
+      @media print { body { margin: 14px; } .sheet { page-break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <section class="sheet">
+      <h1>Statement of Account</h1>
+      <div class="grid">
+        <div class="card"><span>SOA No.</span><strong>${escapeHtml(soaNumber(record))}</strong></div>
+        <div class="card"><span>Application No.</span><strong>${escapeHtml(record.applicationNo || "-")}</strong></div>
+        <div class="card"><span>Applicant</span><strong>${escapeHtml(record.applicant || "-")}</strong></div>
+        <div class="card"><span>Business Name</span><strong>${escapeHtml(record.businessName || "-")}</strong></div>
+        <div class="card"><span>Assessment Amount</span><strong class="amount">${moneyAscii(record.amount)}</strong></div>
+        <div class="card"><span>Payment Date</span><strong>${escapeHtml(record.transactionDate || "-")}</strong></div>
+        <div class="card wide"><span>Notes</span><p>${escapeHtml(record.remarks || "Generated from treasury workflow.")}</p></div>
+      </div>
+    </section>
+    <section class="sheet">
+      <h2>Official Receipt</h2>
+      <div class="grid">
+        <div class="card"><span>OR No.</span><strong>${escapeHtml(record.orNo || "-")}</strong></div>
+        <div class="card"><span>Receipt Status</span><strong>${escapeHtml(orStatus(record))}</strong></div>
+        <div class="card"><span>Applicant</span><strong>${escapeHtml(record.applicant || "-")}</strong></div>
+        <div class="card"><span>Business Name</span><strong>${escapeHtml(record.businessName || "-")}</strong></div>
+        <div class="card"><span>Amount Paid</span><strong class="amount">${moneyAscii(record.amount)}</strong></div>
+        <div class="card"><span>Issued By</span><strong>${escapeHtml(record.cashier || "Treasury Staff")}</strong></div>
+        <div class="card"><span>Payment Date</span><strong>${escapeHtml(record.transactionDate || "-")}</strong></div>
+        <div class="card"><span>Current Step</span><strong>${escapeHtml(record.currentStep || "-")}</strong></div>
+        <div class="card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "Official receipt generated from payment confirmation.")}</p></div>
+      </div>
+    </section>
+  </body>
+</html>`;
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  return true;
+}
+
+async function notifyReceiptPrintComplete(record) {
+  if (!record?.id) {
+    throw new Error("Unable to find the selected receipt for notification.");
+  }
+  return apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}/print-notify`, {
+    method: "POST",
+  });
+}
+
+async function syncTreasuryCompletion(record) {
+  if (!record?.id) {
+    throw new Error("Unable to find the selected treasury record.");
+  }
+  return apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}/sync-completion`, {
+    method: "POST",
+  });
+}
+
+async function markReceiptAsPaid(record) {
+  if (!record?.id) {
+    throw new Error("Unable to find the selected receipt.");
+  }
+  const paidRecord = {
+    ...record,
+    currentStep: "Official Receipt",
+    step: "Official Receipt",
+    status: "Paid",
+    transactionDate: record.transactionDate || new Date().toISOString().slice(0, 10),
+    orNo: record.orNo || `OR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`,
+  };
+  await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      applicationNo: paidRecord.applicationNo,
+      orNo: paidRecord.orNo,
+      applicant: paidRecord.applicant,
+      businessName: paidRecord.businessName,
+      amount: paidRecord.amount,
+      step: paidRecord.step,
+      currentStep: paidRecord.currentStep,
+      status: paidRecord.status,
+      transactionDate: paidRecord.transactionDate,
+      remarks: paidRecord.remarks || "",
+    }),
+  });
+  await syncTreasuryCompletion(paidRecord);
+  await loadRecords();
+  return recordCache.find((item) => item.id === record.id) || paidRecord;
+}
+
 function renderBars() {
   const node = document.querySelector("[data-bars]");
   if (!node) return;
@@ -347,8 +710,8 @@ function renderBars() {
 
 async function loadRecords() {
   const result = await apiFetch("/treasury/api/records");
-  recordCache = isEmptyDataPage() ? [] : (result.records || []);
-  renderCounts(isEmptyDataPage() ? {} : (result.counts || {}));
+  recordCache = result.records || [];
+  renderCounts(result.counts || {});
   renderRows();
   renderProcessingQueue();
   renderPaymentRecords();
@@ -404,13 +767,41 @@ function bindCrud() {
   document.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    const receiptId = target.dataset.viewReceipt;
+    if (receiptId) {
+      const record = recordCache.find((item) => item.id === receiptId);
+      selectedRecordId = receiptId;
+      renderOfficialReceipts();
+      openReceiptModal(record);
+      return;
+    }
     const editId = target.dataset.editRecord;
-    if (editId) fillForm(recordCache.find((record) => record.id === editId));
+    if (editId) {
+      const record = recordCache.find((item) => item.id === editId);
+      if (document.body.dataset.page === "payment-records") {
+        openPaymentDetails(record);
+        return;
+      }
+      fillForm(record);
+    }
     const processId = target.dataset.processRecord;
     if (processId) {
       const record = recordCache.find((item) => item.id === processId);
       if (record) {
-        await advanceProcessingRecord(record);
+        const processButton = target.closest("[data-process-record]");
+        if (processButton instanceof HTMLButtonElement) {
+          processButton.disabled = true;
+          processButton.classList.add("is-busy");
+          processButton.textContent = "Processing...";
+        }
+        try {
+          await advanceProcessingRecord(record);
+        } finally {
+          if (processButton instanceof HTMLButtonElement) {
+            processButton.disabled = false;
+            processButton.classList.remove("is-busy");
+          }
+        }
       }
     }
     const deleteId = target.dataset.deleteRecord;
@@ -453,8 +844,129 @@ async function advanceProcessingRecord(record) {
       remarks: next.remarks || "",
     }),
   });
+  if (next.currentStep === "Official Receipt" || next.status === "Accepted") {
+    await syncTreasuryCompletion(next);
+  }
   selectedRecordId = record.id;
   await loadRecords();
+  return next;
+}
+
+function bindPaymentDetailsModal() {
+  document.querySelectorAll("[data-close-payment-details]").forEach((button) => {
+    button.addEventListener("click", () => setPaymentDetailsModalOpen(false));
+  });
+  document.querySelector("[data-payment-details-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setPaymentDetailsModalOpen(false);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    const modal = document.querySelector("[data-payment-details-modal]");
+    if (event.key === "Escape" && modal && !modal.hidden) {
+      setPaymentDetailsModalOpen(false);
+    }
+  });
+  document.querySelector("[data-payment-next-process]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement) || !paymentDetailsRecordId) {
+      return;
+    }
+    const record = recordCache.find((item) => item.id === paymentDetailsRecordId);
+    if (!record) {
+      setStatus("Unable to find the selected payment record.", true);
+      return;
+    }
+    const meta = nextProcessMeta(record);
+    if (meta.disabled) {
+      window.location.assign(meta.target);
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Saving...";
+    try {
+      const updated = await advanceProcessingRecord(record);
+      setStatus(`Transaction routed to ${updated.currentStep}.`);
+      setPaymentDetailsModalOpen(false);
+      window.location.assign(meta.target);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to continue the payment workflow.", true);
+      button.disabled = false;
+      button.textContent = meta.label;
+    }
+  });
+}
+
+function bindReceiptModal() {
+  document.querySelectorAll("[data-close-receipt-modal]").forEach((button) => {
+    button.addEventListener("click", () => setReceiptModalOpen(false));
+  });
+  document.querySelector("[data-receipt-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setReceiptModalOpen(false);
+    }
+  });
+  document.querySelector("[data-mark-receipt-paid]")?.addEventListener("click", async (event) => {
+    const record = recordCache.find((item) => item.id === receiptModalRecordId);
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "Saving...";
+    try {
+      const updated = await markReceiptAsPaid(record);
+      printConfirmationRecordId = updated.id;
+      setReceiptModalOpen(false);
+      setPrintConfirmationModalOpen(true);
+      setStatus("Payment status updated to Paid.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to update the payment status.", true);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel || "Paid";
+    }
+  });
+}
+
+function bindPrintConfirmationModal() {
+  document.querySelectorAll("[data-close-print-confirmation]").forEach((button) => {
+    button.addEventListener("click", () => setPrintConfirmationModalOpen(false));
+  });
+  document.querySelector("[data-print-confirmation-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      setPrintConfirmationModalOpen(false);
+    }
+  });
+  document.querySelector("[data-print-receipt-bundle]")?.addEventListener("click", async (event) => {
+    const record = recordCache.find((item) => item.id === printConfirmationRecordId);
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "Printing...";
+    try {
+      const opened = printReceiptBundle(record);
+      if (!opened) {
+        return;
+      }
+      const result = await notifyReceiptPrintComplete(record);
+      const adminCount = Number(result?.adminNotifications || 0);
+      const applicantCopy = result?.applicantNotified ? "Applicant" : "Applicant notification unavailable";
+      const adminCopy = adminCount > 0 ? `Staff admin notified (${adminCount})` : "Staff admin notification unavailable";
+      const finalizationCopy = result?.applicationStatusUpdated ? "Staff admin status updated for finalization." : "Application status update unavailable.";
+      setStatus(`${applicantCopy}. ${adminCopy}. ${finalizationCopy}`);
+      setPrintConfirmationModalOpen(false);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Printed, but unable to send the payment completion notifications.", true);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel || "Print SOA + Official Receipt";
+    }
+  });
 }
 
 function bindProcessingPage() {
@@ -462,6 +974,20 @@ function bindProcessingPage() {
   document.querySelector("[data-step-filter]")?.addEventListener("change", () => renderProcessingQueue());
   document.querySelector("[data-processing-status-filter]")?.addEventListener("change", () => renderProcessingQueue());
   document.querySelector("[data-refresh-processing]")?.addEventListener("click", () => loadRecords());
+  document.querySelector("[data-processing-queue]")?.addEventListener("click", (event) => {
+    const row = event.target instanceof HTMLElement ? event.target.closest("tr") : null;
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-process-record]") : null;
+    if (button) {
+      return;
+    }
+    const rows = getFilteredProcessingRecords();
+    const index = row ? Array.from(row.parentElement?.children || []).indexOf(row) : -1;
+    const record = index >= 0 ? rows[index] : null;
+    if (record) {
+      selectedRecordId = record.id;
+      renderProcessingQueue();
+    }
+  });
   document.querySelector("[data-reset-processing-filters]")?.addEventListener("click", () => {
     const search = document.querySelector("[data-processing-search]");
     const step = document.querySelector("[data-step-filter]");
@@ -537,9 +1063,12 @@ async function boot() {
     }
     if (document.body.dataset.page === "payment-records") {
       bindPaymentRecordsPage();
+      bindPaymentDetailsModal();
     }
     if (document.body.dataset.page === "official-receipts") {
       bindOfficialReceiptsPage();
+      bindReceiptModal();
+      bindPrintConfirmationModal();
     }
     if (document.body.dataset.page === "treasury-reports") {
       bindTreasuryReportsPage();

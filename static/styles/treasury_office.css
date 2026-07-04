@@ -14,7 +14,8 @@
 body { margin: 0; background: var(--page); color: var(--text); font-family: Arial, Helvetica, sans-serif; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease; }
+button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12); filter: brightness(0.99); }
 
 .treasury-shell { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
 .treasury-sidebar { display: flex; flex-direction: column; gap: 22px; padding: 24px 14px; background: linear-gradient(160deg, var(--navy), var(--navy-dark)); color: #fff; }
@@ -67,7 +68,45 @@ button { cursor: pointer; }
 .status-paid, .status-ready { background: #dcfce7; color: #15803d; }
 .status-pending, .status-not-generated { background: #f1f5f9; color: #334155; }
 .status-generated, .status-accepted { background: #dbeafe; color: #1d4ed8; }
-.action-button { min-height: 24px; padding: 0 10px; border: 1px solid #0b55e7; border-radius: 4px; background: #fff; color: #0b55e7; font-size: 9px; font-weight: 800; }
+.action-button {
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid #0b55e7;
+  border-radius: 4px;
+  background: #fff;
+  color: #0b55e7;
+  font-size: 9px;
+  font-weight: 800;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
+}
+
+.action-button:hover {
+  background: #0b55e7;
+  color: #fff;
+  border-color: #0a4ac7;
+  box-shadow: 0 6px 14px rgba(11, 85, 231, 0.18);
+}
+
+.action-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(11, 85, 231, 0.22);
+}
+
+.action-button:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: inset 0 2px 4px rgba(3, 18, 42, 0.18);
+}
+
+.action-button:disabled,
+.action-button.is-busy {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.action-button.is-busy {
+  background: #0b55e7;
+  color: #fff;
+}
 
 .treasury-form-card { margin-bottom: 14px; }
 .btn-primary { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 0; border-radius: 5px; background: #08a045; color: #fff; font-weight: 800; }
@@ -434,6 +473,149 @@ button { cursor: pointer; }
   font-size: 11px;
 }
 
+.treasury-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 18, 42, 0.4);
+}
+
+.treasury-modal-backdrop[hidden] {
+  display: none;
+}
+
+.treasury-modal {
+  width: min(94vw, 760px);
+  max-height: min(88vh, 780px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.2);
+}
+
+.receipt-modal--compact {
+  width: min(94vw, 560px);
+}
+
+.treasury-modal-header,
+.treasury-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.treasury-modal-header {
+  border-bottom: 1px solid var(--line);
+}
+
+.treasury-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.treasury-modal-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.treasury-modal-header button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.treasury-modal-header button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.payment-details-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.payment-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.payment-detail-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.payment-detail-card span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.payment-detail-card strong,
+.payment-detail-card p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.payment-detail-card.wide {
+  grid-column: 1 / -1;
+}
+
+.payment-process-note {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #cfe0ff;
+  border-radius: 10px;
+  background: #eef4ff;
+}
+
+.payment-process-note svg {
+  width: 18px;
+  height: 18px;
+  color: var(--blue);
+  flex: 0 0 auto;
+}
+
+.payment-process-note strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.payment-process-note p {
+  margin: 0;
+  color: #344054;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.treasury-modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+
 .official-receipts-page {
   padding-top: 12px;
 }
@@ -774,6 +956,7 @@ button { cursor: pointer; }
   .treasury-header { align-items: stretch; flex-direction: column; padding: 18px; }
   .treasury-stat-grid, .treasury-grid, .treasury-bottom-grid, .treasury-form, .settings-grid.no-settings-sidebar, .settings-form, .security-grid { grid-template-columns: 1fr; }
   .processing-filters, .selected-detail-grid, .payment-toolbar, .receipt-toolbar, .reports-toolbar, .report-export-actions { grid-template-columns: 1fr; }
+  .payment-details-grid { grid-template-columns: 1fr; }
   .report-export-actions span { grid-column: auto; }
   .processing-footer, .payment-footer { align-items: flex-start; flex-direction: column; padding: 12px 16px; }
 }

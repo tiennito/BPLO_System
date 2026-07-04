@@ -273,6 +273,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.list_department_applications()
             return
 
+        workspace_match = re.fullmatch(r"/department/api/applications/([^/]+)/workspace", request_path)
+        if workspace_match:
+            self.get_department_application_workspace(workspace_match.group(1))
+            return
+
         if request_path.startswith("/department/api/applications/"):
             parts = request_path.strip("/").split("/")
             if len(parts) == 4:
@@ -412,6 +417,15 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.create_department_inspection()
             return
 
+        if request_path == "/department/api/inspection-notifications":
+            self.send_department_inspection_notification()
+            return
+
+        assessment_match = re.fullmatch(r"/department/api/applications/([^/]+)/assessment", request_path)
+        if assessment_match:
+            self.upsert_department_assessment(assessment_match.group(1))
+            return
+
         if request_path == "/department/api/remarks":
             self.create_department_remark()
             return
@@ -436,6 +450,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             parts = request_path.strip("/").split("/")
             if len(parts) == 5:
                 self.confirm_treasury_payment(parts[-2])
+                return
+
+        if request_path.startswith("/treasury/api/records/") and request_path.endswith("/print-notify"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 5:
+                self.notify_treasury_print_complete(parts[-2])
+                return
+
+        if request_path.startswith("/treasury/api/records/") and request_path.endswith("/sync-completion"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 5:
+                self.sync_treasury_record_completion(parts[-2])
                 return
 
         if request_path == "/admin/api/users":
@@ -466,6 +492,9 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return
             if len(parts) == 5 and parts[-1] == "finalize":
                 self.finalize_admin_application(parts[-2])
+                return
+            if len(parts) == 5 and parts[-1] == "release-permit":
+                self.release_admin_business_permit(parts[-2])
                 return
 
         if request_path == "/admin/api/document-reviews":
@@ -3095,6 +3124,28 @@ class AppHandler(SimpleHTTPRequestHandler):
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             return None
 
+    def create_notifications(self, supabase_url, service_key, notifications):
+        payload = [
+            notification
+            for notification in notifications
+            if notification.get("user_id") and notification.get("title") and notification.get("message")
+        ]
+        if not payload:
+            return []
+
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "notifications",
+                method="POST",
+                payload=payload,
+                prefer="return=representation",
+            )
+            return rows or []
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return []
+
     def get_application_owner_id(self, supabase_url, service_key, application_id):
         if not application_id:
             return ""
@@ -5533,7 +5584,6 @@ class AppHandler(SimpleHTTPRequestHandler):
                 query=urlencode({"id": f"eq.{application_id}"}),
             )
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "permit_generated", actor=config["actor"], entity_type="business_permit", entity_id=(rows[0] if rows else {}).get("id"), details={"permitNumber": permit_number})
-            self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], application_id, "Permit Ready for Release", "Your business permit has been generated and is ready for release.", notification_type="permit", source_role="BPLO")
             self.send_json({"message": "Application finalized and business permit generated.", "permit": rows[0] if rows else permit_payload})
         except ValueError:
             self.send_json({"error": "Unable to calculate the permit expiration date."}, status=500)
@@ -5541,6 +5591,59 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": self.handle_rest_error(error, "Unable to finalize application.")}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to finalize application."}, status=500)
+
+    def release_admin_business_permit(self, application_id):
+        config = self.admin_config_with_actor("business permit release")
+        if not config:
+            return
+        try:
+            bundle = self.load_application_bundle(config["supabase_url"], config["supabase_service_key"], application_id)
+            if not bundle:
+                self.send_json({"error": "Application not found."}, status=404)
+                return
+
+            permit = bundle.get("businessPermit")
+            if not permit:
+                self.send_json({"error": "Finalize the application before releasing the business permit."}, status=400)
+                return
+
+            app = bundle["application"]
+            current_status = app.get("status") or ""
+            if current_status == "Released":
+                self.send_json({"message": "Business permit has already been released.", "permit": permit})
+                return
+
+            now = utc_now_iso()
+            self.service_rest_request(
+                config,
+                "applications",
+                method="PATCH",
+                payload={"status": "Released", "progress": "Permit Released", "updated_at": now},
+                query=urlencode({"id": f"eq.{application_id}"}),
+            )
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "permit_released_for_pickup",
+                actor=config["actor"],
+                entity_type="business_permit",
+                entity_id=permit.get("id"),
+                details={"permitNumber": permit.get("permit_number"), "applicationId": application_id},
+            )
+            self.notify_application_owner(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                application_id,
+                "Business Permit Ready for Pickup",
+                "Your business permit is ready to be claimed at the BPLO office. Please bring your claim requirements upon pickup.",
+                notification_type="permit",
+                source_role="BPLO",
+            )
+            self.send_json({"message": "Business permit released successfully and applicant notified for pickup.", "permit": permit})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to release the business permit.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to release the business permit."}, status=500)
 
     def list_treasury_payment_queue(self):
         config = self.ensure_treasury_request()
@@ -5962,7 +6065,10 @@ class AppHandler(SimpleHTTPRequestHandler):
                 }
             )
             remarks = self.service_rest_request(config, "department_remarks", query=query) or []
-            inspections = self.service_rest_request(config, "department_inspections", query=query) or []
+            inspections = [
+                self.format_department_inspection_record(record)
+                for record in (self.service_rest_request(config, "department_inspections", query=query) or [])
+            ]
             verifications = self.service_rest_request(config, "department_verifications", query=query) or []
             self.send_json(
                 {
@@ -5974,6 +6080,108 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to load application details.")
+
+    def inspection_metadata_marker(self):
+        return "__department_inspection_meta__:"
+
+    def pack_department_inspection_remarks(self, remarks="", end_time="", location_address="", proof_files=None):
+        metadata = {
+            "remarks": (remarks or "").strip(),
+            "endTime": (end_time or "").strip(),
+            "locationAddress": (location_address or "").strip(),
+            "proofFiles": proof_files or [],
+        }
+        return f"{self.inspection_metadata_marker()}{json.dumps(metadata, separators=(',', ':'))}"
+
+    def unpack_department_inspection_remarks(self, remarks):
+        text = remarks or ""
+        marker = self.inspection_metadata_marker()
+        if not text.startswith(marker):
+            return {
+                "remarks": text,
+                "endTime": "",
+                "locationAddress": "",
+                "proofFiles": [],
+            }
+        try:
+            metadata = json.loads(text[len(marker):] or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        return {
+            "remarks": metadata.get("remarks") or "",
+            "endTime": metadata.get("endTime") or "",
+            "locationAddress": metadata.get("locationAddress") or "",
+            "proofFiles": metadata.get("proofFiles") or [],
+        }
+
+    def format_department_inspection_record(self, record):
+        if not record:
+            return {}
+        formatted = dict(record)
+        metadata = self.unpack_department_inspection_remarks(record.get("remarks"))
+        formatted["remarks"] = metadata["remarks"]
+        formatted["end_time"] = metadata["endTime"]
+        formatted["location_address"] = metadata["locationAddress"]
+        formatted["proof_files"] = metadata["proofFiles"]
+        return formatted
+
+    def get_department_workspace_assessment_item(self, config, application_id):
+        assessment_rows = self.service_rest_request(
+            config,
+            "assessments",
+            query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "limit": "1"}),
+        ) or []
+        assessment = assessment_rows[0] if assessment_rows else None
+        if not assessment:
+            return None, None
+
+        item_rows = self.service_rest_request(
+            config,
+            "assessment_items",
+            query=urlencode(
+                {
+                    "select": "*",
+                    "assessment_id": f"eq.{assessment.get('id')}",
+                    "application_id": f"eq.{application_id}",
+                    "department_key": f"eq.{config['department_key']}",
+                    "is_active": "eq.true",
+                    "order": "created_at.asc",
+                }
+            ),
+        ) or []
+        return assessment, (item_rows[-1] if item_rows else None), item_rows
+
+    def get_department_workspace_inspection(self, config, application_id):
+        rows = self.service_rest_request(
+            config,
+            "department_inspections",
+            query=urlencode(
+                {
+                    "select": "*",
+                    "application_id": f"eq.{application_id}",
+                    "department_key": f"eq.{config['department_key']}",
+                    "deleted_at": "is.null",
+                    "order": "updated_at.desc",
+                    "limit": "1",
+                }
+            ),
+        ) or []
+        return self.format_department_inspection_record(rows[0]) if rows else None
+
+    def get_department_application_workspace(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+            assessment, item, items = self.get_department_workspace_assessment_item(config, application_id)
+            inspection = self.get_department_workspace_inspection(config, application_id)
+            self.send_json({"assessment": assessment, "assessmentItem": item, "assessmentItems": items, "inspection": inspection})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load saved department form data.")
 
     def update_department_application_evaluation(self, application_id):
         config = self.ensure_department_request()
@@ -6077,6 +6285,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                 }
             )
             rows = self.service_rest_request(config, table, query=query) or []
+            if table == "department_inspections":
+                rows = [self.format_department_inspection_record(record) for record in rows]
             self.send_json({response_key: rows, "total": len(rows)})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, f"Unable to load {response_key}.")
@@ -6151,6 +6361,160 @@ class AppHandler(SimpleHTTPRequestHandler):
             "department_requirement",
         )
 
+    def upsert_department_assessment(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            application_id = (application_id or payload.get("applicationId") or "").strip()
+            if not application_id:
+                self.send_json({"error": "Application is required."}, status=400)
+                return
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            assessment = self.get_or_create_assessment(config, application_id)
+            if not assessment:
+                self.send_json({"error": "Unable to prepare assessment record."}, status=500)
+                return
+
+            incoming_items = payload.get("items") if isinstance(payload.get("items"), list) else None
+            if incoming_items is None:
+                incoming_items = [payload]
+
+            cleaned_items = []
+            for raw_item in incoming_items:
+                if not isinstance(raw_item, dict):
+                    continue
+                fee_name = (raw_item.get("feeName") or "Department fee").strip()
+                category = (raw_item.get("category") or "").strip()
+                amount = self.money(self.safe_float(raw_item.get("amount"), 0))
+                penalty = self.money(self.safe_float(raw_item.get("penalty"), 0))
+                if not fee_name and not category and amount == 0 and penalty == 0:
+                    continue
+                if not fee_name:
+                    self.send_json({"error": "Fee description is required."}, status=400)
+                    return
+                item_payload = dict(raw_item)
+                item_payload["feeName"] = fee_name
+                item_payload["assessmentId"] = assessment.get("id")
+                item_payload["applicationId"] = application_id
+                item_payload["departmentKey"] = config["department_key"]
+                item_payload["remarks"] = (raw_item.get("remarks") or payload.get("remarks") or "").strip()
+                item_payload["finalAmount"] = self.money(amount + penalty)
+                cleaned_items.append(item_payload)
+
+            if not cleaned_items:
+                self.send_json({"error": "At least one fee item is required."}, status=400)
+                return
+
+            existing_rows = self.service_rest_request(
+                config,
+                "assessment_items",
+                query=urlencode(
+                    {
+                        "select": "*",
+                        "assessment_id": f"eq.{assessment.get('id')}",
+                        "application_id": f"eq.{application_id}",
+                        "department_key": f"eq.{config['department_key']}",
+                        "is_active": "eq.true",
+                        "order": "created_at.asc",
+                    }
+                ),
+            ) or []
+            existing_by_id = {str(row.get("id")): row for row in existing_rows if row.get("id")}
+            saved_items = []
+            submitted_ids = set()
+
+            for raw_item in cleaned_items:
+                item_id = (raw_item.get("id") or "").strip()
+                existing = existing_by_id.get(item_id)
+                item = self.build_assessment_item_payload(config, raw_item, existing=existing)
+                item["status"] = "Submitted"
+                if existing:
+                    item.pop("assessment_id", None)
+                    item.pop("application_id", None)
+                    rows = self.service_rest_request(
+                        config,
+                        "assessment_items",
+                        method="PATCH",
+                        payload=item,
+                        query=urlencode({"id": f"eq.{existing.get('id')}", "is_active": "eq.true"}),
+                        prefer="return=representation",
+                    ) or []
+                    saved_item = rows[0] if rows else {}
+                    submitted_ids.add(str(existing.get("id")))
+                    action = "department_fee_updated"
+                else:
+                    item["created_by"] = config["actor"].get("id")
+                    rows = self.service_rest_request(
+                        config,
+                        "assessment_items",
+                        method="POST",
+                        payload=item,
+                        prefer="return=representation",
+                    ) or []
+                    saved_item = rows[0] if rows else {}
+                    if saved_item.get("id"):
+                        submitted_ids.add(str(saved_item.get("id")))
+                    action = "department_fee_created"
+                if saved_item:
+                    saved_items.append(saved_item)
+                self.create_service_audit_log(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    action,
+                    actor=config["actor"],
+                    entity_type="assessment_item",
+                    entity_id=saved_item.get("id"),
+                    details={"department": config["department_key"], "applicationId": application_id, "feeName": item.get("fee_name")},
+                )
+
+            removed_ids = [str(row.get("id")) for row in existing_rows if str(row.get("id")) not in submitted_ids]
+            if removed_ids:
+                self.service_rest_request(
+                    config,
+                    "assessment_items",
+                    method="PATCH",
+                    payload={
+                        "is_active": False,
+                        "status": "Cancelled",
+                        "updated_by": config["actor"].get("id"),
+                        "updated_at": utc_now_iso(),
+                    },
+                    query=urlencode({"id": f"in.({','.join(removed_ids)})"}),
+                    prefer="return=minimal",
+                )
+
+            updated_assessment = self.recalculate_assessment(config, assessment.get("id"))
+            refreshed_items = self.service_rest_request(
+                config,
+                "assessment_items",
+                query=urlencode(
+                    {
+                        "select": "*",
+                        "assessment_id": f"eq.{assessment.get('id')}",
+                        "application_id": f"eq.{application_id}",
+                        "department_key": f"eq.{config['department_key']}",
+                        "is_active": "eq.true",
+                        "order": "created_at.asc",
+                    }
+                ),
+            ) or []
+            self.send_json(
+                {
+                    "message": "Department assessment saved.",
+                    "item": refreshed_items[-1] if refreshed_items else (saved_items[-1] if saved_items else {}),
+                    "items": refreshed_items,
+                    "assessment": updated_assessment,
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to save department assessment.")
+
     def create_department_inspection(self):
         config = self.ensure_department_request()
         if not config:
@@ -6162,6 +6526,9 @@ class AppHandler(SimpleHTTPRequestHandler):
             scheduled_date = (payload.get("scheduledDate") or "").strip()
             scheduled_time = (payload.get("scheduledTime") or "").strip()
             remarks = (payload.get("remarks") or "").strip()
+            end_time = (payload.get("endTime") or "").strip()
+            location_address = (payload.get("locationAddress") or "").strip()
+            proof_files = payload.get("proofFiles") if isinstance(payload.get("proofFiles"), list) else []
 
             if not application_id or not scheduled_date or not scheduled_time:
                 self.send_json({"error": "Application, date, and time are required."}, status=400)
@@ -6176,22 +6543,53 @@ class AppHandler(SimpleHTTPRequestHandler):
                 "department_key": config["department_key"],
                 "scheduled_date": scheduled_date,
                 "scheduled_time": scheduled_time,
-                "remarks": remarks,
+                "remarks": self.pack_department_inspection_remarks(remarks, end_time, location_address, proof_files),
                 "status": (payload.get("status") or "Draft").strip(),
                 "created_by": config["actor"].get("id"),
             }
-            rows = self.service_rest_request(
+            existing = self.service_rest_request(
                 config,
                 "department_inspections",
-                method="POST",
-                payload=record,
-                prefer="return=representation",
-            )
-            created = rows[0] if rows else {}
+                query=urlencode(
+                    {
+                        "select": "*",
+                        "application_id": f"eq.{application_id}",
+                        "department_key": f"eq.{config['department_key']}",
+                        "deleted_at": "is.null",
+                        "order": "updated_at.desc",
+                        "limit": "1",
+                    }
+                ),
+            ) or []
+            if existing:
+                record.pop("application_id", None)
+                record.pop("department_key", None)
+                record.pop("created_by", None)
+                rows = self.service_rest_request(
+                    config,
+                    "department_inspections",
+                    method="PATCH",
+                    payload=record,
+                    query=urlencode({"id": f"eq.{existing[0].get('id')}", "department_key": f"eq.{config['department_key']}", "deleted_at": "is.null"}),
+                    prefer="return=representation",
+                )
+                action = "inspection_updated"
+                message = "Inspection schedule updated."
+            else:
+                rows = self.service_rest_request(
+                    config,
+                    "department_inspections",
+                    method="POST",
+                    payload=record,
+                    prefer="return=representation",
+                )
+                action = "inspection_created"
+                message = "Inspection schedule created."
+            created = self.format_department_inspection_record((rows or [{}])[0])
             self.create_service_audit_log(
                 config["supabase_url"],
                 config["supabase_service_key"],
-                "inspection_created",
+                action,
                 actor=config["actor"],
                 entity_type="department_inspection",
                 entity_id=created.get("id"),
@@ -6201,12 +6599,12 @@ class AppHandler(SimpleHTTPRequestHandler):
                 config["supabase_url"],
                 config["supabase_service_key"],
                 application_id,
-                "Inspection Scheduled",
-                f"{config['department_name']} scheduled your inspection on {scheduled_date} at {scheduled_time}.",
+                "Inspection Scheduled" if action == "inspection_created" else "Inspection Updated",
+                f"{config['department_name']} {'scheduled' if action == 'inspection_created' else 'updated'} your inspection on {scheduled_date} at {scheduled_time}.",
                 notification_type="inspection",
                 source_role=config["department_name"],
             )
-            self.send_json({"message": "Inspection schedule created.", "inspection": created}, status=201)
+            self.send_json({"message": message, "inspection": created}, status=200 if existing else 201)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to create inspection schedule.")
 
@@ -6215,7 +6613,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         record = {
             "scheduled_date": (payload.get("scheduledDate") or "").strip(),
             "scheduled_time": (payload.get("scheduledTime") or "").strip(),
-            "remarks": (payload.get("remarks") or "").strip(),
+            "remarks": self.pack_department_inspection_remarks(
+                (payload.get("remarks") or "").strip(),
+                (payload.get("endTime") or "").strip(),
+                (payload.get("locationAddress") or "").strip(),
+                payload.get("proofFiles") if isinstance(payload.get("proofFiles"), list) else [],
+            ),
             "status": (payload.get("status") or "Draft").strip(),
         }
         if not record["scheduled_date"] or not record["scheduled_time"]:
@@ -6228,6 +6631,112 @@ class AppHandler(SimpleHTTPRequestHandler):
             "inspection_updated",
             "department_inspection",
         )
+
+    def get_bplo_notification_users(self, config):
+        queries = [
+            {"select": "auth_user_id", "role": "in.(bplo_admin,super_admin)", "status": "eq.active"},
+            {"select": "auth_user_id", "role": "in.(bplo_admin,super_admin)", "status": "eq.Active"},
+        ]
+        users = []
+        seen = set()
+        for query in queries:
+            try:
+                rows = self.service_rest_request(config, "profiles", query=urlencode(query)) or []
+            except HTTPError:
+                rows = []
+            for row in rows:
+                user_id = row.get("auth_user_id")
+                if user_id and user_id not in seen:
+                    seen.add(user_id)
+                    users.append(user_id)
+        return users
+
+    def send_department_inspection_notification(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+
+        try:
+            payload = self.read_json_body()
+            application_id = (payload.get("applicationId") or "").strip()
+            scheduled_date = (payload.get("scheduledDate") or "").strip()
+            scheduled_time = (payload.get("scheduledTime") or "").strip()
+            end_time = (payload.get("endTime") or "").strip()
+            location_address = (payload.get("locationAddress") or "").strip()
+            remarks = (payload.get("remarks") or "").strip()
+            status = (payload.get("status") or "Scheduled").strip()
+
+            if not application_id or not scheduled_date or not scheduled_time:
+                self.send_json({"error": "Application, inspection date, and start time are required."}, status=400)
+                return
+
+            assignments = self.get_department_assignments(config, application_id=application_id)
+            if not assignments:
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            application = self.load_application_core(config["supabase_url"], config["supabase_service_key"], application_id) or {}
+            business_info = application.get("business_info") or {}
+            business_name = self.app_business_name(business_info)
+            applicant_name = self.app_owner_name(business_info)
+            time_range = f"{scheduled_time} to {end_time}" if end_time else scheduled_time
+            location_copy = f" at {location_address}" if location_address else ""
+            remarks_copy = f" Remarks: {remarks}" if remarks else ""
+            reference = (application_id or "")[:8]
+
+            applicant_user_id = application.get("applicant_id")
+            admin_user_ids = self.get_bplo_notification_users(config)
+            notification_payloads = []
+            if applicant_user_id:
+                notification_payloads.append(
+                    {
+                        "user_id": applicant_user_id,
+                        "application_id": application_id,
+                        "title": "Inspection Schedule Notification",
+                        "message": f"{config['department_name']} set your inspection for {scheduled_date} at {time_range}{location_copy}.{remarks_copy}",
+                        "type": "inspection",
+                        "source_role": config["department_name"],
+                    }
+                )
+            notification_payloads.extend(
+                {
+                    "user_id": user_id,
+                    "application_id": application_id,
+                    "title": "Department Inspection Update",
+                    "message": f"{config['department_name']} notified {applicant_name or 'the applicant'} about the {status.lower()} inspection for {business_name} ({reference}) on {scheduled_date} at {time_range}.",
+                    "type": "inspection",
+                    "source_role": config["department_name"],
+                }
+                for user_id in admin_user_ids
+            )
+
+            created_notifications = self.create_notifications(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                notification_payloads,
+            )
+            created_user_ids = {row.get("user_id") for row in created_notifications}
+            applicant_notified = bool(applicant_user_id and applicant_user_id in created_user_ids)
+            admin_sent = sum(1 for user_id in admin_user_ids if user_id in created_user_ids)
+
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "inspection_notification_sent",
+                actor=config["actor"],
+                entity_type="application",
+                entity_id=application_id,
+                details={"department": config["department_key"], "applicantNotified": applicant_notified, "adminNotifications": admin_sent},
+            )
+            self.send_json(
+                {
+                    "message": "Inspection notification sent to the applicant and BPLO staff.",
+                    "applicantNotified": applicant_notified,
+                    "adminNotifications": admin_sent,
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to send inspection notification.")
 
     def create_department_remark(self):
         config = self.ensure_department_request()
@@ -6866,6 +7375,256 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, status=400)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.treasury_error(error, "Unable to update treasury record.")
+
+    def ensure_treasury_completion_state(self, config, record):
+        application_reference = (record.get("application_no") or "").strip()
+        application = self.find_application_by_reference(
+            config["supabase_url"],
+            config["supabase_service_key"],
+            application_reference,
+        ) if application_reference else None
+        application_id = application.get("id") if application else None
+        or_number = (record.get("or_no") or "").strip() or "Pending Official Receipt"
+        business_name = (record.get("business_name") or "").strip() or "this application"
+        now = utc_now_iso()
+
+        payment = None
+        receipt = None
+        queue = None
+        assessment_id = None
+        amount_due = self.money(record.get("amount"))
+
+        if application_id:
+            queue_rows = self.service_rest_request(
+                config,
+                "treasury_payment_queue",
+                query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "order": "created_at.desc", "limit": 1}),
+            ) or []
+            queue = queue_rows[0] if queue_rows else None
+            assessment_id = queue.get("assessment_id") if queue else None
+            if not assessment_id:
+                assessment_rows = self.service_rest_request(
+                    config,
+                    "assessments",
+                    query=urlencode({"select": "id", "application_id": f"eq.{application_id}", "order": "created_at.desc", "limit": 1}),
+                ) or []
+                assessment_id = (assessment_rows[0] or {}).get("id") if assessment_rows else None
+
+            payment_rows = self.service_rest_request(
+                config,
+                "payments",
+                query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "order": "created_at.desc", "limit": 5}),
+            ) or []
+            payment = next((row for row in payment_rows if row.get("payment_status") == "Confirmed"), None)
+            if not payment:
+                payment_payload = {
+                    "application_id": application_id,
+                    "assessment_id": assessment_id,
+                    "queue_id": queue.get("id") if queue else None,
+                    "payment_reference": self.generate_workflow_number("PAY"),
+                    "amount_due": amount_due,
+                    "amount_paid": amount_due,
+                    "change_amount": 0,
+                    "payment_method": "Cash",
+                    "payment_status": "Confirmed",
+                    "official_receipt_number": or_number,
+                    "paid_at": now,
+                    "cashier_id": config["actor"].get("id"),
+                    "remarks": (record.get("remarks") or "Treasury workflow completed.").strip(),
+                }
+                created_payments = self.service_rest_request(
+                    config,
+                    "payments",
+                    method="POST",
+                    payload=payment_payload,
+                    prefer="return=representation",
+                ) or []
+                payment = created_payments[0] if created_payments else payment_payload
+
+            receipt_rows = self.service_rest_request(
+                config,
+                "official_receipts",
+                query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "receipt_number": f"eq.{or_number}", "limit": 1}),
+            ) or []
+            receipt = receipt_rows[0] if receipt_rows else None
+            if not receipt:
+                created_receipts = self.service_rest_request(
+                    config,
+                    "official_receipts",
+                    method="POST",
+                    payload={
+                        "payment_id": payment.get("id"),
+                        "application_id": application_id,
+                        "receipt_number": or_number,
+                        "issued_by": config["actor"].get("id"),
+                        "issued_at": now,
+                        "status": "Issued",
+                    },
+                    prefer="return=representation",
+                ) or []
+                receipt = created_receipts[0] if created_receipts else {}
+
+            if queue and queue.get("status") != "Paid":
+                self.service_rest_request(
+                    config,
+                    "treasury_payment_queue",
+                    method="PATCH",
+                    payload={"status": "Paid", "completed_at": now, "assigned_cashier_id": config["actor"].get("id"), "updated_at": now},
+                    query=urlencode({"id": f"eq.{queue.get('id')}"}),
+                )
+
+            if assessment_id:
+                self.service_rest_request(
+                    config,
+                    "assessments",
+                    method="PATCH",
+                    payload={"status": "Paid", "updated_at": now},
+                    query=urlencode({"id": f"eq.{assessment_id}"}),
+                )
+
+            self.service_rest_request(
+                config,
+                "applications",
+                method="PATCH",
+                payload={
+                    "status": "Payment Verified",
+                    "progress": "Ready for Finalization",
+                    "payment_status": "Payment Verified",
+                    "assessment_status": "Paid",
+                    "updated_at": now,
+                },
+                query=urlencode({"id": f"eq.{application_id}"}),
+            )
+
+        return {
+            "application": application,
+            "applicationId": application_id,
+            "applicationReference": application_reference,
+            "businessName": business_name,
+            "orNumber": or_number,
+            "payment": payment,
+            "receipt": receipt,
+        }
+
+    def sync_treasury_record_completion(self, record_id):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            rows = self.service_rest_request(
+                config,
+                "treasury_records",
+                query=urlencode({"select": "*", "id": f"eq.{record_id}", "deleted_at": "is.null", "limit": 1}),
+            ) or []
+            if not rows:
+                self.send_json({"error": "Treasury record not found."}, status=404)
+                return
+
+            state = self.ensure_treasury_completion_state(config, rows[0])
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "treasury_completion_synced",
+                actor=config["actor"],
+                entity_type="treasury_record",
+                entity_id=record_id,
+                details={
+                    "applicationNo": state["applicationReference"],
+                    "applicationStatusUpdated": bool(state["applicationId"]),
+                    "officialReceiptNumber": state["orNumber"],
+                },
+            )
+            self.send_json(
+                {
+                    "message": "Treasury workflow synced to the application record.",
+                    "applicationStatusUpdated": bool(state["applicationId"]),
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to sync treasury completion.")
+
+    def notify_treasury_print_complete(self, record_id):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            rows = self.service_rest_request(
+                config,
+                "treasury_records",
+                query=urlencode({"select": "*", "id": f"eq.{record_id}", "deleted_at": "is.null", "limit": 1}),
+            ) or []
+            if not rows:
+                self.send_json({"error": "Treasury record not found."}, status=404)
+                return
+
+            record = rows[0]
+            state = self.ensure_treasury_completion_state(config, record)
+            application_id = state["applicationId"]
+            application_reference = state["applicationReference"]
+            business_name = state["businessName"]
+            or_number = state["orNumber"]
+            payment = state["payment"]
+            receipt = state["receipt"]
+
+            applicant_sent = False
+            if application_id:
+                applicant_notification = self.notify_application_owner(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application_id,
+                    "Payment Completed",
+                    f"Your payment for {business_name} has been completed and your official receipt {or_number} is ready.",
+                    notification_type="payment",
+                    source_role="Treasury",
+                )
+                applicant_sent = bool(applicant_notification)
+
+            admin_user_ids = self.get_bplo_notification_users(config)
+            admin_notifications = []
+            for user_id in admin_user_ids:
+                admin_notifications.append(
+                    {
+                        "user_id": user_id,
+                        "application_id": application_id,
+                        "title": "Payment Completed",
+                        "message": f"Payment has been completed for {business_name}. Official Receipt {or_number} is ready for final processing.",
+                        "type": "payment",
+                        "source_role": "Treasury",
+                    }
+                )
+            admin_sent = self.create_notifications(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                admin_notifications,
+            ) if admin_notifications else 0
+
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "treasury_print_notification_sent",
+                actor=config["actor"],
+                entity_type="treasury_record",
+                entity_id=record_id,
+                details={
+                    "applicationNo": application_reference,
+                    "officialReceiptNumber": or_number,
+                    "applicantNotified": applicant_sent,
+                    "adminNotifications": admin_sent,
+                    "applicationStatusUpdated": bool(application_id),
+                    "paymentId": payment.get("id") if payment else None,
+                    "receiptId": receipt.get("id") if receipt else None,
+                },
+            )
+            self.send_json(
+                {
+                    "message": "Payment completion notifications sent and application is ready for finalization.",
+                    "applicantNotified": applicant_sent,
+                    "adminNotifications": admin_sent,
+                    "applicationStatusUpdated": bool(application_id),
+                }
+            )
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to send payment completion notifications.")
 
     def soft_delete_treasury_record(self, record_id):
         config = self.ensure_treasury_request()

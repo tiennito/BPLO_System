@@ -102,11 +102,22 @@
                   <span>Amount</span>
                   <span>Penalty</span>
                 </div>
-                <div class="assessment-row">
-                  <input name="feeDescription" placeholder="Department fee" />
-                  <input name="category" placeholder="Code" />
-                  <input name="amount" type="number" min="0" step="0.01" placeholder="0.00" />
-                  <input name="penalty" type="number" min="0" step="0.01" placeholder="0.00" />
+                <div class="assessment-rows" data-assessment-rows>
+                  <div class="assessment-row" data-assessment-row>
+                    <input name="feeDescription" placeholder="Department fee" />
+                    <input name="category" placeholder="Code" />
+                    <input name="amount" type="number" min="0" step="0.01" placeholder="0.00" />
+                    <input name="penalty" type="number" min="0" step="0.01" placeholder="0.00" />
+                    <button class="assessment-row-remove" type="button" data-remove-assessment-row aria-label="Remove fee row" hidden>
+                      <i data-lucide="trash-2"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="app-actions assessment-actions">
+                  <button class="btn" type="button" data-add-assessment-row>
+                    <i data-lucide="plus"></i>
+                    Add Fee
+                  </button>
                 </div>
                 <label class="app-field app-field-full">
                   Assessment Remarks
@@ -147,9 +158,11 @@
                     <span>Drop files or browse</span>
                     <small>PNG, JPG, PDF up to 10 MB</small>
                   </label>
+                  <div class="inspection-proof-list" data-inspection-proof-list hidden></div>
                   <div class="app-actions">
                     <button class="btn btn-blue" type="button" data-upload-placeholder>Upload Evidence</button>
-                    <button class="btn btn-primary" type="submit">Mark as Completed</button>
+                    <button class="btn" type="button" data-notify-inspection>Notify Applicant &amp; BPLO</button>
+                    <button class="btn btn-primary" type="submit" data-inspection-status="Completed">Mark as Completed</button>
                   </div>
                 </div>
               </form>
@@ -246,6 +259,80 @@
             </button>
           </footer>
         </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" data-assessment-submit-modal hidden>
+      <section class="assessment-submit-modal" role="dialog" aria-modal="true" aria-labelledby="assessment-submit-title">
+        <header class="modal-header">
+          <h2 id="assessment-submit-title"><i data-lucide="circle-check"></i> Assessment Submitted</h2>
+          <button type="button" aria-label="Close" data-close-assessment-submit>
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="assessment-submit-body">
+          <p>The department assessment fee has been prepared for the selected application.</p>
+          <dl>
+            <div><dt>Application</dt><dd data-assessment-modal-application>-</dd></div>
+            <div><dt>Fee Description</dt><dd data-assessment-modal-description>-</dd></div>
+            <div><dt>Category</dt><dd data-assessment-modal-category>-</dd></div>
+            <div><dt>Amount</dt><dd data-assessment-modal-amount>PHP 0.00</dd></div>
+            <div><dt>Penalty</dt><dd data-assessment-modal-penalty>PHP 0.00</dd></div>
+            <div><dt>Total</dt><dd data-assessment-modal-total>PHP 0.00</dd></div>
+          </dl>
+        </div>
+        <footer class="modal-actions">
+          <button class="btn btn-primary" type="button" data-close-assessment-submit>Done</button>
+        </footer>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" data-inspection-notify-modal hidden>
+      <section class="assessment-submit-modal" role="dialog" aria-modal="true" aria-labelledby="inspection-notify-title">
+        <header class="modal-header">
+          <h2 id="inspection-notify-title"><i data-lucide="bell-ring"></i> Send Inspection Notification</h2>
+          <button type="button" aria-label="Close" data-close-inspection-notify>
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="assessment-submit-body">
+          <p data-inspection-notify-message>Notify the applicant and BPLO staff admin about this inspection schedule.</p>
+          <dl>
+            <div><dt>Application</dt><dd data-inspection-notify-application>-</dd></div>
+            <div><dt>Inspection Date</dt><dd data-inspection-notify-date>-</dd></div>
+            <div><dt>Start Time</dt><dd data-inspection-notify-time>-</dd></div>
+            <div><dt>End Time</dt><dd data-inspection-notify-end-time>-</dd></div>
+            <div><dt>Inspection Type</dt><dd data-inspection-notify-status>-</dd></div>
+            <div><dt>Location</dt><dd data-inspection-notify-location>-</dd></div>
+          </dl>
+        </div>
+        <footer class="modal-actions">
+          <button class="btn" type="button" data-close-inspection-notify>Cancel</button>
+          <button class="btn btn-primary" type="button" data-confirm-inspection-notify>Send Notification</button>
+        </footer>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" data-completion-modal hidden>
+      <section class="completion-modal" role="dialog" aria-modal="true" aria-labelledby="completion-title">
+        <header class="modal-header">
+          <h2 id="completion-title"><i data-lucide="circle-check"></i> Complete</h2>
+          <button type="button" aria-label="Close" data-close-completion-modal>
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="completion-modal-body">
+          <span class="completion-icon"><i data-lucide="check"></i></span>
+          <h3 data-completion-modal-title>Completed Successfully</h3>
+          <p data-completion-modal-message>The selected application has been completed.</p>
+          <dl>
+            <div><dt>Application</dt><dd data-completion-modal-application>-</dd></div>
+            <div><dt>Status</dt><dd data-completion-modal-status>Complete</dd></div>
+          </dl>
+        </div>
+        <footer class="modal-actions">
+          <button class="btn btn-primary" type="button" data-close-completion-modal>Done</button>
+        </footer>
       </section>
     </div>
   </body>

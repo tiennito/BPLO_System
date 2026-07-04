@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator</title>
     <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <script defer src="/config.js?v=8"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_dashboard.js?v=1"></script>
   </head>
   <body>
     <main class="staff-admin-shell">
@@ -66,10 +69,11 @@
           <section class="staff-panel staff-renewal-panel" aria-labelledby="renewal-title">
             <header class="staff-panel-header">
               <h2 id="renewal-title">Re-Newal Application</h2>
-              <button class="staff-icon-button" type="button" aria-label="Refresh renewal requirements"><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
+              <button class="staff-icon-button" type="button" aria-label="Refresh renewal requirements" data-dashboard-refresh><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
             </header>
-            <p class="staff-panel-note">No renewal requirement data available.</p>
-            <div class="staff-empty-state">
+            <p class="staff-panel-note" data-renewal-note>No renewal requirement data available.</p>
+            <ul class="staff-renewal-list" data-renewal-list hidden></ul>
+            <div class="staff-empty-state" data-renewal-empty>
               <i data-lucide="inbox" aria-hidden="true"></i>
               <strong>No renewal records yet</strong>
               <span>Renewal information will appear here once records are available.</span>
@@ -93,26 +97,26 @@
                     <th><span class="sr-only">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody data-dashboard-applications-body>
                   <tr><td colspan="6" class="staff-empty-cell">No applications available.</td></tr>
                 </tbody>
               </table>
             </div>
-            <footer class="staff-table-footer"><span>Showing 0 to 0 of 0 entries</span></footer>
+            <footer class="staff-table-footer"><span data-dashboard-application-footer>Showing 0 to 0 of 0 entries</span></footer>
           </section>
 
           <section class="staff-panel staff-analytics-panel" aria-labelledby="analytics-title">
             <header class="staff-panel-header">
               <h2 id="analytics-title">Analytics &amp; Report</h2>
               <div class="staff-segmented" aria-label="Analytics time range">
-                <button class="is-active" type="button">Today</button><button type="button">Week</button><button type="button">Monthly</button><button type="button">Yearly</button>
+                <button class="is-active" type="button" data-dashboard-range="today">Today</button><button type="button" data-dashboard-range="week">Week</button><button type="button" data-dashboard-range="monthly">Monthly</button><button type="button" data-dashboard-range="yearly">Yearly</button>
               </div>
             </header>
             <div class="staff-metric-grid">
-              <article class="staff-metric staff-metric--total"><i data-lucide="clipboard-list" aria-hidden="true"></i><strong>0</strong><span>Total Applications</span><small>No data yet</small></article>
-              <article class="staff-metric staff-metric--approved"><i data-lucide="check" aria-hidden="true"></i><strong>0</strong><span>Approved</span><small>No data yet</small></article>
-              <article class="staff-metric staff-metric--pending"><i data-lucide="clock-3" aria-hidden="true"></i><strong>0</strong><span>Pending</span><small>No data yet</small></article>
-              <article class="staff-metric staff-metric--rejected"><i data-lucide="x" aria-hidden="true"></i><strong>0</strong><span>Rejected</span><small>No data yet</small></article>
+              <article class="staff-metric staff-metric--total"><i data-lucide="clipboard-list" aria-hidden="true"></i><strong data-dashboard-metric="total">0</strong><span>Total Applications</span><small data-dashboard-note="total">No data yet</small></article>
+              <article class="staff-metric staff-metric--approved"><i data-lucide="check" aria-hidden="true"></i><strong data-dashboard-metric="approved">0</strong><span>Approved</span><small data-dashboard-note="approved">No data yet</small></article>
+              <article class="staff-metric staff-metric--pending"><i data-lucide="clock-3" aria-hidden="true"></i><strong data-dashboard-metric="pending">0</strong><span>Pending</span><small data-dashboard-note="pending">No data yet</small></article>
+              <article class="staff-metric staff-metric--rejected"><i data-lucide="x" aria-hidden="true"></i><strong data-dashboard-metric="rejected">0</strong><span>Rejected</span><small data-dashboard-note="rejected">No data yet</small></article>
             </div>
           </section>
 
@@ -121,7 +125,11 @@
               <h2 id="trends-title">Application Trends</h2>
               <span class="staff-chart-legend"><em></em> Applications</span>
             </header>
-            <div class="staff-empty-state staff-empty-state--chart">
+            <div class="staff-chart" data-dashboard-chart hidden>
+              <div class="staff-chart-scale" data-dashboard-chart-scale></div>
+              <div class="staff-chart-bars" data-dashboard-chart-bars></div>
+            </div>
+            <div class="staff-empty-state staff-empty-state--chart" data-dashboard-chart-empty>
               <i data-lucide="bar-chart-3" aria-hidden="true"></i>
               <strong>No trend data yet</strong>
               <span>Application trends will appear after submissions are recorded.</span>

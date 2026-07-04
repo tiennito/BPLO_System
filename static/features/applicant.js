@@ -1843,14 +1843,19 @@ async function renderRecentPermits() {
     const permitSnapshot = permit.permit_snapshot || {};
     const referenceNumber = permit.permit_id || permit.permitId || permitSnapshot.permitCode || permitSnapshot.permit_code || permit.id || "-";
     const submittedId = permit.submitted_id || permit.submittedId || (permit.id ? permit.id.slice(0, 8) : "-");
+    const status = permit.status || "Draft";
+    const pickupOnlyStatuses = ["Permit Ready for Release", "For Pickup", "Released"];
+    const actionMarkup = pickupOnlyStatuses.includes(status)
+      ? '<span style="color: var(--green); font-weight: 700;">Claim at BPLO Office</span>'
+      : '<a href="/applicant/business-information" style="color: var(--green); text-decoration: underline;">View</a>';
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${referenceNumber}</td>
       <td>${businessInfo.business_name || businessInfo.businessName || permit.business_name || permit.businessName || "-"}</td>
-      <td>${permit.status || "Draft"}</td>
+      <td>${status}</td>
       <td>${permit.progress || "Draft"}</td>
       <td>${submittedId}</td>
-      <td><a href="/applicant/business-information" style="color: var(--green); text-decoration: underline;">View</a></td>
+      <td>${actionMarkup}</td>
     `;
     recentPermitsTableBody.appendChild(row);
   });

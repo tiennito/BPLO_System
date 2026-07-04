@@ -39,6 +39,17 @@ textarea {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+button:not(:disabled):not([disabled]):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  filter: brightness(0.99);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3502,6 +3513,48 @@ body.modal-open {
   border-top: 1px solid #dfe6e1;
 }
 
+.review-action-dialog {
+  width: min(560px, calc(100vw - 56px));
+}
+
+.review-action-content {
+  gap: 16px;
+}
+
+.review-action-copy {
+  margin: 0;
+  color: #425045;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.review-action-remarks {
+  display: grid;
+  gap: 8px;
+}
+
+.review-action-remarks[hidden] {
+  display: none;
+}
+
+.review-action-remarks span {
+  color: #18231c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.review-action-remarks textarea {
+  width: 100%;
+  min-height: 108px;
+  resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid #d6ded8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18231c;
+  font: inherit;
+}
+
 .review-department-card {
   min-height: 218px;
 }
@@ -3687,7 +3740,7 @@ body.modal-open {
   bottom: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-columns: repeat(6, minmax(132px, 1fr));
   gap: 14px;
   padding: 14px 36px;
   border-top: 1px solid #dfe8e2;

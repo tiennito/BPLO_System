@@ -208,6 +208,10 @@
             <i data-lucide="download" aria-hidden="true"></i>
             Finalize Application
           </button>
+          <button class="review-action review-action--primary" type="button" data-action="release-permit" hidden>
+            <i data-lucide="handshake" aria-hidden="true"></i>
+            Release Business Permit
+          </button>
         </section>
 
         <section class="review-preview-modal" data-preview-modal hidden aria-hidden="true">
@@ -246,6 +250,37 @@
                 Back to Applications
               </a>
               <button class="review-primary-button" type="button" data-close-routing>Done</button>
+            </footer>
+          </article>
+        </section>
+
+        <section class="review-routing-modal" data-action-modal hidden aria-hidden="true">
+          <div class="review-preview-backdrop" data-close-action-modal></div>
+          <article class="review-routing-dialog review-action-dialog" role="dialog" aria-modal="true" aria-labelledby="review-action-title">
+            <header class="review-routing-header">
+              <span class="review-routing-icon"><i data-lucide="shield-check" aria-hidden="true"></i></span>
+              <span>
+                <h2 id="review-action-title">Confirm Action</h2>
+                <small data-action-modal-subtitle>Review this action before continuing.</small>
+              </span>
+              <button class="review-preview-close" type="button" aria-label="Close action confirmation" data-close-action-modal>
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </header>
+            <div class="review-routing-content review-action-content">
+              <p class="review-action-copy" data-action-modal-copy></p>
+              <label class="review-action-remarks" data-action-modal-remarks hidden>
+                <span data-action-modal-remarks-label>Remarks</span>
+                <textarea rows="4" data-action-modal-remarks-input placeholder="Enter remarks"></textarea>
+              </label>
+            </div>
+            <footer class="review-routing-actions">
+              <button class="review-mini-button" type="button" data-close-action-modal>Cancel</button>
+              <button class="review-mini-button review-mini-button--green" type="button" data-action-modal-secondary hidden>
+                <i data-lucide="printer" aria-hidden="true"></i>
+                Print Permit
+              </button>
+              <button class="review-primary-button" type="button" data-confirm-action-modal>Confirm</button>
             </footer>
           </article>
         </section>
