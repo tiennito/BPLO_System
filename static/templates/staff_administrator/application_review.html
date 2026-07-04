@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Staff Administrator - Application Review</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=14" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_application_review.js?v=4"></script>
+  </head>
+  <body class="review-body">
+    <main class="staff-admin-shell review-admin-shell">
+      <aside class="staff-sidebar" aria-label="Staff administrator navigation">
+        <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Staff Administrator</small></span>
+        </a>
+
+        <nav class="staff-nav">
+          <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
+          <a class="is-active" href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
+          <a href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/business-classifications"><i data-lucide="list-tree" aria-hidden="true"></i><span>Business Lines</span></a>
+          <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
+          <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
+        </nav>
+
+        <a class="staff-logout" href="/login" data-logout-modal-only><i data-lucide="log-out" aria-hidden="true"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="review-shell" data-review-root>
+        <header class="review-topbar">
+          <div class="review-title-group">
+            <a class="review-back-pill" href="/admin/staff-administrator/applications" data-review-back>
+              <i data-lucide="arrow-left" aria-hidden="true"></i>
+              <span>Back to Applications</span>
+            </a>
+            <h1>Application Review</h1>
+          </div>
+          <div class="review-ready" aria-live="polite">
+            <i data-lucide="file-check-2" aria-hidden="true"></i>
+            <span data-review-message>Loading application review...</span>
+            <b aria-hidden="true"></b>
+          </div>
+        </header>
+
+        <section class="review-page review-page--enhanced">
+          <section class="review-summary-grid" data-review-header></section>
+
+        <section class="review-workflow" data-review-workflow></section>
+
+        <section class="review-info-grid">
+          <article class="review-card review-info-card">
+            <header class="review-card-title">
+              <i data-lucide="user-round" aria-hidden="true"></i>
+              <h2>Applicant Information</h2>
+            </header>
+            <dl class="review-dl review-dl--applicant" data-applicant-info></dl>
+          </article>
+
+          <article class="review-card review-info-card review-info-card--wide">
+            <header class="review-card-title">
+              <i data-lucide="briefcase-business" aria-hidden="true"></i>
+              <h2>Business Information</h2>
+            </header>
+            <dl class="review-dl review-dl--business" data-business-info></dl>
+          </article>
+        </section>
+
+        <section class="review-lower-grid">
+          <article class="review-card review-documents-card">
+            <header class="review-card-title">
+              <i data-lucide="file-text" aria-hidden="true"></i>
+              <span>
+                <h2>Uploaded Documents</h2>
+                <small data-document-summary>Review submitted files.</small>
+              </span>
+            </header>
+            <div class="review-table-wrap">
+              <table class="review-table">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>File name</th>
+                    <th>Upload status</th>
+                    <th>Review status</th>
+                    <th>Remarks</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-documents-body></tbody>
+              </table>
+            </div>
+            <footer class="review-table-more">
+              <button type="button" data-view-documents>
+                <i data-lucide="file-search" aria-hidden="true"></i>
+                View all documents
+              </button>
+            </footer>
+          </article>
+
+          <article class="review-card review-department-card">
+            <header class="review-card-title">
+              <i data-lucide="landmark" aria-hidden="true"></i>
+              <h2>Department Progress</h2>
+            </header>
+            <div class="review-department-content" data-department-progress></div>
+          </article>
+        </section>
+
+        <section class="review-assessment-grid">
+          <article class="review-card review-assessment-card">
+            <header class="review-card-title">
+              <i data-lucide="calculator" aria-hidden="true"></i>
+              <span>
+                <h2>Consolidated Assessment</h2>
+                <small data-assessment-summary>No assessment loaded yet.</small>
+              </span>
+            </header>
+            <form class="review-fee-form" data-fee-form>
+              <input name="feeName" placeholder="Fee item" required />
+              <label>
+                <span>Department</span>
+                <select name="departmentKey">
+                  <option value="bplo">BPLO</option>
+                  <option value="health">Health / Sanitary</option>
+                  <option value="zoning">Zoning / Planning</option>
+                  <option value="engineering">Engineering</option>
+                  <option value="fire">Fire</option>
+                  <option value="treasury">Treasury</option>
+                </select>
+              </label>
+              <label>
+                <span>Category</span>
+                <input name="category" placeholder="Category" value="Regulatory Fees and Charges" />
+              </label>
+              <label>
+                <span>Qty</span>
+                <input name="quantity" type="number" min="0" step="0.01" placeholder="Qty" value="1" />
+              </label>
+              <input name="rate" type="number" min="0" step="0.01" placeholder="Rate" />
+              <label>
+                <span>Remarks</span>
+                <input name="remarks" placeholder="Remarks" />
+              </label>
+              <button class="review-primary-button" type="submit">
+                <i data-lucide="plus" aria-hidden="true"></i>
+                Add Fee
+              </button>
+            </form>
+            <div class="review-table-wrap review-assessment-table-wrap">
+              <table class="review-table">
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Category</th>
+                    <th>Fee Item</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Amount</th>
+                    <th>Penalty</th>
+                    <th>Discount</th>
+                    <th>Final</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-assessment-items></tbody>
+              </table>
+            </div>
+          </article>
+
+          <aside class="review-total-cards" data-assessment-totals></aside>
+        </section>
+
+        <section class="review-card review-payment-card">
+          <header class="review-card-title">
+            <i data-lucide="receipt-text" aria-hidden="true"></i>
+            <span>
+              <h2>Payment, Receipt, and Permit</h2>
+              <small data-final-summary>Payment details appear after assessment completion.</small>
+            </span>
+          </header>
+          <dl class="review-dl review-dl--compact" data-payment-permit-info></dl>
+        </section>
+      </section>
+
+        <section class="review-action-bar review-action-bar--enhanced">
+          <button class="review-action review-action--primary" type="button" data-action="approve-initial-review">
+            <i data-lucide="check" aria-hidden="true"></i>
+            Approve Initial Review
+          </button>
+          <button class="review-action review-action--neutral" type="button" data-action="request-revision">
+            <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+            Request Revision
+          </button>
+          <button class="review-action review-action--danger" type="button" data-action="reject">
+            <i data-lucide="x" aria-hidden="true"></i>
+            Reject Application
+          </button>
+          <button class="review-action review-action--primary" type="button" data-action="complete-assessment">
+            <i data-lucide="calculator" aria-hidden="true"></i>
+            Complete Assessment
+          </button>
+          <button class="review-action review-action--primary" type="button" data-action="finalize">
+            <i data-lucide="download" aria-hidden="true"></i>
+            Finalize Application
+          </button>
+        </section>
+
+        <section class="review-preview-modal" data-preview-modal hidden aria-hidden="true">
+          <div class="review-preview-backdrop" data-close-preview></div>
+          <article class="review-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="review-preview-title">
+            <header class="review-preview-header">
+              <span>
+                <h2 id="review-preview-title">Document Preview</h2>
+                <small data-preview-file-name>Preview loaded in this page.</small>
+              </span>
+              <button class="review-preview-close" type="button" aria-label="Close preview" data-close-preview>
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </header>
+            <div class="review-preview-content" data-preview-content></div>
+          </article>
+        </section>
+
+        <section class="review-routing-modal" data-routing-modal hidden aria-hidden="true">
+          <div class="review-preview-backdrop" data-close-routing></div>
+          <article class="review-routing-dialog" role="dialog" aria-modal="true" aria-labelledby="review-routing-title">
+            <header class="review-routing-header">
+              <span class="review-routing-icon"><i data-lucide="check" aria-hidden="true"></i></span>
+              <span>
+                <h2 id="review-routing-title">Application Routed Successfully</h2>
+                <small>Required departments can now review this application.</small>
+              </span>
+              <button class="review-preview-close" type="button" aria-label="Close confirmation" data-close-routing>
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </header>
+            <div class="review-routing-content" data-routing-content></div>
+            <footer class="review-routing-actions">
+              <a class="review-mini-button review-mini-button--green" href="/admin/staff-administrator/applications">
+                <i data-lucide="arrow-left" aria-hidden="true"></i>
+                Back to Applications
+              </a>
+              <button class="review-primary-button" type="button" data-close-routing>Done</button>
+            </footer>
+          </article>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

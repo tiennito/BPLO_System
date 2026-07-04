@@ -179,7 +179,7 @@ function renderApplications(applications) {
           <td>${statusPill(application.status)}</td>
           <td>
             <div class="action-row">
-              <a class="btn" href="/department/application-details?id=${encodeURIComponent(application.applicationId)}">View</a>
+              <a class="btn" href="/department/applications?id=${encodeURIComponent(application.applicationId)}&ref=${encodeURIComponent(application.referenceNumber || "")}">View</a>
             </div>
           </td>
         </tr>
@@ -204,13 +204,32 @@ function applyApplicationFilters() {
   populateApplicationPicker(filtered);
 }
 
+function getRequestedApplication() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get("id") || params.get("applicationId") || params.get("ref") || "").trim().toLowerCase();
+  if (!requested) {
+    return null;
+  }
+  return applicationCache.find((application) => {
+    const applicationId = String(application.applicationId || "").toLowerCase();
+    const referenceNumber = String(application.referenceNumber || "").toLowerCase();
+    const submittedId = String(application.application?.submittedId || "").toLowerCase();
+    return applicationId === requested || referenceNumber === requested || submittedId === requested;
+  }) || null;
+}
+
 async function loadDashboardLike() {
   setStatus("Loading department applications...");
   const result = await loadApplications();
   if (page === "applications") {
-    selectedApplicationId = selectedApplicationId || applicationCache[0]?.applicationId || "";
+    const requestedApplication = getRequestedApplication();
+    selectedApplicationId = requestedApplication?.applicationId || selectedApplicationId || applicationCache[0]?.applicationId || "";
     populateApplicationPicker(applicationCache);
     renderApplicationWorkspace();
+    if (requestedApplication) {
+      setStatus(`${result.departmentName || "Department"} application ${requestedApplication.referenceNumber} loaded.`);
+      return;
+    }
   }
   renderApplications(page === "dashboard" ? applicationCache.slice(0, 6) : applicationCache);
   setStatus(`${result.departmentName || "Department"} data loaded.`);

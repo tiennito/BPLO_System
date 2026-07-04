@@ -15,6 +15,32 @@ let staffSupabaseClient = null;
 let applications = [];
 let selectedApplicationId = "";
 
+function saveApplicationFilters() {
+  const state = {
+    search: applicationSearch?.value || "",
+    permit: permitFilter?.value || "",
+    status: statusFilter?.value || "",
+  };
+  sessionStorage.setItem("staffApplicationFilters", JSON.stringify(state));
+}
+
+function restoreApplicationFilters() {
+  try {
+    const state = JSON.parse(sessionStorage.getItem("staffApplicationFilters") || "{}");
+    if (applicationSearch && state.search) {
+      applicationSearch.value = state.search;
+    }
+    if (permitFilter && state.permit) {
+      permitFilter.value = state.permit;
+    }
+    if (statusFilter && state.status) {
+      statusFilter.value = state.status;
+    }
+  } catch (_error) {
+    sessionStorage.removeItem("staffApplicationFilters");
+  }
+}
+
 function initStaffSupabase() {
   if (!window.supabase?.createClient) {
     return null;
@@ -257,6 +283,7 @@ async function loadApplications() {
     applications = Array.isArray(payload.applications) ? payload.applications : [];
     updateCounts();
     populateFilters();
+    restoreApplicationFilters();
     renderApplications();
     renderApplicationDetails(applications.find((item) => item.id === selectedApplicationId) || null);
   } catch (error) {
@@ -271,6 +298,15 @@ async function loadApplications() {
 applicationsBody?.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const viewButton = target.closest("[data-view-application]");
+  if (viewButton instanceof HTMLElement) {
+    const applicationId = viewButton.dataset.viewApplication || "";
+    if (applicationId) {
+      saveApplicationFilters();
+      window.location.href = `/admin/staff-administrator/applications/${encodeURIComponent(applicationId)}`;
+    }
     return;
   }
   const row = target.closest("[data-application-id]");
@@ -292,14 +328,24 @@ detailPanel?.addEventListener("click", (event) => {
   }
 });
 
-applicationSearch?.addEventListener("input", renderApplications);
-permitFilter?.addEventListener("change", renderApplications);
-statusFilter?.addEventListener("change", renderApplications);
+applicationSearch?.addEventListener("input", () => {
+  saveApplicationFilters();
+  renderApplications();
+});
+permitFilter?.addEventListener("change", () => {
+  saveApplicationFilters();
+  renderApplications();
+});
+statusFilter?.addEventListener("change", () => {
+  saveApplicationFilters();
+  renderApplications();
+});
 refreshButton?.addEventListener("click", () => {
   void loadApplications();
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
+  restoreApplicationFilters();
   void loadApplications();
 });
