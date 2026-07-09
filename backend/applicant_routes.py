@@ -845,10 +845,15 @@ class ApplicantRoutesMixin:
             )
 
             raw_text = self.extract_text_from_file(file_name, file_bytes)
-            print("RAW OCR TEXT:")
-            print(raw_text)
-            extracted_fields = self.extract_business_fields_from_text(raw_text, document_type)
-            confidence_score = extracted_fields.get("confidence_score")
+            structured_result = self.build_structured_ocr_result(raw_text, document_type)
+            detected_document_type = structured_result.get("document_type") or document_type or "Unknown Document"
+            structured_fields = structured_result.get("structured_fields") or {}
+            extracted_fields = structured_result.get("flat_fields") or {}
+            if not extracted_fields and detected_document_type != "Unknown Document":
+                extracted_fields = self.extract_business_fields_from_text(raw_text, detected_document_type)
+            confidence_score = structured_result.get("confidence_score") or extracted_fields.get("confidence_score") or 0
+            ocr_status = "Completed" if raw_text else "Failed"
+            error_message = "" if raw_text else "No readable text was found. Please upload a clearer document."
 
             self.supabase_rest_request(
                 supabase_url,
@@ -857,7 +862,7 @@ class ApplicantRoutesMixin:
                 {"id": f"eq.{application_document_id}"},
                 method="PATCH",
                 payload={
-                    "ocr_status": "Completed",
+                    "ocr_status": ocr_status,
                     "ocr_raw_text": raw_text,
                     "ocr_extracted_fields": extracted_fields,
                 },
@@ -870,12 +875,13 @@ class ApplicantRoutesMixin:
                 "permit_document_id": permit_document_id,
                 "file_name": file_name,
                 "file_url": file_url,
-                "document_type": document_type,
+                "document_type": detected_document_type,
                 "raw_text": raw_text,
                 "extracted_fields": extracted_fields,
                 "confidence_score": confidence_score,
-                "parser_version": extracted_fields.get("parser_version", "business_info_v1"),
-                "ocr_status": "Completed",
+                "parser_version": structured_result.get("parser_version", "structured_ocr_v2"),
+                "ocr_status": ocr_status,
+                "error_message": error_message,
             }
             try:
                 ocr_rows = self.supabase_rest_request(
@@ -901,12 +907,26 @@ class ApplicantRoutesMixin:
                     )
                 else:
                     raise
+            ocr_record = ocr_rows[0] if ocr_rows else {}
+            structured_ocr_record = self.create_structured_ocr_result_record(
+                supabase_url,
+                supabase_service_key,
+                application_id,
+                application_document_id,
+                permit_document_id,
+                detected_document_type,
+                raw_text,
+                structured_fields,
+                confidence_score,
+                ocr_record.get("id"),
+                user.get("id"),
+            )
             self.create_notification(
                 supabase_url,
                 supabase_service_key,
                 user.get("id"),
-                "OCR Extraction Completed",
-                f"{file_name or 'Your document'} was read and matched to available form fields.",
+                "OCR Review Required",
+                f"{file_name or 'Your document'} was read as {detected_document_type}. Please review the extracted fields before using them in your application.",
                 notification_type="document",
                 source_role="System",
                 application_id=application_id,
@@ -915,8 +935,14 @@ class ApplicantRoutesMixin:
             self.send_json(
                 {
                     "success": True,
-                    "message": "OCR completed.",
-                    "ocr": ocr_rows[0] if ocr_rows else {},
+                    "message": "OCR completed. Please review extracted values.",
+                    "ocr": ocr_record,
+                    "ocrResult": structured_ocr_record,
+                    "ocrResultId": (structured_ocr_record or {}).get("id") or ocr_record.get("id"),
+                    "documentType": detected_document_type,
+                    "detectedDocumentType": detected_document_type,
+                    "structuredFields": structured_fields,
+                    "warnings": structured_result.get("warnings") or [],
                     "extracted_fields": extracted_fields,
                     "extractedFields": extracted_fields,
                 }
@@ -924,6 +950,137 @@ class ApplicantRoutesMixin:
 
         except Exception as error:
             self.send_json({"error": str(error) or "Unable to process OCR."}, status=500)
+
+    def create_structured_ocr_result_record(self, supabase_url, service_key, application_id, document_id, permit_document_id, document_type, raw_text, structured_fields, confidence_score, legacy_ocr_result_id=None, user_id=None):
+        payload = {
+            "application_id": application_id,
+            "document_id": document_id,
+            "permit_document_id": permit_document_id,
+            "legacy_ocr_result_id": legacy_ocr_result_id,
+            "document_type": document_type,
+            "extracted_text": raw_text,
+            "extracted_fields_json": structured_fields,
+            "confidence_score": confidence_score,
+            "created_by": user_id,
+        }
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "ocr_results",
+                method="POST",
+                payload=payload,
+                prefer="return=representation",
+            )
+            return rows[0] if rows else {}
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return {}
+
+    def update_applicant_ocr_corrections(self, ocr_result_id):
+        config = self.ensure_applicant_request("OCR correction")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            payload = self.read_json_body()
+            corrections = payload.get("corrections") or {}
+            if not isinstance(corrections, dict):
+                self.send_json({"error": "Corrections must be an object."}, status=400)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "ocr_results",
+                {
+                    "select": "id,application_id,document_id,legacy_ocr_result_id,extracted_fields_json",
+                    "id": f"eq.{ocr_result_id}",
+                    "limit": 1,
+                },
+            ) or []
+            if not rows:
+                self.send_json({"error": "OCR result not found."}, status=404)
+                return
+            result = rows[0]
+
+            application = self.load_owned_applicant_application(
+                supabase_url,
+                supabase_service_key,
+                user.get("id"),
+                result.get("application_id"),
+                select="id,status",
+            )
+            if not application:
+                self.send_json({"error": "OCR result not found for this applicant."}, status=404)
+                return
+
+            fields = result.get("extracted_fields_json") or {}
+            now = utc_now_iso()
+            for field_name, corrected_value in corrections.items():
+                if field_name not in fields or not isinstance(fields.get(field_name), dict):
+                    continue
+                corrected_value = self.clean_extracted_value(corrected_value) or ""
+                fields[field_name]["corrected_value"] = corrected_value
+                fields[field_name]["value"] = corrected_value or fields[field_name].get("value") or ""
+                fields[field_name]["corrected"] = bool(corrected_value)
+                fields[field_name]["correction_status"] = "corrected" if corrected_value else "unchanged"
+                fields[field_name]["corrected_by"] = user.get("id")
+                fields[field_name]["corrected_at"] = now
+                fields[field_name]["validation_status"] = "valid" if corrected_value else fields[field_name].get("validation_status", "needs_review")
+                fields[field_name]["validation_issue"] = "" if corrected_value else fields[field_name].get("validation_issue", "")
+
+            flat_fields = self.flatten_structured_ocr_fields(fields)
+            updated = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "ocr_results",
+                {"id": f"eq.{ocr_result_id}"},
+                method="PATCH",
+                payload={
+                    "extracted_fields_json": fields,
+                    "correction_status": "accepted",
+                    "corrected_by": user.get("id"),
+                    "corrected_at": now,
+                },
+                prefer="return=representation",
+            ) or []
+
+            document_id = result.get("document_id")
+            if document_id:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_documents",
+                    {"id": f"eq.{document_id}"},
+                    method="PATCH",
+                    payload={"ocr_extracted_fields": flat_fields, "ocr_status": "Completed"},
+                    prefer="return=minimal",
+                )
+            if result.get("legacy_ocr_result_id"):
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_ocr_results",
+                    {"id": f"eq.{result.get('legacy_ocr_result_id')}"},
+                    method="PATCH",
+                    payload={"extracted_fields": flat_fields, "updated_at": now},
+                    prefer="return=minimal",
+                )
+
+            self.send_json(
+                {
+                    "message": "OCR corrections saved.",
+                    "ocrResult": updated[0] if updated else result,
+                    "structuredFields": fields,
+                    "extractedFields": flat_fields,
+                    "extracted_fields": flat_fields,
+                }
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to save OCR corrections.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to save OCR corrections."}, status=500)
 
     def submit_applicant_application(self):
         config = self.ensure_applicant_request("application submission")

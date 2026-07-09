@@ -1486,6 +1486,19 @@ class AdminRoutesMixin:
             ) or []
         except HTTPError:
             evidence_rows = []
+        try:
+            structured_ocr_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "ocr_results",
+                {
+                    "select": "id,application_id,document_id,document_type,extracted_fields_json,confidence_score,correction_status,corrected_by,corrected_at,created_at",
+                    "application_id": f"eq.{application_id}",
+                    "order": "created_at.desc",
+                },
+            ) or []
+        except HTTPError:
+            structured_ocr_rows = []
         profile = self.get_profile_by_auth_user_id(supabase_url, service_key, application.get("applicant_id")) or {}
         classification = None
         if application.get("business_classification_id"):
@@ -1515,6 +1528,7 @@ class AdminRoutesMixin:
             "receipts": receipt_rows,
             "businessPermit": permit_rows[0] if permit_rows else None,
             "departmentEvidence": evidence_rows,
+            "ocrResults": structured_ocr_rows,
         }
 
     def get_admin_application_review(self, application_id):
@@ -1590,6 +1604,7 @@ class AdminRoutesMixin:
                 "storageArea": info.get("storage_area") or info.get("storageArea") or "",
             },
             "documents": bundle.get("documents") or [],
+            "ocrResults": bundle.get("ocrResults") or [],
             "documentReviews": bundle.get("documentReviews") or [],
             "departmentReviews": bundle.get("departmentReviews") or [],
             "departmentEvidence": [

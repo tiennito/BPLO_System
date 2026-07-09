@@ -24,6 +24,83 @@ from .utils import (
 
 
 class OCRServiceMixin:
+    DOCUMENT_TYPE_UNKNOWN = "Unknown Document"
+    DOCUMENT_DETECTION_RULES = [
+        (
+            "DTI Certificate",
+            [
+                r"department\s+of\s+trade\s+and\s+industry",
+                r"certificate\s+of\s+business\s+name\s+registration|business\s+name\s+registration",
+                r"business\s+name",
+                r"registration\s+(?:no|number)",
+            ],
+        ),
+        (
+            "Barangay Clearance",
+            [
+                r"barangay\s+clearance|office\s+of\s+the\s+barangay",
+                r"barangay",
+                r"purpose",
+                r"clearance",
+            ],
+        ),
+        (
+            "Valid ID",
+            [
+                r"republic\s+of\s+the\s+philippines|driver'?s\s+license|passport|unified\s+multi-purpose|umid|philippine\s+identification",
+                r"\bdate\s+of\s+birth\b|\bbirth\s+date\b",
+                r"\bid\s*(?:no|number)\b",
+            ],
+        ),
+        (
+            "Lease Contract",
+            [
+                r"contract\s+of\s+lease|lease\s+contract|lessor|lessee",
+                r"property\s+address|leased\s+premises",
+                r"term\s+of\s+lease|contract\s+start",
+            ],
+        ),
+        (
+            "Sanitary Permit",
+            [
+                r"sanitary\s+permit|sanitation\s+permit",
+                r"permit\s+(?:no|number)",
+                r"date\s+issued",
+            ],
+        ),
+        (
+            "Fire Safety Certificate",
+            [
+                r"fire\s+safety\s+inspection\s+certificate|bureau\s+of\s+fire\s+protection|fire\s+safety\s+certificate",
+                r"certificate\s+(?:no|number)",
+                r"date\s+issued",
+            ],
+        ),
+    ]
+
+    APPLICATION_FIELD_MAP = {
+        "business_name": "business_name",
+        "owner_name": "owner_name",
+        "business_address": "business_address",
+        "registration_number": "registration_number",
+        "registration_date": "registration_date",
+        "expiration_date": "expiration_date",
+        "barangay": "business_barangay",
+        "purpose": "barangay_clearance_purpose",
+        "date_issued": "date_issued",
+        "full_name": "owner_name",
+        "address": "home_address",
+        "date_of_birth": "date_of_birth",
+        "id_number": "government_id",
+        "lessor_name": "lessor_name",
+        "lessee_name": "owner_name",
+        "property_address": "business_address",
+        "contract_start_date": "lease_start_date",
+        "contract_end_date": "lease_end_date",
+        "permit_number": "sanitary_permit_number",
+        "certificate_number": "fire_certificate_number",
+    }
+
     FIELD_LABELS = {
         "business_name": [
             r"business\s*name",
@@ -702,6 +779,315 @@ class OCRServiceMixin:
             fields["business_type"] = fields["type_of_business"]
 
         return fields
+
+    def detect_document_type(self, raw_text, hinted_type=""):
+        text = self.flatten_ocr_text(raw_text).lower()
+        hint = (hinted_type or "").lower()
+        scores = {}
+
+        hint_aliases = {
+            "dti": "DTI Certificate",
+            "business name": "DTI Certificate",
+            "barangay": "Barangay Clearance",
+            "valid id": "Valid ID",
+            "id": "Valid ID",
+            "lease": "Lease Contract",
+            "sanitary": "Sanitary Permit",
+            "fire": "Fire Safety Certificate",
+        }
+        for alias, document_type in hint_aliases.items():
+            if alias in hint:
+                scores[document_type] = scores.get(document_type, 0) + 2
+
+        for document_type, patterns in self.DOCUMENT_DETECTION_RULES:
+            for pattern in patterns:
+                if re.search(pattern, text, re.IGNORECASE):
+                    scores[document_type] = scores.get(document_type, 0) + 1
+
+        if not scores:
+            return self.DOCUMENT_TYPE_UNKNOWN, 0
+
+        document_type, score = sorted(scores.items(), key=lambda item: item[1], reverse=True)[0]
+        if score < 2:
+            return self.DOCUMENT_TYPE_UNKNOWN, score
+        return document_type, score
+
+    def normalize_ocr_date(self, value):
+        value = self.clean_extracted_value(value)
+        if not value:
+            return ""
+
+        value = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", value, flags=re.IGNORECASE)
+        formats = [
+            "%Y-%m-%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+            "%B %d, %Y",
+            "%b %d, %Y",
+            "%d %B %Y",
+            "%d %b %Y",
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(value, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return value
+
+    def extract_structured_label_value(self, raw_text, label_patterns, stop_labels=None, default_confidence=92):
+        text = self.clean_ocr_text(raw_text)
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        flattened = self.flatten_ocr_text(text)
+        stop_labels = stop_labels or [
+            "Business Name",
+            "Owner",
+            "Owner Name",
+            "Proprietor",
+            "Business Address",
+            "Address",
+            "Registration Number",
+            "Registration Date",
+            "Expiration Date",
+            "Date Issued",
+            "Purpose",
+            "Barangay",
+            "Permit Number",
+            "Certificate Number",
+            "ID Number",
+            "Date of Birth",
+            "Lessor",
+            "Lessee",
+            "Property Address",
+            "Contract Start Date",
+            "Contract End Date",
+        ]
+        stop_pattern = "|".join(re.escape(label) for label in stop_labels)
+
+        for label_pattern in label_patterns:
+            same_line = re.compile(rf"({label_pattern})\s*[:\-|]?\s*(.+)", re.IGNORECASE)
+            for index, line in enumerate(lines):
+                match = same_line.search(line)
+                if match:
+                    value = self.clean_extracted_ocr_value(match.group(2))
+                    if value:
+                        return value, default_confidence, match.group(1)
+                    if index + 1 < len(lines):
+                        value = self.clean_extracted_ocr_value(lines[index + 1])
+                        if value:
+                            return value, max(default_confidence - 8, 70), match.group(1)
+
+            block = re.search(
+                rf"({label_pattern})\s*[:\-|]?\s*(.+?)(?:\s+(?:{stop_pattern})\b|$)",
+                flattened,
+                re.IGNORECASE,
+            )
+            if block:
+                value = self.clean_extracted_ocr_value(block.group(2))
+                if value:
+                    return value, max(default_confidence - 5, 70), block.group(1)
+
+        return "", 0, ""
+
+    def validate_structured_ocr_value(self, field_name, value):
+        value = self.clean_extracted_value(value)
+        if not value:
+            return "needs_review", "Value was not found.", 0
+
+        if field_name in {"business_name"} and not self.is_valid_business_name(value):
+            return "needs_review", "Business name looks unclear or contains document labels.", -30
+        if field_name in {"owner_name", "full_name", "lessor_name", "lessee_name"} and len(value.split()) < 2:
+            return "needs_review", "Name appears incomplete.", -20
+        if field_name in {"business_address", "address", "property_address"} and not self.is_valid_address(value):
+            return "needs_review", "Address is too short or contains labels.", -25
+        if field_name in {"registration_number", "permit_number", "certificate_number", "id_number"} and len(value) < 4:
+            return "needs_review", "Number appears incomplete.", -25
+        if "date" in field_name:
+            normalized = self.normalize_ocr_date(value)
+            if not normalized:
+                return "needs_review", "Date was not readable.", -25
+            if field_name == "expiration_date":
+                try:
+                    if datetime.fromisoformat(normalized).date() < datetime.now(timezone.utc).date():
+                        return "needs_review", "Expiration date is already past due.", -20
+                except ValueError:
+                    return "needs_review", "Date format needs review.", -15
+        return "valid", "", 0
+
+    def build_structured_field(self, field_name, value, confidence, source, original_label="", validation_status=None, issue=""):
+        value = self.clean_extracted_value(value) or ""
+        if "date" in field_name and value:
+            value = self.normalize_ocr_date(value)
+        validation_status, validation_issue, penalty = self.validate_structured_ocr_value(field_name, value)
+        confidence = max(0, min(99, int(round((confidence or 60) + penalty))))
+        if confidence < 70 and validation_status == "valid":
+            validation_status = "needs_review"
+            validation_issue = validation_issue or "Confidence is low. Please verify this value."
+        return {
+            "value": value,
+            "original_value": value,
+            "corrected_value": "",
+            "confidence": confidence,
+            "source": source,
+            "original_label": original_label or "",
+            "validation_status": validation_status,
+            "validation_issue": issue or validation_issue,
+            "corrected": False,
+            "correction_status": "unchanged",
+            "application_field": self.APPLICATION_FIELD_MAP.get(field_name, field_name),
+        }
+
+    def build_parser_result(self, raw_text, document_type, label_config):
+        fields = {}
+        for field_name, patterns in label_config.items():
+            value, confidence, label = self.extract_structured_label_value(raw_text, patterns)
+            if value:
+                fields[field_name] = self.build_structured_field(field_name, value, confidence, document_type, label)
+        return fields
+
+    def parse_dti_certificate(self, raw_text):
+        fields = self.build_parser_result(
+            raw_text,
+            "DTI Certificate",
+            {
+                "business_name": [r"business\s*name", r"name\s+of\s+business"],
+                "owner_name": [r"owner", r"proprietor", r"registrant", r"certificate\s+issued\s+to"],
+                "business_address": [r"business\s*address", r"business\s*location", r"address"],
+                "registration_number": [r"registration\s*(?:no|number)", r"certificate\s*(?:no|number)", r"business\s*name\s*(?:no|number)"],
+                "registration_date": [r"registration\s*date", r"date\s*registered", r"issued\s*on"],
+                "expiration_date": [r"expiration\s*date", r"valid\s*until", r"expiry\s*date"],
+            },
+        )
+        legacy = self.parse_dti_fields(raw_text)
+        for source_key, target_key in {
+            "business_name": "business_name",
+            "owner_name": "owner_name",
+            "business_address": "business_address",
+            "registration_number": "registration_number",
+            "registration_date": "registration_date",
+        }.items():
+            if target_key not in fields and legacy.get(source_key):
+                fields[target_key] = self.build_structured_field(target_key, legacy[source_key], 76, "DTI Certificate", "fallback")
+        return fields
+
+    def parse_barangay_clearance(self, raw_text):
+        return self.build_parser_result(
+            raw_text,
+            "Barangay Clearance",
+            {
+                "business_name": [r"business\s*name", r"name\s+of\s+business"],
+                "owner_name": [r"owner", r"proprietor", r"applicant", r"issued\s+to"],
+                "barangay": [r"barangay", r"brgy\.?"],
+                "purpose": [r"purpose"],
+                "date_issued": [r"date\s*issued", r"issued\s*this", r"issued\s*on"],
+            },
+        )
+
+    def parse_valid_id(self, raw_text):
+        return self.build_parser_result(
+            raw_text,
+            "Valid ID",
+            {
+                "full_name": [r"full\s*name", r"name"],
+                "address": [r"address"],
+                "date_of_birth": [r"date\s*of\s*birth", r"birth\s*date", r"dob"],
+                "id_number": [r"id\s*(?:no|number)", r"license\s*(?:no|number)", r"passport\s*(?:no|number)"],
+            },
+        )
+
+    def parse_lease_contract(self, raw_text):
+        return self.build_parser_result(
+            raw_text,
+            "Lease Contract",
+            {
+                "lessor_name": [r"lessor"],
+                "lessee_name": [r"lessee"],
+                "property_address": [r"property\s*address", r"leased\s*premises", r"premises"],
+                "contract_start_date": [r"contract\s*start\s*date", r"start\s*date", r"commencement\s*date"],
+                "contract_end_date": [r"contract\s*end\s*date", r"end\s*date", r"expiration\s*date"],
+            },
+        )
+
+    def parse_sanitary_permit(self, raw_text):
+        return self.build_parser_result(
+            raw_text,
+            "Sanitary Permit",
+            {
+                "business_name": [r"business\s*name", r"name\s+of\s+establishment", r"establishment"],
+                "owner_name": [r"owner", r"operator", r"proprietor"],
+                "permit_number": [r"permit\s*(?:no|number)"],
+                "date_issued": [r"date\s*issued", r"issued\s*on"],
+                "expiration_date": [r"expiration\s*date", r"valid\s*until"],
+            },
+        )
+
+    def parse_fire_certificate(self, raw_text):
+        return self.build_parser_result(
+            raw_text,
+            "Fire Safety Certificate",
+            {
+                "business_name": [r"business\s*name", r"name\s+of\s+establishment", r"establishment"],
+                "owner_name": [r"owner", r"operator", r"proprietor"],
+                "certificate_number": [r"certificate\s*(?:no|number)", r"fsic\s*(?:no|number)"],
+                "date_issued": [r"date\s*issued", r"issued\s*on"],
+                "expiration_date": [r"expiration\s*date", r"valid\s*until"],
+            },
+        )
+
+    def flatten_structured_ocr_fields(self, structured_fields):
+        flat = {}
+        confidence = {}
+        for field_name, meta in (structured_fields or {}).items():
+            if not isinstance(meta, dict):
+                continue
+            if meta.get("validation_status") != "valid" and int(meta.get("confidence") or 0) < 80:
+                continue
+            value = meta.get("corrected_value") or meta.get("value")
+            application_field = meta.get("application_field") or self.APPLICATION_FIELD_MAP.get(field_name, field_name)
+            if value:
+                flat[application_field] = value
+                confidence[application_field] = int(meta.get("confidence") or 0)
+        if confidence:
+            flat["field_confidence"] = confidence
+            flat["confidence_score"] = round(sum(confidence.values()) / len(confidence), 2)
+        flat["parser_version"] = "structured_ocr_v2"
+        return self.normalize_extracted_business_fields(flat)
+
+    def build_structured_ocr_result(self, raw_text, hinted_type=""):
+        detected_type, detection_score = self.detect_document_type(raw_text, hinted_type)
+        parser_map = {
+            "DTI Certificate": self.parse_dti_certificate,
+            "Barangay Clearance": self.parse_barangay_clearance,
+            "Valid ID": self.parse_valid_id,
+            "Lease Contract": self.parse_lease_contract,
+            "Sanitary Permit": self.parse_sanitary_permit,
+            "Fire Safety Certificate": self.parse_fire_certificate,
+        }
+        parser = parser_map.get(detected_type)
+        structured_fields = parser(raw_text) if parser else {}
+        if detected_type == self.DOCUMENT_TYPE_UNKNOWN:
+            structured_fields = {}
+
+        flat_fields = self.flatten_structured_ocr_fields(structured_fields)
+        field_confidences = [int(meta.get("confidence") or 0) for meta in structured_fields.values() if isinstance(meta, dict)]
+        confidence_score = round(sum(field_confidences) / len(field_confidences), 2) if field_confidences else 0
+        warnings = []
+        if not self.clean_ocr_text(raw_text):
+            warnings.append("No readable text was found. Please upload a clearer document.")
+        if detected_type == self.DOCUMENT_TYPE_UNKNOWN:
+            warnings.append("We could not detect the document type. Please review the extracted text manually.")
+        for field_name, meta in structured_fields.items():
+            if int(meta.get("confidence") or 0) < 80 or meta.get("validation_status") != "valid":
+                warnings.append(f"The extracted {field_name.replace('_', ' ')} needs review.")
+
+        return {
+            "document_type": detected_type,
+            "detection_score": detection_score,
+            "structured_fields": structured_fields,
+            "flat_fields": flat_fields,
+            "confidence_score": confidence_score,
+            "warnings": warnings,
+            "parser_version": "structured_ocr_v2",
+        }
 
     def normalize_handwritten_ocr_line(self, line):
         line = str(line or "")

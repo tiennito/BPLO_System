@@ -10,6 +10,7 @@ const businessInfo = document.querySelector("[data-business-info]");
 const documentsBody = document.querySelector("[data-documents-body]");
 const departmentProgress = document.querySelector("[data-department-progress]");
 const departmentEvidence = document.querySelector("[data-department-evidence]");
+const ocrResults = document.querySelector("[data-ocr-results]");
 const assessmentItems = document.querySelector("[data-assessment-items]");
 const assessmentSummary = document.querySelector("[data-assessment-summary]");
 const assessmentTotals = document.querySelector("[data-assessment-totals]");
@@ -205,6 +206,12 @@ function latestReviewForDocument(documentId) {
 
 function documentById(documentId) {
   return (reviewData?.documents || []).find((document) => String(document.id) === String(documentId)) || null;
+}
+
+function ocrFieldLabel(value) {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function syncPermitActionButtons(app, permit) {
@@ -485,6 +492,49 @@ function render() {
           <i data-lucide="paperclip" aria-hidden="true"></i>
           <strong>No department evidence yet</strong>
           <span>Uploaded inspection photos, reports, or clearance files will appear here.</span>
+        </div>
+      `;
+  }
+
+  if (ocrResults) {
+    ocrResults.innerHTML = (app.ocrResults || []).length
+      ? app.ocrResults
+          .map((result) => {
+            const fields = result.extracted_fields_json || {};
+            const fieldRows = Object.entries(fields).length
+              ? Object.entries(fields)
+                  .map(([fieldName, meta]) => {
+                    const value = meta.corrected_value || meta.value || "-";
+                    const original = meta.original_value && meta.original_value !== value ? `Original: ${escapeHtml(meta.original_value)}` : "";
+                    const status = meta.validation_status || "needs_review";
+                    return `
+                      <div class="review-ocr-field">
+                        <span>${escapeHtml(ocrFieldLabel(meta.application_field || fieldName))}</span>
+                        <strong>${escapeHtml(value)}</strong>
+                        <small>${escapeHtml(meta.confidence || 0)}% confidence - ${escapeHtml(status.replaceAll("_", " "))}</small>
+                        ${original ? `<small>${original}</small>` : ""}
+                        ${meta.corrected ? `<small>Corrected by applicant ${meta.corrected_at ? `on ${escapeHtml(dateText(meta.corrected_at))}` : ""}</small>` : ""}
+                      </div>
+                    `;
+                  })
+                  .join("")
+              : '<div class="review-ocr-field"><span>No safe fields detected</span><strong>Manual review required</strong></div>';
+            return `
+              <article class="review-ocr-result">
+                <header>
+                  <strong>${escapeHtml(result.document_type || "Unknown Document")}</strong>
+                  <span>${escapeHtml(result.confidence_score || 0)}% overall</span>
+                </header>
+                ${fieldRows}
+              </article>
+            `;
+          })
+          .join("")
+      : `
+        <div class="review-empty-box">
+          <i data-lucide="scan-text" aria-hidden="true"></i>
+          <strong>No structured OCR results yet</strong>
+          <span>Document type, confidence scores, and applicant corrections will appear here after OCR review.</span>
         </div>
       `;
   }

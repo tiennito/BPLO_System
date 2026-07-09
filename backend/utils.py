@@ -483,6 +483,11 @@ class CoreHandlerMixin:
             self.mark_applicant_notification_read(notification_id)
             return
 
+        if request_path.startswith("/applicant/api/ocr-results/") and request_path.endswith("/corrections"):
+            ocr_result_id = request_path.strip("/").split("/")[-2]
+            self.update_applicant_ocr_corrections(ocr_result_id)
+            return
+
         draft_match = re.fullmatch(r"/applicant/api/applications/([^/]+)/draft", request_path)
         if draft_match:
             self.save_applicant_draft(draft_match.group(1))
