@@ -40,12 +40,21 @@ const businessClassificationCombobox = document.querySelector("[data-business-cl
 const businessClassificationSearch = document.querySelector("[data-business-classification-search]");
 const businessClassificationResults = document.querySelector("[data-business-classification-results]");
 const businessClassificationStatus = document.querySelector("[data-business-classification-status]");
+const draftPanel = document.querySelector("[data-draft-panel]");
+const draftList = document.querySelector("[data-draft-list]");
+const progressPanel = document.querySelector("[data-progress-panel]");
+const progressList = document.querySelector("[data-progress-list]");
+const departmentProgressList = document.querySelector("[data-department-progress-list]");
+const progressSummary = document.querySelector("[data-progress-summary]");
+const autosaveStatus = document.querySelector("[data-autosave-status]");
 
 const PERMIT_STORAGE_KEY = "bplo_recent_business_permits";
 const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
 const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
 const OCR_FIELDS_KEY = "bplo_current_ocr_fields";
 const OCR_SKIP_KEY = "bplo_skip_ocr_fields";
+const DRAFT_BACKUP_PREFIX = "bplo_draft_backup_";
+const AUTOSAVE_DEBOUNCE_MS = 1500;
 const OCR_FORM_FIELD_MAP = {
   business_name: '[name="business_name"]',
   trade_name: '[name="trade_name"]',
@@ -84,6 +93,8 @@ let checklistDocuments = [];
 let uploadedDocumentNames = new Map();
 let uploadedDocumentOcrStatus = new Map();
 let applicantNotifications = [];
+let autosaveTimer = null;
+let isRestoringDraft = false;
 let isApplyingBusinessDefaults = false;
 const editedBusinessFields = new Set();
 const businessClassificationState = {
@@ -716,6 +727,175 @@ function setCurrentApplicationId(applicationId) {
     window.localStorage.setItem(CURRENT_APPLICATION_KEY, applicationId);
   } catch {
     // Session storage is enough for the active application flow.
+  }
+}
+
+function getDraftBackupKey(applicationId) {
+  return `${DRAFT_BACKUP_PREFIX}${applicationId}`;
+}
+
+function formatApplicantTime(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function setAutosaveStatus(message, state = "idle") {
+  if (!autosaveStatus) {
+    return;
+  }
+  autosaveStatus.textContent = message;
+  autosaveStatus.dataset.state = state;
+}
+
+function readDraftBackup(applicationId) {
+  try {
+    return JSON.parse(window.localStorage.getItem(getDraftBackupKey(applicationId)) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftBackup(applicationId, businessInfo) {
+  try {
+    window.localStorage.setItem(
+      getDraftBackupKey(applicationId),
+      JSON.stringify({ businessInfo, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    // The database remains the primary draft store.
+  }
+}
+
+function clearDraftBackup(applicationId) {
+  try {
+    window.localStorage.removeItem(getDraftBackupKey(applicationId));
+  } catch {
+    // Nothing else is needed if local storage is unavailable.
+  }
+}
+
+function continueDraftApplication(applicationId, permitId = "") {
+  if (permitId) {
+    window.sessionStorage.setItem(SELECTED_PERMIT_KEY, permitId);
+  }
+  setCurrentApplicationId(applicationId);
+  window.location.href = `/applicant/business-information?applicationId=${encodeURIComponent(applicationId)}`;
+}
+
+async function loadApplicantDrafts() {
+  if (!draftPanel || !draftList) {
+    return;
+  }
+
+  try {
+    const payload = await applicantApi("/applicant/api/drafts");
+    const drafts = payload.drafts || [];
+    if (!drafts.length) {
+      draftPanel.hidden = true;
+      draftList.innerHTML = "";
+      return;
+    }
+
+    draftPanel.hidden = false;
+    draftList.innerHTML = drafts
+      .map((draft) => {
+        const savedTime = formatApplicantTime(draft.updatedAt || draft.createdAt);
+        const businessName = draft.businessName || "Business Permit Application";
+        return `
+          <article class="draft-card">
+            <div>
+              <strong>${escapeHtml(businessName)}</strong>
+              <span>${escapeHtml(draft.permitName || "Business Permit")} ${savedTime ? `- last saved ${escapeHtml(savedTime)}` : ""}</span>
+            </div>
+            <button type="button" data-continue-draft="${escapeHtml(draft.id)}" data-draft-permit="${escapeHtml(draft.permitId || "")}">
+              Continue Application
+            </button>
+          </article>
+        `;
+      })
+      .join("");
+    window.lucide?.createIcons();
+  } catch (error) {
+    draftPanel.hidden = false;
+    draftList.innerHTML = `<p class="notification-empty">${escapeHtml(error.message || "Unable to load saved drafts.")}</p>`;
+  }
+}
+
+function renderApplicantProgress(payload) {
+  if (!progressPanel || !progressList) {
+    return;
+  }
+
+  const steps = payload.steps || [];
+  if (!steps.length) {
+    progressPanel.hidden = true;
+    return;
+  }
+
+  progressPanel.hidden = false;
+  const application = payload.application || {};
+  if (progressSummary) {
+    progressSummary.textContent = `${application.businessName || "Your application"} is currently marked as ${payload.status || "In Progress"}.`;
+  }
+
+  progressList.innerHTML = steps
+    .map((step) => {
+      const stateClass = String(step.state || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const completedAt = formatApplicantTime(step.completedAt);
+      return `
+        <article class="applicant-progress-item applicant-progress-item--${escapeHtml(stateClass)}">
+          <span>${escapeHtml(step.label)}</span>
+          <strong>${escapeHtml(step.state || "Pending")}</strong>
+          ${completedAt ? `<small>Completed ${escapeHtml(completedAt)}</small>` : ""}
+          ${step.remarks ? `<p>${escapeHtml(step.remarks)}</p>` : ""}
+        </article>
+      `;
+    })
+    .join("");
+
+  const departments = payload.departments || [];
+  if (departmentProgressList) {
+    departmentProgressList.innerHTML = departments.length
+      ? `
+        <h3>Department Review</h3>
+        ${departments
+          .map((department) => `
+            <article class="department-progress-item">
+              <span>${escapeHtml(department.departmentName || "Department")}</span>
+              <strong>${escapeHtml(department.state || "Pending")}</strong>
+              ${department.remarks ? `<p>${escapeHtml(department.remarks)}</p>` : ""}
+            </article>
+          `)
+          .join("")}
+      `
+      : "";
+  }
+}
+
+async function loadApplicantProgressForDashboard(applications = []) {
+  const submittedApplications = applications.filter((application) => (application.status || "") !== "Draft");
+  if (!submittedApplications.length) {
+    if (progressPanel) {
+      progressPanel.hidden = true;
+    }
+    return;
+  }
+
+  try {
+    const applicationId = submittedApplications[0].id;
+    const payload = await applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/progress`);
+    renderApplicantProgress(payload);
+  } catch (error) {
+    if (progressPanel && progressList) {
+      progressPanel.hidden = false;
+      progressList.innerHTML = `<p class="notification-empty">${escapeHtml(error.message || "Unable to load progress.")}</p>`;
+    }
   }
 }
 
@@ -1801,6 +1981,167 @@ function createBusinessInfoPayload(application) {
   };
 }
 
+const BUSINESS_INFO_TO_FIELD_MAP = {
+  application_date: "application_date",
+  registration_number: "registration_number",
+  mode_of_payment: "mode_of_payment",
+  last_name: "last_name",
+  first_name: "first_name",
+  middle_name: "middle_name",
+  suffix: "suffix",
+  email: "email",
+  contact_number: "contact_number",
+  gender: "gender",
+  government_id: "government_id",
+  home_address: "home_address",
+  business_name: "business_name",
+  trade_name: "trade_name",
+  business_types: "type_of_business",
+  business_classification_id: "business_classification_id",
+  business_classification: "business_classification",
+  tin: "tin",
+  business_address: "business_address",
+  location_detail: "location_detail",
+  business_barangay: "business_barangay",
+  business_premise: "business_premise",
+  business_telephone: "business_telephone",
+  business_mobile: "business_mobile",
+  business_email: "business_email",
+  owner_contact_number: "owner_contact_number",
+  emergency_contact_person: "emergency_contact_person",
+  emergency_contact: "emergency_contact",
+  business_area: "business_area",
+  employees_total: "employees_total",
+  employees_lgu: "employees_lgu",
+  business_activity: "business_activity",
+  capitalization: "capitalization",
+  goods_value: "goods_value",
+  gross_sales: "goods_value",
+  date_issued: "date_issued",
+  tax_incentive: "tax_incentive",
+  tax_incentive_entity: "tax_incentive_entity",
+};
+
+function applyBusinessInfoToForm(businessInfo = {}) {
+  if (!businessFormShell || !businessInfo || typeof businessInfo !== "object") {
+    return;
+  }
+
+  isRestoringDraft = true;
+  Object.entries(BUSINESS_INFO_TO_FIELD_MAP).forEach(([sourceKey, fieldName]) => {
+    if (!Object.prototype.hasOwnProperty.call(businessInfo, sourceKey)) {
+      return;
+    }
+    setBusinessFieldValue(fieldName, businessInfo[sourceKey], { force: true, className: "is-draft-filled" });
+  });
+  if (businessClassificationSearch && businessInfo.business_classification) {
+    businessClassificationSearch.value = businessInfo.business_classification;
+  }
+  isRestoringDraft = false;
+}
+
+function restoreDraftDocuments(documents = []) {
+  documents.forEach((documentRecord) => {
+    const documentId = documentRecord.permitDocumentId;
+    if (!documentId) {
+      return;
+    }
+    const result = document.querySelector(`[data-upload-result="${CSS.escape(documentId)}"]`);
+    const removeButton = document.querySelector(`[data-remove-upload="${CSS.escape(documentId)}"]`);
+    if (documentRecord.fileName) {
+      uploadedDocumentNames.set(documentId, documentRecord.fileName);
+      uploadedDocumentOcrStatus.set(documentId, documentRecord.ocrStatus || "Completed");
+      if (result) {
+        result.textContent = `${documentRecord.fileName} - already uploaded`;
+        result.classList.add("is-uploaded");
+      }
+      if (removeButton) {
+        removeButton.hidden = false;
+      }
+    }
+  });
+  updateRequirementsNextState();
+}
+
+async function loadDraftIntoBusinessForm() {
+  if (!businessFormShell && !dynamicDocumentGrid) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const applicationId = params.get("applicationId") || getCurrentApplicationId();
+  if (!applicationId) {
+    setAutosaveStatus("Start an application first so your draft can be saved.", "error");
+    return;
+  }
+
+  setCurrentApplicationId(applicationId);
+  try {
+    const payload = await applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/draft`);
+    if (payload.draft?.permitId) {
+      window.sessionStorage.setItem(SELECTED_PERMIT_KEY, payload.draft.permitId);
+    }
+    if (businessFormShell) {
+      applyBusinessInfoToForm(payload.businessInfo || {});
+    }
+    restoreDraftDocuments(payload.documents || []);
+    const localBackup = readDraftBackup(applicationId);
+    if (businessFormShell && localBackup?.businessInfo) {
+      applyBusinessInfoToForm(localBackup.businessInfo);
+      setAutosaveStatus(`Restored a local backup from ${formatApplicantTime(localBackup.savedAt)}. Auto-save will retry.`, "warning");
+      return;
+    }
+    const savedTime = formatApplicantTime(payload.draft?.updatedAt);
+    setAutosaveStatus(savedTime ? `Last saved at ${savedTime}` : "Draft loaded. Auto-save is ready.", "saved");
+  } catch (error) {
+    const localBackup = readDraftBackup(applicationId);
+    if (businessFormShell && localBackup?.businessInfo) {
+      applyBusinessInfoToForm(localBackup.businessInfo);
+      setAutosaveStatus("Loaded your temporary local backup. Please check your connection.", "warning");
+      return;
+    }
+    setAutosaveStatus(error.message || "Unable to load saved draft.", "error");
+  }
+}
+
+function scheduleBusinessDraftAutosave() {
+  if (!businessFormShell || isRestoringDraft) {
+    return;
+  }
+  const applicationId = getCurrentApplicationId();
+  if (!applicationId) {
+    return;
+  }
+  window.clearTimeout(autosaveTimer);
+  setAutosaveStatus("Saving...", "saving");
+  autosaveTimer = window.setTimeout(() => {
+    void saveBusinessDraft();
+  }, AUTOSAVE_DEBOUNCE_MS);
+}
+
+async function saveBusinessDraft() {
+  const applicationId = getCurrentApplicationId();
+  if (!businessFormShell || !applicationId) {
+    return;
+  }
+
+  const businessInfo = createBusinessInfoPayload(collectBusinessApplication());
+  try {
+    const payload = await applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        businessInfo,
+        currentStep: isBusinessReviewStepVisible() ? "Review Application" : "Business Information",
+      }),
+    });
+    clearDraftBackup(applicationId);
+    setAutosaveStatus(`Auto-saved at ${formatApplicantTime(payload.savedAt || new Date().toISOString())}`, "saved");
+  } catch (error) {
+    writeDraftBackup(applicationId, businessInfo);
+    setAutosaveStatus("Unable to auto-save. A temporary backup is stored on this device.", "error");
+  }
+}
+
 async function renderRecentPermits() {
   if (!recentPermitsTableBody) {
     return;
@@ -1845,9 +2186,11 @@ async function renderRecentPermits() {
     const submittedId = permit.submitted_id || permit.submittedId || (permit.id ? permit.id.slice(0, 8) : "-");
     const status = permit.status || "Draft";
     const pickupOnlyStatuses = ["Permit Ready for Release", "For Pickup", "Released"];
-    const actionMarkup = pickupOnlyStatuses.includes(status)
+    const actionMarkup = status === "Draft"
+      ? `<button class="table-link-button" type="button" data-continue-draft="${escapeHtml(permit.id || "")}" data-draft-permit="${escapeHtml(permit.permit_id || permit.permitId || "")}">Continue</button>`
+      : pickupOnlyStatuses.includes(status)
       ? '<span style="color: var(--green); font-weight: 700;">Claim at BPLO Office</span>'
-      : '<a href="/applicant/business-information" style="color: var(--green); text-decoration: underline;">View</a>';
+      : `<button class="table-link-button" type="button" data-view-progress="${escapeHtml(permit.id || "")}">View Status</button>`;
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${referenceNumber}</td>
@@ -1859,6 +2202,8 @@ async function renderRecentPermits() {
     `;
     recentPermitsTableBody.appendChild(row);
   });
+
+  await loadApplicantProgressForDashboard(permits);
 }
 
 async function recordApplicantAudit(action, details = {}, entityType = "", entityId = "") {
@@ -1950,6 +2295,7 @@ async function handleFinishApplication() {
       "application",
       currentApplicationId
     );
+    clearDraftBackup(currentApplicationId);
     alert(result.message || "Application submitted successfully.");
     window.location.href = "/applicant/dashboard";
   } catch (error) {
@@ -2045,6 +2391,24 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const continueDraftButton = clickedElement?.closest("[data-continue-draft]");
+  if (continueDraftButton instanceof HTMLElement) {
+    continueDraftApplication(continueDraftButton.dataset.continueDraft || "", continueDraftButton.dataset.draftPermit || "");
+    return;
+  }
+
+  const viewProgressButton = clickedElement?.closest("[data-view-progress]");
+  if (viewProgressButton instanceof HTMLElement) {
+    const applicationId = viewProgressButton.dataset.viewProgress || "";
+    if (applicationId) {
+      void applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/progress`)
+        .then(renderApplicantProgress)
+        .then(() => progressPanel?.scrollIntoView({ behavior: "smooth", block: "start" }))
+        .catch((error) => alert(error.message || "Unable to load application status."));
+    }
+    return;
+  }
+
   const uploadTrigger = clickedElement?.closest("[data-upload-trigger]");
   if (uploadTrigger instanceof HTMLElement) {
     const documentId = uploadTrigger.dataset.uploadTrigger || "";
@@ -2112,10 +2476,12 @@ document.querySelectorAll("[data-history-back]").forEach((link) => {
 
 businessFormShell?.addEventListener("input", (event) => {
   markBusinessFieldTouched(event.target);
+  scheduleBusinessDraftAutosave();
 });
 
 businessFormShell?.addEventListener("change", (event) => {
   markBusinessFieldTouched(event.target);
+  scheduleBusinessDraftAutosave();
 });
 
 requirementsNextButton?.addEventListener("click", () => {
@@ -2133,9 +2499,10 @@ window.addEventListener("DOMContentLoaded", () => {
   syncBusinessPermitType();
   initializeBusinessClassificationCombobox();
 
-  loadApplicantDashboard().then(() => {
+  loadApplicantDashboard().then(async () => {
     void loadActivePermits();
-    void loadRequirementsChecklist();
+    await loadRequirementsChecklist();
+    await loadApplicantDrafts();
     void loadApplicantNotifications();
     if (notificationMenu) {
       window.setInterval(() => {
@@ -2143,8 +2510,9 @@ window.addEventListener("DOMContentLoaded", () => {
       }, 60000);
     }
     applyTodayApplicationDate();
-    void loadApplicantProfileIntoBusinessForm();
+    await loadApplicantProfileIntoBusinessForm();
     applyOcrFieldsToBusinessForm();
-    void loadOcrFieldsIntoBusinessForm(getCurrentApplicationId());
+    await loadOcrFieldsIntoBusinessForm(getCurrentApplicationId());
+    await loadDraftIntoBusinessForm();
   });
 });

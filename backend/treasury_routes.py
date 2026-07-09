@@ -124,7 +124,7 @@ class TreasuryRoutesMixin:
             self.service_rest_request(config, "assessments", method="PATCH", payload={"status": "Paid", "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('assessment_id')}"}))
             self.service_rest_request(config, "applications", method="PATCH", payload={"status": "Payment Verified", "progress": "Ready for Finalization", "payment_status": "Payment Verified", "assessment_status": "Paid", "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('application_id')}"}))
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "payment_confirmed", actor=config["actor"], entity_type="payment", entity_id=payment.get("id"), details={"officialReceiptNumber": or_number, "amountPaid": amount_paid})
-            self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], queue.get("application_id"), "Payment Confirmed", f"Your payment was verified. Official Receipt No. {or_number}.", notification_type="payment", source_role="Treasury")
+            self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], queue.get("application_id"), "Payment Confirmed", f"Your payment has been processed. Official Receipt No. {or_number}. Your application is now ready for BPLO finalization.", notification_type="payment", source_role="Treasury")
             admin_user_ids = self.get_bplo_notification_users(config)
             admin_sent = self.create_notifications(
                 config["supabase_url"],
@@ -576,7 +576,7 @@ class TreasuryRoutesMixin:
                     config["supabase_service_key"],
                     application_id,
                     "Payment Completed",
-                    f"Your payment for {business_name} has been completed and your official receipt {or_number} is ready.",
+                    f"Your payment for {business_name} has been processed. Official Receipt {or_number} is ready, and your application is now ready for BPLO finalization.",
                     notification_type="payment",
                     source_role="Treasury",
                 )

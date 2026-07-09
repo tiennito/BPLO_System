@@ -659,11 +659,13 @@ class DepartmentRoutesMixin:
             )
             department_name = config["department_name"]
             if status == "Approved":
-                notification_message = f"{department_name} has approved your submitted documents."
+                notification_message = f"Your application has been approved by the {department_name}."
             elif status == "Rejected":
-                notification_message = f"{department_name} requested a correction. Please review the remarks."
+                details = f" Reason: {remarks}" if remarks else ""
+                notification_message = f"Your application needs revision from the {department_name}.{details} Please review the required changes."
             else:
-                notification_message = f"{department_name} updated your application review status to {status}."
+                details = f" Remarks: {remarks}" if remarks else ""
+                notification_message = f"The {department_name} updated your application review status to {status}.{details}"
             self.notify_application_owner(
                 config["supabase_url"],
                 config["supabase_service_key"],

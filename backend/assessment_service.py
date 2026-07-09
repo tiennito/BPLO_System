@@ -244,7 +244,7 @@ class AssessmentServiceMixin:
             except HTTPError:
                 pass
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "assessment_completed", actor=config["actor"], entity_type="assessment", entity_id=assessment.get("id"), details={"grandTotal": assessment.get("grand_total")})
-            self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], application_id, "Payment Required", "Your assessment is complete. Please proceed to Treasury for payment.", notification_type="payment", source_role="BPLO")
+            self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], application_id, "Payment Required", "Your application has been forwarded to the Treasury for payment. Please settle the assessed fees to continue finalization.", notification_type="payment", source_role="BPLO")
             self.send_json({"message": "Assessment completed and routed to Treasury.", "assessment": updated_assessment[0] if updated_assessment else assessment, "queue": queue_rows[0] if queue_rows else {}})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to complete assessment.")}, status=error.code)

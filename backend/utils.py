@@ -258,6 +258,20 @@ class CoreHandlerMixin:
             self.list_applicant_notifications()
             return
 
+        if request_path == "/applicant/api/drafts":
+            self.list_applicant_drafts()
+            return
+
+        draft_match = re.fullmatch(r"/applicant/api/applications/([^/]+)/draft", request_path)
+        if draft_match:
+            self.get_applicant_draft(draft_match.group(1))
+            return
+
+        progress_match = re.fullmatch(r"/applicant/api/applications/([^/]+)/progress", request_path)
+        if progress_match:
+            self.get_applicant_application_progress(progress_match.group(1))
+            return
+
         if request_path.startswith("/applicant/api/application/") and request_path.endswith("/ocr-fields"):
             parts = request_path.strip("/").split("/")
             if len(parts) == 5:
@@ -467,6 +481,11 @@ class CoreHandlerMixin:
         if request_path.startswith("/applicant/api/notifications/") and request_path.endswith("/read"):
             notification_id = request_path.strip("/").split("/")[-2]
             self.mark_applicant_notification_read(notification_id)
+            return
+
+        draft_match = re.fullmatch(r"/applicant/api/applications/([^/]+)/draft", request_path)
+        if draft_match:
+            self.save_applicant_draft(draft_match.group(1))
             return
 
         if request_path.startswith("/admin/api/departments/"):

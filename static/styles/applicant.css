@@ -1656,6 +1656,161 @@ button:not(:disabled):not([disabled]):hover {
   line-height: 1.25;
 }
 
+.applicant-draft-panel,
+.applicant-progress-panel {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid rgba(35, 98, 58, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.06);
+}
+
+.applicant-draft-panel h2,
+.applicant-progress-panel h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  color: var(--green);
+}
+
+.applicant-draft-panel p,
+.applicant-progress-panel p {
+  margin: 0;
+  color: #5f6f65;
+}
+
+.draft-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.draft-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #d9e7de;
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+
+.draft-card strong,
+.draft-card span {
+  display: block;
+}
+
+.draft-card span {
+  margin-top: 3px;
+  font-size: 13px;
+  color: #667085;
+}
+
+.draft-card button,
+.table-link-button {
+  border: 0;
+  background: var(--green);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.table-link-button {
+  background: transparent;
+  color: var(--green);
+  padding: 0;
+  text-decoration: underline;
+}
+
+.applicant-progress-list {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.applicant-progress-item,
+.department-progress-item {
+  min-height: 90px;
+  padding: 10px;
+  border: 1px solid #d9e7de;
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+
+.applicant-progress-item span,
+.department-progress-item span {
+  display: block;
+  font-size: 12px;
+  color: #667085;
+}
+
+.applicant-progress-item strong,
+.department-progress-item strong {
+  display: block;
+  margin-top: 6px;
+  color: #1f2937;
+}
+
+.applicant-progress-item small {
+  display: block;
+  margin-top: 5px;
+  color: #667085;
+}
+
+.applicant-progress-item--completed {
+  border-color: rgba(38, 132, 82, 0.36);
+  background: #eef8f1;
+}
+
+.applicant-progress-item--in-progress {
+  border-color: rgba(28, 100, 242, 0.32);
+  background: #eff6ff;
+}
+
+.applicant-progress-item--rejected,
+.applicant-progress-item--for-revision {
+  border-color: rgba(196, 50, 50, 0.32);
+  background: #fff1f1;
+}
+
+.department-progress-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.department-progress-list h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 15px;
+  color: #344054;
+}
+
+.autosave-status {
+  margin: 7px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #667085;
+}
+
+.autosave-status[data-state="saving"] {
+  color: #1d4ed8;
+}
+
+.autosave-status[data-state="saved"] {
+  color: var(--green);
+}
+
+.autosave-status[data-state="warning"],
+.autosave-status[data-state="error"] {
+  color: #b42318;
+}
+
 .permits-table-wrap {
   overflow-x: auto;
   border-left: 2px solid var(--green);
@@ -1779,6 +1934,14 @@ th {
     gap: 16px;
   }
 
+  .applicant-progress-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .department-progress-list {
+    grid-template-columns: 1fr;
+  }
+
   .field-grid--2,
   .field-grid--3 {
     grid-template-columns: 1fr;
@@ -1813,6 +1976,15 @@ th {
   }
 
   .document-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .applicant-progress-list {
     grid-template-columns: 1fr;
   }
 

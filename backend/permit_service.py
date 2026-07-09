@@ -543,7 +543,7 @@ class PermitServiceMixin:
                 config["supabase_service_key"],
                 application_id,
                 "Business Permit Ready for Pickup",
-                "Your business permit is ready to be claimed at the BPLO office. Please bring your claim requirements upon pickup.",
+                "Your business permit is ready for release. Please visit the BPLO office and bring a valid ID.",
                 notification_type="permit",
                 source_role="BPLO",
             )

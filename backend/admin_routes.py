@@ -1666,7 +1666,7 @@ class AdminRoutesMixin:
                 config["supabase_service_key"],
                 application_id,
                 "Initial Review Approved",
-                "Your application passed BPLO initial review and has been forwarded to the required offices.",
+                "Your application is now under BPLO review and has been forwarded to the required offices for department evaluation.",
                 notification_type="status",
                 source_role="BPLO",
             )
@@ -1916,7 +1916,7 @@ class AdminRoutesMixin:
                 config["supabase_service_key"],
                 application_id,
                 title,
-                remarks or f"Your application status is now {status}.",
+                f"Your application needs revision. Please review this BPLO note: {remarks}" if status == "For Revision" else f"Your application was rejected by BPLO. Reason: {remarks}" if status == "Rejected" else remarks or f"Your application status is now {status}.",
                 notification_type="status",
                 source_role="BPLO",
             )
