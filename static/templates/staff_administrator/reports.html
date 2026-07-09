@@ -4,9 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Report</title>
+    <script defer src="/config.js?v=3"></script>
     <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_reports.js?v=1"></script>
   </head>
   <body>
     <main class="staff-admin-shell">
@@ -44,7 +47,7 @@
 
           <section class="staff-report-controls" aria-label="Report controls">
             <nav class="staff-report-tabs"><button class="is-active">Today</button><button>Week</button><button>Monthly</button><button>Yearly</button></nav>
-            <div><button class="staff-primary-action"><i data-lucide="file-plus-2"></i>Generate Report</button><button class="staff-secondary-action staff-pdf-button"><i data-lucide="file-text"></i>Export PDF</button><button class="staff-secondary-action"><i data-lucide="sheet"></i>Download CSV</button></div>
+            <div><button class="staff-primary-action" data-staff-report-export="pdf"><i data-lucide="file-plus-2"></i>Generate Report</button><button class="staff-secondary-action staff-pdf-button" data-staff-report-export="pdf"><i data-lucide="file-text"></i>Export PDF</button><button class="staff-secondary-action" data-staff-report-export="csv"><i data-lucide="sheet"></i>Download CSV</button></div>
           </section>
 
           <section class="staff-report-chart-grid" aria-label="Report charts">
@@ -66,10 +69,5 @@
         </section>
       </section>
     </main>
-    <script>
-      window.addEventListener("DOMContentLoaded", () => {
-        window.lucide?.createIcons();
-      });
-    </script>
   </body>
 </html>

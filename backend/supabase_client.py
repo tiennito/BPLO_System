@@ -24,6 +24,24 @@ from .utils import (
 
 
 class SupabaseClientMixin:
+    def upload_storage_file(self, supabase_url, service_key, bucket, file_path, file_bytes, content_type="application/octet-stream"):
+        encoded_path = quote(file_path, safe="/")
+        request = Request(
+            f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}",
+            data=file_bytes,
+            method="POST",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": content_type or "application/octet-stream",
+                "x-upsert": "true",
+            },
+        )
+
+        with urlopen(request, timeout=30) as response:
+            body = response.read().decode("utf-8")
+            return json.loads(body or "{}")
+
     def download_storage_file(self, supabase_url, service_key, bucket, file_path):
         encoded_path = quote(file_path, safe="/")
         request = Request(

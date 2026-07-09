@@ -67,7 +67,21 @@ class TreasuryRoutesMixin:
             payload = self.read_json_body()
             amount_paid = self.safe_float(payload.get("amountPaid"), 0)
             payment_method = (payload.get("paymentMethod") or "Cash").strip()
+            payment_date = (payload.get("paymentDate") or "").strip()
+            or_number = (payload.get("officialReceiptNumber") or "").strip()
             remarks = (payload.get("remarks") or "").strip()
+            if not or_number:
+                self.send_json({"error": "Official Receipt number is required."}, status=400)
+                return
+            if not payment_date:
+                self.send_json({"error": "Payment date is required."}, status=400)
+                return
+            if amount_paid <= 0:
+                self.send_json({"error": "Amount paid is required."}, status=400)
+                return
+            if self.service_rest_request(config, "official_receipts", query=urlencode({"select": "id", "receipt_number": f"eq.{or_number}", "limit": 1})) or []:
+                self.send_json({"error": "This Official Receipt number is already used."}, status=400)
+                return
             queue_rows = self.service_rest_request(config, "treasury_payment_queue", query=urlencode({"select": "*", "id": f"eq.{queue_id}", "limit": "1"})) or []
             if not queue_rows:
                 self.send_json({"error": "Payment queue record not found."}, status=404)
@@ -80,7 +94,7 @@ class TreasuryRoutesMixin:
             if amount_paid < amount_due:
                 self.send_json({"error": "Amount paid is below the amount due."}, status=400)
                 return
-            or_number = (payload.get("officialReceiptNumber") or self.generate_workflow_number("OR")).strip()
+            paid_at = f"{payment_date}T00:00:00+00:00"
             payment_payload = {
                 "application_id": queue.get("application_id"),
                 "assessment_id": queue.get("assessment_id"),
@@ -92,7 +106,7 @@ class TreasuryRoutesMixin:
                 "payment_method": payment_method,
                 "payment_status": "Confirmed",
                 "official_receipt_number": or_number,
-                "paid_at": utc_now_iso(),
+                "paid_at": paid_at,
                 "cashier_id": config["actor"].get("id"),
                 "remarks": remarks,
             }
@@ -102,7 +116,7 @@ class TreasuryRoutesMixin:
                 config,
                 "official_receipts",
                 method="POST",
-                payload={"payment_id": payment.get("id"), "application_id": queue.get("application_id"), "receipt_number": or_number, "issued_by": config["actor"].get("id"), "status": "Issued"},
+                payload={"payment_id": payment.get("id"), "application_id": queue.get("application_id"), "receipt_number": or_number, "issued_by": config["actor"].get("id"), "issued_at": paid_at, "status": "Issued"},
                 prefer="return=representation",
             ) or []
             now = utc_now_iso()
@@ -111,7 +125,23 @@ class TreasuryRoutesMixin:
             self.service_rest_request(config, "applications", method="PATCH", payload={"status": "Payment Verified", "progress": "Ready for Finalization", "payment_status": "Payment Verified", "assessment_status": "Paid", "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('application_id')}"}))
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "payment_confirmed", actor=config["actor"], entity_type="payment", entity_id=payment.get("id"), details={"officialReceiptNumber": or_number, "amountPaid": amount_paid})
             self.notify_application_owner(config["supabase_url"], config["supabase_service_key"], queue.get("application_id"), "Payment Confirmed", f"Your payment was verified. Official Receipt No. {or_number}.", notification_type="payment", source_role="Treasury")
-            self.send_json({"message": "Payment confirmed and official receipt generated.", "payment": payment, "receipt": receipts[0] if receipts else {}})
+            admin_user_ids = self.get_bplo_notification_users(config)
+            admin_sent = self.create_notifications(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                [
+                    {
+                        "user_id": user_id,
+                        "application_id": queue.get("application_id"),
+                        "title": "Payment Confirmed",
+                        "message": f"Treasury confirmed payment and issued Official Receipt {or_number}.",
+                        "type": "payment",
+                        "source_role": "Treasury",
+                    }
+                    for user_id in admin_user_ids
+                ],
+            ) if admin_user_ids else 0
+            self.send_json({"message": "Payment confirmed and official receipt generated.", "payment": payment, "receipt": receipts[0] if receipts else {}, "adminNotifications": admin_sent})
         except HTTPError as error:
             self.treasury_error(error, "Unable to confirm payment.")
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
@@ -173,6 +203,51 @@ class TreasuryRoutesMixin:
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.treasury_error(error, "Unable to load treasury records.")
 
+    def export_treasury_reports(self):
+        config = self.ensure_treasury_request()
+        if not config:
+            return
+        try:
+            params = self.get_query_params()
+            fmt = self.first_query_value(params, "format", "csv").lower()
+            rows = self.service_rest_request(
+                config,
+                "treasury_records",
+                query=urlencode({"select": "*", "deleted_at": "is.null", "order": "transaction_date.desc,created_at.desc", "limit": "1000"}),
+            ) or []
+            headers = ["Application No.", "OR No.", "Applicant", "Business Name", "Amount", "Step", "Status", "Payment Date", "Cashier", "Remarks"]
+            data = [
+                [
+                    row.get("application_no"),
+                    row.get("or_no"),
+                    row.get("applicant"),
+                    row.get("business_name"),
+                    self.money(row.get("amount")),
+                    row.get("step"),
+                    row.get("status"),
+                    row.get("transaction_date"),
+                    row.get("cashier") or "Treasury Staff",
+                    row.get("remarks"),
+                ]
+                for row in rows
+            ]
+            total_collection = self.money(sum(self.safe_float(row.get("amount"), 0) for row in rows if row.get("status") in {"Paid", "Accepted"}))
+            if fmt == "pdf":
+                self.send_text_download(
+                    self.html_report(
+                        "Treasury Collection Report",
+                        headers,
+                        data,
+                        {"Total Records": len(data), "Total Collection": f"PHP {total_collection:,.2f}"},
+                    ),
+                    "treasury-collection-report.html",
+                    "text/html; charset=utf-8",
+                )
+                return
+            self.send_text_download(self.csv_report(headers, data), "treasury-collection-report.csv", "text/csv; charset=utf-8")
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.treasury_error(error, "Unable to export treasury report.")
+
     def validate_treasury_payload(self, payload):
         record = {
             "application_no": (payload.get("applicationNo") or "").strip(),
@@ -229,6 +304,26 @@ class TreasuryRoutesMixin:
             return
         try:
             payload = self.validate_treasury_payload(self.read_json_body())
+            if payload["status"] == "Paid":
+                if not payload["or_no"]:
+                    self.send_json({"error": "Official Receipt number is required before marking payment as Paid."}, status=400)
+                    return
+                if self.safe_float(payload["amount"], 0) <= 0:
+                    self.send_json({"error": "Amount paid is required before marking payment as Paid."}, status=400)
+                    return
+                duplicate_records = self.service_rest_request(
+                    config,
+                    "treasury_records",
+                    query=urlencode({"select": "id", "or_no": f"eq.{payload['or_no']}", "id": f"neq.{record_id}", "deleted_at": "is.null", "limit": 1}),
+                ) or []
+                duplicate_receipts = self.service_rest_request(
+                    config,
+                    "official_receipts",
+                    query=urlencode({"select": "id", "receipt_number": f"eq.{payload['or_no']}", "limit": 1}),
+                ) or []
+                if duplicate_records or duplicate_receipts:
+                    self.send_json({"error": "This Official Receipt number is already used."}, status=400)
+                    return
             payload["updated_at"] = utc_now_iso()
             query = urlencode({"id": f"eq.{record_id}", "deleted_at": "is.null"})
             rows = self.service_rest_request(config, "treasury_records", method="PATCH", payload=payload, query=query, prefer="return=representation")
@@ -261,6 +356,23 @@ class TreasuryRoutesMixin:
                     source_role="Treasury",
                     application_id=application.get("id"),
                 )
+                if status == "Paid":
+                    admin_user_ids = self.get_bplo_notification_users(config)
+                    self.create_notifications(
+                        config["supabase_url"],
+                        config["supabase_service_key"],
+                        [
+                            {
+                                "user_id": user_id,
+                                "application_id": application.get("id"),
+                                "title": "Payment Confirmed",
+                                "message": f"Treasury confirmed payment and issued Official Receipt {payload['or_no']}.",
+                                "type": "payment",
+                                "source_role": "Treasury",
+                            }
+                            for user_id in admin_user_ids
+                        ],
+                    )
             self.send_json({"message": "Treasury record updated.", "record": self.format_treasury_record(rows[0])})
         except ValueError as error:
             self.send_json({"error": str(error)}, status=400)

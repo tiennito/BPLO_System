@@ -520,6 +520,15 @@ class PermitServiceMixin:
                 payload={"status": "Released", "progress": "Permit Released", "updated_at": now},
                 query=urlencode({"id": f"eq.{application_id}"}),
             )
+            released_permits = self.service_rest_request(
+                config,
+                "business_permits",
+                method="PATCH",
+                payload={"status": "Released", "released_at": now, "released_by": config["actor"].get("id"), "updated_at": now},
+                query=urlencode({"id": f"eq.{permit.get('id')}"}),
+                prefer="return=representation",
+            ) or []
+            permit = released_permits[0] if released_permits else {**permit, "status": "Released", "released_at": now}
             self.create_service_audit_log(
                 config["supabase_url"],
                 config["supabase_service_key"],

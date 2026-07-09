@@ -9,6 +9,7 @@ const applicantInfo = document.querySelector("[data-applicant-info]");
 const businessInfo = document.querySelector("[data-business-info]");
 const documentsBody = document.querySelector("[data-documents-body]");
 const departmentProgress = document.querySelector("[data-department-progress]");
+const departmentEvidence = document.querySelector("[data-department-evidence]");
 const assessmentItems = document.querySelector("[data-assessment-items]");
 const assessmentSummary = document.querySelector("[data-assessment-summary]");
 const assessmentTotals = document.querySelector("[data-assessment-totals]");
@@ -464,6 +465,30 @@ function render() {
       </div>
     `;
 
+  if (departmentEvidence) {
+    departmentEvidence.innerHTML = (app.departmentEvidence || []).length
+      ? app.departmentEvidence
+          .map((evidence) => `
+            <div class="review-evidence-item">
+              <strong>${escapeHtml(evidence.departmentKey || "Department")} - ${escapeHtml(evidence.fileName || "Evidence")}</strong>
+              <span>${escapeHtml(evidence.remarks || "No remarks")}</span>
+              <small>Uploaded by ${escapeHtml(evidence.uploadedByName || "Department staff")} ${evidence.createdAt ? `on ${escapeHtml(dateText(evidence.createdAt))}` : ""}</small>
+              <p>
+                <button class="review-mini-button" type="button" data-preview-evidence="${escapeHtml(evidence.viewUrl)}" data-file-name="${escapeHtml(evidence.fileName || "Evidence")}"><i data-lucide="eye" aria-hidden="true"></i>View</button>
+                <button class="review-mini-button review-mini-button--green" type="button" data-download-evidence="${escapeHtml(evidence.downloadUrl)}" data-file-name="${escapeHtml(evidence.fileName || "Evidence")}"><i data-lucide="download" aria-hidden="true"></i>Download</button>
+              </p>
+            </div>
+          `)
+          .join("")
+      : `
+        <div class="review-empty-box">
+          <i data-lucide="paperclip" aria-hidden="true"></i>
+          <strong>No department evidence yet</strong>
+          <span>Uploaded inspection photos, reports, or clearance files will appear here.</span>
+        </div>
+      `;
+  }
+
   assessmentItems.innerHTML = (app.assessmentItems || []).length
     ? app.assessmentItems
         .map(
@@ -656,6 +681,32 @@ async function openDocumentPreview(documentId) {
   }
 }
 
+async function openProtectedFile(path, fileName, mode = "view") {
+  const activeSession = await session();
+  const response = await fetch(path, {
+    headers: { "Authorization": `Bearer ${activeSession.access_token}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to load file.");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const url = URL.createObjectURL(blob);
+  if (mode === "download") {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = match?.[1] || fileName || "download";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  showDocumentPreview(url, blob.type, fileName || "Attachment");
+}
+
 function closeDocumentPreview() {
   if (!previewModal || !previewContent) {
     return;
@@ -751,6 +802,24 @@ document.addEventListener("click", async (event) => {
   const previewButton = target.closest("[data-preview-document]");
   if (previewButton instanceof HTMLElement) {
     await openDocumentPreview(previewButton.dataset.previewDocument || "");
+    return;
+  }
+  const previewEvidenceButton = target.closest("[data-preview-evidence]");
+  if (previewEvidenceButton instanceof HTMLElement) {
+    try {
+      await openProtectedFile(previewEvidenceButton.dataset.previewEvidence || "", previewEvidenceButton.dataset.fileName || "Evidence", "view");
+    } catch (error) {
+      setMessage(error.message || "Unable to preview evidence.", true);
+    }
+    return;
+  }
+  const downloadEvidenceButton = target.closest("[data-download-evidence]");
+  if (downloadEvidenceButton instanceof HTMLElement) {
+    try {
+      await openProtectedFile(downloadEvidenceButton.dataset.downloadEvidence || "", downloadEvidenceButton.dataset.fileName || "Evidence", "download");
+    } catch (error) {
+      setMessage(error.message || "Unable to download evidence.", true);
+    }
     return;
   }
   if (target.closest("[data-close-preview]")) {

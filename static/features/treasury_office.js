@@ -58,6 +58,27 @@ async function apiFetch(path, options = {}) {
   return result;
 }
 
+async function downloadAuthenticatedFile(path, fallbackName) {
+  const response = await fetch(path, {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to download file.");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = match?.[1] || fallbackName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function requireTreasurySession() {
   const client = initSupabase();
   if (!client) throw new Error("Supabase client is unavailable.");
@@ -510,6 +531,12 @@ function renderPaymentDetails(record) {
       <article class="payment-detail-card"><span>Cashier</span><strong>${escapeHtml(record.cashier || "Treasury Staff")}</strong></article>
       <article class="payment-detail-card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "No remarks recorded.")}</p></article>
     </div>
+    <div class="payment-details-grid">
+      <label class="payment-detail-card"><span>Official Receipt No.</span><input name="officialReceiptNumber" data-receipt-or-number value="${escapeHtml(record.orNo || "")}" required /></label>
+      <label class="payment-detail-card"><span>Payment Date</span><input name="paymentDate" type="date" data-receipt-payment-date value="${escapeHtml(record.transactionDate || new Date().toISOString().slice(0, 10))}" required /></label>
+      <label class="payment-detail-card"><span>Amount Paid</span><input name="amountPaid" type="number" min="${Number(record.amount || 0)}" step="0.01" data-receipt-amount-paid value="${escapeHtml(record.amount || "")}" required /></label>
+      <label class="payment-detail-card wide"><span>Payment Remarks</span><textarea name="paymentRemarks" data-receipt-remarks>${escapeHtml(record.remarks || "")}</textarea></label>
+    </div>
     <section class="payment-process-note">
       <i data-lucide="arrow-right-circle"></i>
       <div>
@@ -672,13 +699,28 @@ async function markReceiptAsPaid(record) {
   if (!record?.id) {
     throw new Error("Unable to find the selected receipt.");
   }
+  const orNumber = document.querySelector("[data-receipt-or-number]")?.value?.trim() || "";
+  const paymentDate = document.querySelector("[data-receipt-payment-date]")?.value || "";
+  const amountPaid = Number(document.querySelector("[data-receipt-amount-paid]")?.value || 0);
+  const remarks = document.querySelector("[data-receipt-remarks]")?.value?.trim() || "";
+  if (!orNumber) {
+    throw new Error("Official Receipt number is required.");
+  }
+  if (!paymentDate) {
+    throw new Error("Payment date is required.");
+  }
+  if (!amountPaid || amountPaid < Number(record.amount || 0)) {
+    throw new Error("Amount paid must match or cover the total amount due.");
+  }
   const paidRecord = {
     ...record,
     currentStep: "Official Receipt",
     step: "Official Receipt",
     status: "Paid",
-    transactionDate: record.transactionDate || new Date().toISOString().slice(0, 10),
-    orNo: record.orNo || `OR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`,
+    transactionDate: paymentDate,
+    orNo: orNumber,
+    amount: amountPaid,
+    remarks,
   };
   await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}`, {
     method: "PATCH",
@@ -687,12 +729,12 @@ async function markReceiptAsPaid(record) {
       orNo: paidRecord.orNo,
       applicant: paidRecord.applicant,
       businessName: paidRecord.businessName,
-      amount: paidRecord.amount,
+      amount: amountPaid,
       step: paidRecord.step,
       currentStep: paidRecord.currentStep,
       status: paidRecord.status,
       transactionDate: paidRecord.transactionDate,
-      remarks: paidRecord.remarks || "",
+      remarks,
     }),
   });
   await syncTreasuryCompletion(paidRecord);
@@ -1013,7 +1055,16 @@ function bindPaymentRecordsPage() {
     renderPaymentRecords();
   });
   document.querySelectorAll("[data-payment-export]").forEach((button) => {
-    button.addEventListener("click", () => setStatus("Export is ready for connection when payment records are available."));
+    button.addEventListener("click", async () => {
+      const format = button.dataset.paymentExport === "pdf" ? "pdf" : "csv";
+      try {
+        setStatus("Preparing payment report...");
+        await downloadAuthenticatedFile(`/treasury/api/reports/export?format=${encodeURIComponent(format)}`, format === "pdf" ? "treasury-collection-report.html" : "treasury-collection-report.csv");
+        setStatus("Payment report downloaded.");
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Unable to export payment report.", true);
+      }
+    });
   });
 }
 
@@ -1028,7 +1079,15 @@ function bindOfficialReceiptsPage() {
     renderOfficialReceipts();
   });
   document.querySelector("[data-refresh-receipts]")?.addEventListener("click", () => loadRecords());
-  document.querySelector("[data-receipt-export]")?.addEventListener("click", () => setStatus("Export is ready for connection when official receipts are available."));
+  document.querySelector("[data-receipt-export]")?.addEventListener("click", async () => {
+    try {
+      setStatus("Preparing official receipt report...");
+      await downloadAuthenticatedFile("/treasury/api/reports/export?format=csv", "treasury-official-receipts.csv");
+      setStatus("Official receipt report downloaded.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to export official receipts.", true);
+    }
+  });
 }
 
 function bindTreasuryReportsPage() {
@@ -1036,7 +1095,16 @@ function bindTreasuryReportsPage() {
   document.querySelector("[data-report-type-filter]")?.addEventListener("change", () => renderTreasuryReports());
   document.querySelector("[data-report-status-filter]")?.addEventListener("change", () => renderTreasuryReports());
   document.querySelectorAll("[data-report-export]").forEach((button) => {
-    button.addEventListener("click", () => setStatus("Export is ready for connection when treasury reports are available."));
+    button.addEventListener("click", async () => {
+      const format = button.dataset.reportExport === "pdf" ? "pdf" : "csv";
+      try {
+        setStatus("Preparing treasury report...");
+        await downloadAuthenticatedFile(`/treasury/api/reports/export?format=${encodeURIComponent(format)}`, format === "pdf" ? "treasury-report.html" : "treasury-report.csv");
+        setStatus("Treasury report downloaded.");
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Unable to export treasury report.", true);
+      }
+    });
   });
 }
 

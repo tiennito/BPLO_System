@@ -24,6 +24,232 @@ from .utils import (
 
 
 class DepartmentRoutesMixin:
+    def parse_multipart_form(self):
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", "0") or "0")
+        if "multipart/form-data" not in content_type or content_length <= 0:
+            return {}, {}
+
+        from email.parser import BytesParser
+        from email.policy import default
+
+        body = self.rfile.read(content_length)
+        message = BytesParser(policy=default).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+        )
+        fields = {}
+        files = {}
+        for part in message.iter_parts():
+            disposition = part.get_content_disposition()
+            if disposition != "form-data":
+                continue
+            name = part.get_param("name", header="content-disposition")
+            filename = part.get_filename()
+            payload = part.get_payload(decode=True) or b""
+            if filename:
+                files[name] = {
+                    "filename": Path(filename).name,
+                    "content_type": part.get_content_type() or "application/octet-stream",
+                    "content": payload,
+                }
+            elif name:
+                fields[name] = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        return fields, files
+
+    def format_department_evidence(self, record, allow_delete=False):
+        profile = record.get("profiles") or {}
+        return {
+            "id": record.get("id"),
+            "applicationId": record.get("application_id"),
+            "departmentId": record.get("department_id"),
+            "departmentKey": record.get("department_key") or "",
+            "uploadedBy": record.get("uploaded_by"),
+            "uploadedByName": profile.get("full_name") or profile.get("email") or record.get("uploaded_by") or "Department staff",
+            "fileName": record.get("file_name") or "Evidence attachment",
+            "fileUrl": record.get("file_url") or "",
+            "remarks": record.get("remarks") or "",
+            "createdAt": record.get("created_at") or "",
+            "allowDelete": allow_delete,
+            "viewUrl": f"/department/evidence/{record.get('id')}/view",
+            "downloadUrl": f"/department/evidence/{record.get('id')}/download",
+        }
+
+    def department_evidence_query(self, config, application_id=None, evidence_id=None, admin=False):
+        params = {
+            "select": "*",
+            "deleted_at": "is.null",
+            "order": "created_at.desc",
+        }
+        if application_id:
+            params["application_id"] = f"eq.{application_id}"
+        if evidence_id:
+            params["id"] = f"eq.{evidence_id}"
+            params["limit"] = "1"
+        if not admin:
+            params["department_key"] = f"eq.{config['department_key']}"
+        return urlencode(params)
+
+    def list_department_evidence(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+        try:
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+            rows = self.service_rest_request(
+                config,
+                "department_evidence",
+                query=self.department_evidence_query(config, application_id=application_id),
+            ) or []
+            evidence = [
+                self.format_department_evidence(row, allow_delete=row.get("uploaded_by") == config["actor"].get("id"))
+                for row in rows
+            ]
+            self.send_json({"evidence": evidence})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load department evidence.")
+
+    def create_department_evidence(self, application_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+        try:
+            if not self.get_department_assignments(config, application_id=application_id):
+                self.send_json({"error": "Application not found for this department."}, status=404)
+                return
+
+            fields, files = self.parse_multipart_form()
+            upload = files.get("file") or files.get("evidence")
+            if not upload or not upload.get("content"):
+                self.send_json({"error": "Evidence file is required."}, status=400)
+                return
+            if len(upload["content"]) > 10 * 1024 * 1024:
+                self.send_json({"error": "Evidence file must be 10 MB or smaller."}, status=400)
+                return
+
+            file_name = upload["filename"] or "department-evidence"
+            safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", file_name).strip("._") or "department-evidence"
+            storage_path = f"{application_id}/{config['department_key']}/{uuid.uuid4().hex}_{safe_name}"
+            self.upload_storage_file(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "department-evidence",
+                storage_path,
+                upload["content"],
+                upload["content_type"],
+            )
+
+            record = {
+                "application_id": application_id,
+                "department_id": config.get("department_id"),
+                "department_key": config["department_key"],
+                "uploaded_by": config["actor"].get("id"),
+                "file_name": file_name,
+                "file_url": storage_path,
+                "remarks": (fields.get("remarks") or "").strip(),
+            }
+            rows = self.service_rest_request(
+                config,
+                "department_evidence",
+                method="POST",
+                payload=record,
+                prefer="return=representation",
+            ) or []
+            created = rows[0] if rows else record
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "department_evidence_uploaded",
+                actor=config["actor"],
+                entity_type="department_evidence",
+                entity_id=created.get("id"),
+                details={"department": config["department_key"], "applicationId": application_id, "fileName": file_name},
+            )
+            admin_user_ids = self.get_bplo_notification_users(config)
+            self.create_notifications(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                [
+                    {
+                        "user_id": user_id,
+                        "application_id": application_id,
+                        "title": "Department Evidence Uploaded",
+                        "message": f"{config['department_name']} uploaded evidence for an assigned application.",
+                        "type": "document",
+                        "source_role": config["department_name"],
+                    }
+                    for user_id in admin_user_ids
+                ],
+            )
+            self.send_json({"message": "Evidence uploaded.", "evidence": self.format_department_evidence(created, allow_delete=True)}, status=201)
+        except HTTPError as error:
+            self.department_error(error, "Unable to upload evidence.")
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to upload evidence.")
+
+    def load_department_evidence_record(self, config, evidence_id, admin=False):
+        rows = self.service_rest_request(
+            config,
+            "department_evidence",
+            query=self.department_evidence_query(config, evidence_id=evidence_id, admin=admin),
+        ) or []
+        return rows[0] if rows else None
+
+    def stream_department_evidence_file(self, evidence_id, mode):
+        config = self.ensure_department_request()
+        if not config:
+            return
+        try:
+            evidence = self.load_department_evidence_record(config, evidence_id)
+            if not evidence:
+                self.send_json({"error": "Evidence not found for this department."}, status=404)
+                return
+            file_bytes = self.download_storage_file(config["supabase_url"], config["supabase_service_key"], "department-evidence", evidence.get("file_url") or "")
+            self.send_file_bytes(
+                file_bytes,
+                evidence.get("file_name") or "department-evidence",
+                self.content_type_for_filename(evidence.get("file_name")),
+                "attachment" if mode == "download" else "inline",
+            )
+        except HTTPError as error:
+            self.department_error(error, "Unable to load evidence file.")
+        except (URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to load evidence file.")
+
+    def delete_department_evidence(self, evidence_id):
+        config = self.ensure_department_request()
+        if not config:
+            return
+        try:
+            evidence = self.load_department_evidence_record(config, evidence_id)
+            if not evidence:
+                self.send_json({"error": "Evidence not found for this department."}, status=404)
+                return
+            if evidence.get("uploaded_by") != config["actor"].get("id"):
+                self.send_json({"error": "Only the uploader can delete this evidence."}, status=403)
+                return
+            rows = self.service_rest_request(
+                config,
+                "department_evidence",
+                method="PATCH",
+                payload={"deleted_at": utc_now_iso()},
+                query=urlencode({"id": f"eq.{evidence_id}", "department_key": f"eq.{config['department_key']}"}),
+                prefer="return=representation",
+            ) or []
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "department_evidence_deleted",
+                actor=config["actor"],
+                entity_type="department_evidence",
+                entity_id=evidence_id,
+                details={"department": config["department_key"], "softDelete": True},
+            )
+            self.send_json({"message": "Evidence deleted.", "evidence": rows[0] if rows else evidence})
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to delete evidence.")
+
     def department_error(self, error, fallback):
         if isinstance(error, HTTPError):
             response_body = error.read().decode("utf-8")
@@ -349,7 +575,27 @@ class DepartmentRoutesMixin:
                 return
             assessment, item, items = self.get_department_workspace_assessment_item(config, application_id)
             inspection = self.get_department_workspace_inspection(config, application_id)
-            self.send_json({"assessment": assessment, "assessmentItem": item, "assessmentItems": items, "inspection": inspection})
+            documents = self.service_rest_request(
+                config,
+                "application_documents",
+                query=urlencode(
+                    {
+                        "select": "id,application_id,document_snapshot,file_name,file_url,upload_status,uploaded_at,created_at",
+                        "application_id": f"eq.{application_id}",
+                        "order": "created_at.asc",
+                    }
+                ),
+            ) or []
+            evidence_rows = self.service_rest_request(
+                config,
+                "department_evidence",
+                query=self.department_evidence_query(config, application_id=application_id),
+            ) or []
+            evidence = [
+                self.format_department_evidence(row, allow_delete=row.get("uploaded_by") == config["actor"].get("id"))
+                for row in evidence_rows
+            ]
+            self.send_json({"assessment": assessment, "assessmentItem": item, "assessmentItems": items, "inspection": inspection, "documents": documents, "evidence": evidence})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to load saved department form data.")
 
@@ -439,6 +685,54 @@ class DepartmentRoutesMixin:
 
     def list_department_reports(self):
         self.list_department_owned_records("department_reports", "reports")
+
+    def export_department_reports(self):
+        config = self.ensure_department_request()
+        if not config:
+            return
+        try:
+            params = self.get_query_params()
+            fmt = self.first_query_value(params, "format", "csv").lower()
+            rows = self.service_rest_request(
+                config,
+                "department_reports",
+                query=urlencode(
+                    {
+                        "select": "*",
+                        "department_key": f"eq.{config['department_key']}",
+                        "deleted_at": "is.null",
+                        "order": "report_date.desc,created_at.desc",
+                    }
+                ),
+            ) or []
+            headers = ["Report ID", "Applicant", "Business Name", "Report Type", "Report Date", "Status", "Remarks"]
+            data = [
+                [
+                    row.get("id"),
+                    row.get("applicant_name"),
+                    row.get("business_name"),
+                    row.get("report_type"),
+                    row.get("report_date"),
+                    row.get("status"),
+                    row.get("remarks"),
+                ]
+                for row in rows
+            ]
+            if fmt == "pdf":
+                self.send_text_download(
+                    self.html_report(
+                        f"{config['department_name']} Department Report",
+                        headers,
+                        data,
+                        {"Total Reports": len(data), "Department": config["department_name"]},
+                    ),
+                    "department-report.html",
+                    "text/html; charset=utf-8",
+                )
+                return
+            self.send_text_download(self.csv_report(headers, data), "department-report.csv", "text/csv; charset=utf-8")
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.department_error(error, "Unable to export department report.")
 
     def list_department_owned_records(self, table, response_key):
         config = self.ensure_department_request()

@@ -71,6 +71,109 @@ class AdminRoutesMixin:
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to preview document."}, status=500)
 
+    def stream_application_document_file(self, document_id, mode):
+        config = self.ensure_authenticated_request()
+        if not config:
+            return
+        supabase_url, service_key, actor = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "application_documents",
+                {
+                    "select": "id,application_id,file_url,file_name,upload_status,applications(id,applicant_id)",
+                    "id": f"eq.{document_id}",
+                    "limit": 1,
+                },
+            ) or []
+            if not rows:
+                self.send_json({"error": "Document not found."}, status=404)
+                return
+            document = rows[0]
+            application = document.get("applications") or {}
+            profile = self.get_profile_by_auth_user_id(supabase_url, service_key, actor.get("id")) or {}
+            role = normalize_role(profile.get("role") or (actor.get("app_metadata") or {}).get("role"))
+            application_id = document.get("application_id")
+            allowed = role in {"super_admin", "bplo_admin"}
+            if role == "applicant":
+                allowed = application.get("applicant_id") == actor.get("id")
+            elif role == "department_office":
+                department = self.load_department_by_id(supabase_url, service_key, profile.get("department_id"))
+                department_key = profile.get("department_key") or department_key_from_name((department or {}).get("name") or profile.get("department_name"))
+                allowed = bool(department_key and self.supabase_rest_request(
+                    supabase_url,
+                    service_key,
+                    "application_department_reviews",
+                    {
+                        "select": "id",
+                        "application_id": f"eq.{application_id}",
+                        "department_key": f"eq.{department_key}",
+                        "limit": 1,
+                    },
+                ))
+            elif role == "treasury":
+                allowed = bool(self.supabase_rest_request(
+                    supabase_url,
+                    service_key,
+                    "treasury_payment_queue",
+                    {"select": "id", "application_id": f"eq.{application_id}", "limit": 1},
+                ))
+
+            if not allowed:
+                self.send_json({"error": "You are not allowed to access this document."}, status=403)
+                return
+            file_path = document.get("file_url") or ""
+            if not file_path:
+                self.send_json({"error": "No file is attached to this document."}, status=404)
+                return
+            file_name = document.get("file_name") or Path(file_path).name or "application-document"
+            file_bytes = self.download_storage_file(supabase_url, service_key, "application-documents", file_path)
+            self.send_file_bytes(
+                file_bytes,
+                file_name,
+                self.content_type_for_filename(file_name),
+                "attachment" if mode == "download" else "inline",
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load document.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load document."}, status=500)
+
+    def stream_admin_department_evidence_file(self, evidence_id, mode):
+        config = self.ensure_admin_request("department evidence access")
+        if not config:
+            return
+        supabase_url, service_key = config
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "department_evidence",
+                {
+                    "select": "*",
+                    "id": f"eq.{evidence_id}",
+                    "deleted_at": "is.null",
+                    "limit": 1,
+                },
+            ) or []
+            if not rows:
+                self.send_json({"error": "Evidence not found."}, status=404)
+                return
+            evidence = rows[0]
+            file_name = evidence.get("file_name") or Path(evidence.get("file_url") or "").name or "department-evidence"
+            file_bytes = self.download_storage_file(supabase_url, service_key, "department-evidence", evidence.get("file_url") or "")
+            self.send_file_bytes(
+                file_bytes,
+                file_name,
+                self.content_type_for_filename(file_name),
+                "attachment" if mode == "download" else "inline",
+            )
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load evidence.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load evidence."}, status=500)
+
     def create_admin_user(self):
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
         supabase_client_key = (
@@ -1156,6 +1259,111 @@ class AdminRoutesMixin:
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to load applications."}, status=500)
 
+    def export_admin_reports(self):
+        config = self.admin_config_with_actor("report export")
+        if not config:
+            return
+        try:
+            params = self.get_query_params()
+            fmt = self.first_query_value(params, "format", "csv").lower()
+            report_type = self.first_query_value(params, "type", "applications").lower()
+            title = "BPLO Applications Report"
+            headers = ["Application ID", "Business Name", "Owner Name", "Permit Type", "Status", "Payment Status", "Date Submitted", "Date Finalized"]
+            data = []
+
+            if report_type in {"payments", "payment"}:
+                title = "BPLO Payment Report"
+                headers = ["Application ID", "Business Name", "Owner Name", "Amount Paid", "Payment Status", "OR Number", "Date Paid"]
+                rows = self.service_rest_request(
+                    config,
+                    "payments",
+                    query=urlencode({"select": "*,applications(id,business_info)", "order": "paid_at.desc", "limit": "1000"}),
+                ) or []
+                data = [
+                    [
+                        row.get("application_id"),
+                        self.app_business_name((row.get("applications") or {}).get("business_info") or {}),
+                        self.app_owner_name((row.get("applications") or {}).get("business_info") or {}),
+                        self.money(row.get("amount_paid")),
+                        row.get("payment_status"),
+                        row.get("official_receipt_number"),
+                        row.get("paid_at"),
+                    ]
+                    for row in rows
+                ]
+            elif report_type in {"assessment", "assessments"}:
+                title = "BPLO Assessment Summary Report"
+                headers = ["Application ID", "Assessment No.", "Status", "Subtotal", "Penalty", "Discount", "Grand Total"]
+                rows = self.service_rest_request(
+                    config,
+                    "assessments",
+                    query=urlencode({"select": "*", "order": "created_at.desc", "limit": "1000"}),
+                ) or []
+                data = [
+                    [
+                        row.get("application_id"),
+                        row.get("assessment_number"),
+                        row.get("status"),
+                        self.money(row.get("subtotal")),
+                        self.money(row.get("penalty_total")),
+                        self.money(row.get("discount_total")),
+                        self.money(row.get("grand_total")),
+                    ]
+                    for row in rows
+                ]
+            elif report_type in {"permits", "permit-release", "permit_release"}:
+                title = "BPLO Permit Release Report"
+                headers = ["Application ID", "Permit Number", "Business Name", "Owner Name", "Status", "Issue Date", "Release Date"]
+                rows = self.service_rest_request(
+                    config,
+                    "business_permits",
+                    query=urlencode({"select": "*", "order": "created_at.desc", "limit": "1000"}),
+                ) or []
+                data = [
+                    [
+                        row.get("application_id"),
+                        row.get("permit_number"),
+                        row.get("business_name"),
+                        row.get("owner_name"),
+                        row.get("status"),
+                        row.get("issue_date"),
+                        row.get("released_at"),
+                    ]
+                    for row in rows
+                ]
+            else:
+                rows = self.service_rest_request(
+                    config,
+                    "applications",
+                    query=urlencode({"select": "id,status,payment_status,business_info,permit_snapshot,submitted_at,finalized_at,created_at", "order": "created_at.desc", "limit": "1000"}),
+                ) or []
+                data = [
+                    [
+                        row.get("id"),
+                        self.app_business_name(row.get("business_info") or {}),
+                        self.app_owner_name(row.get("business_info") or {}),
+                        (row.get("permit_snapshot") or {}).get("permitName") or (row.get("permit_snapshot") or {}).get("permit_name") or "Business Permit",
+                        row.get("status"),
+                        row.get("payment_status"),
+                        row.get("submitted_at") or row.get("created_at"),
+                        row.get("finalized_at"),
+                    ]
+                    for row in rows
+                ]
+
+            status_counts = {}
+            status_index = headers.index("Status") if "Status" in headers else -1
+            if status_index >= 0:
+                for row in data:
+                    status_counts[row[status_index] or "-"] = status_counts.get(row[status_index] or "-", 0) + 1
+            summary = {"Total Records": len(data), **status_counts}
+            if fmt == "pdf":
+                self.send_text_download(self.html_report(title, headers, data, summary), f"{report_type}-report.html", "text/html; charset=utf-8")
+                return
+            self.send_text_download(self.csv_report(headers, data), f"{report_type}-report.csv", "text/csv; charset=utf-8")
+        except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to export report."}, status=500)
+
     def admin_config_with_actor(self, action_label):
         config = self.ensure_admin_request(action_label)
         if not config:
@@ -1264,6 +1472,20 @@ class AdminRoutesMixin:
             "business_permits",
             {"select": "*", "application_id": f"eq.{application_id}", "limit": 1},
         ) or []
+        try:
+            evidence_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "department_evidence",
+                {
+                    "select": "*",
+                    "application_id": f"eq.{application_id}",
+                    "deleted_at": "is.null",
+                    "order": "created_at.desc",
+                },
+            ) or []
+        except HTTPError:
+            evidence_rows = []
         profile = self.get_profile_by_auth_user_id(supabase_url, service_key, application.get("applicant_id")) or {}
         classification = None
         if application.get("business_classification_id"):
@@ -1292,6 +1514,7 @@ class AdminRoutesMixin:
             "payments": payment_rows,
             "receipts": receipt_rows,
             "businessPermit": permit_rows[0] if permit_rows else None,
+            "departmentEvidence": evidence_rows,
         }
 
     def get_admin_application_review(self, application_id):
@@ -1369,6 +1592,19 @@ class AdminRoutesMixin:
             "documents": bundle.get("documents") or [],
             "documentReviews": bundle.get("documentReviews") or [],
             "departmentReviews": bundle.get("departmentReviews") or [],
+            "departmentEvidence": [
+                {
+                    "id": evidence.get("id"),
+                    "departmentKey": evidence.get("department_key") or "",
+                    "fileName": evidence.get("file_name") or "Department evidence",
+                    "remarks": evidence.get("remarks") or "",
+                    "uploadedByName": (evidence.get("profiles") or {}).get("full_name") or (evidence.get("profiles") or {}).get("email") or evidence.get("uploaded_by") or "Department staff",
+                    "createdAt": evidence.get("created_at") or "",
+                    "viewUrl": f"/admin/department-evidence/{evidence.get('id')}/view",
+                    "downloadUrl": f"/admin/department-evidence/{evidence.get('id')}/download",
+                }
+                for evidence in (bundle.get("departmentEvidence") or [])
+            ],
             "assessment": assessment,
             "assessmentItems": items,
             "departmentTotals": department_totals,

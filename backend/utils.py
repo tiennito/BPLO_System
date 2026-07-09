@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from urllib.parse import quote
 import json
 import os
 import re
@@ -118,6 +119,16 @@ class CoreHandlerMixin:
     def do_GET(self):
         request_path = urlsplit(self.path).path
 
+        evidence_file_match = re.fullmatch(r"/department/evidence/([^/]+)/(view|download)", request_path)
+        if evidence_file_match:
+            self.stream_department_evidence_file(evidence_file_match.group(1), evidence_file_match.group(2))
+            return
+
+        document_file_match = re.fullmatch(r"/attachments/application-documents/([^/]+)/(view|download)", request_path)
+        if document_file_match:
+            self.stream_application_document_file(document_file_match.group(1), document_file_match.group(2))
+            return
+
         if request_path == "/department/api/me":
             self.get_department_profile()
             return
@@ -129,6 +140,11 @@ class CoreHandlerMixin:
         workspace_match = re.fullmatch(r"/department/api/applications/([^/]+)/workspace", request_path)
         if workspace_match:
             self.get_department_application_workspace(workspace_match.group(1))
+            return
+
+        evidence_match = re.fullmatch(r"/department/api/applications/([^/]+)/evidence", request_path)
+        if evidence_match:
+            self.list_department_evidence(evidence_match.group(1))
             return
 
         if request_path.startswith("/department/api/applications/"):
@@ -149,6 +165,10 @@ class CoreHandlerMixin:
             self.list_department_reports()
             return
 
+        if request_path == "/department/api/reports/export":
+            self.export_department_reports()
+            return
+
         if request_path == "/department/api/settings":
             self.get_department_settings()
             return
@@ -163,6 +183,10 @@ class CoreHandlerMixin:
 
         if request_path == "/treasury/api/payment-queue":
             self.list_treasury_payment_queue()
+            return
+
+        if request_path == "/treasury/api/reports/export":
+            self.export_treasury_reports()
             return
 
         if request_path == "/api/me/profile":
@@ -203,6 +227,15 @@ class CoreHandlerMixin:
             if len(parts) == 4:
                 self.preview_admin_application_document(parts[2])
                 return
+
+        admin_evidence_file_match = re.fullmatch(r"/admin/department-evidence/([^/]+)/(view|download)", request_path)
+        if admin_evidence_file_match:
+            self.stream_admin_department_evidence_file(admin_evidence_file_match.group(1), admin_evidence_file_match.group(2))
+            return
+
+        if request_path == "/admin/api/reports/export":
+            self.export_admin_reports()
+            return
 
         if request_path == "/admin/api/business-classifications":
             self.list_admin_business_classifications()
@@ -264,6 +297,11 @@ class CoreHandlerMixin:
 
         if request_path == "/department/api/requirements":
             self.create_department_requirement()
+            return
+
+        evidence_upload_match = re.fullmatch(r"/department/api/applications/([^/]+)/evidence", request_path)
+        if evidence_upload_match:
+            self.create_department_evidence(evidence_upload_match.group(1))
             return
 
         if request_path == "/department/api/inspections":
@@ -466,6 +504,11 @@ class CoreHandlerMixin:
             self.soft_delete_department_record("department_requirement_checklists", record_id, "requirement_deleted")
             return
 
+        if request_path.startswith("/department/api/evidence/"):
+            evidence_id = request_path.rsplit("/", 1)[-1]
+            self.delete_department_evidence(evidence_id)
+            return
+
         if request_path.startswith("/department/api/inspections/"):
             record_id = request_path.rsplit("/", 1)[-1]
             self.soft_delete_department_record("department_inspections", record_id, "inspection_deleted")
@@ -528,6 +571,25 @@ class CoreHandlerMixin:
         self.end_headers()
         self.wfile.write(body)
 
+    def send_file_bytes(self, file_bytes, file_name, content_type, disposition="inline"):
+        disposition_name = (file_name or "download").replace('"', "")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(file_bytes)))
+        self.send_header("Content-Disposition", f'{disposition}; filename="{disposition_name}"')
+        self.end_headers()
+        self.wfile.write(file_bytes)
+
+    def send_text_download(self, text, file_name, content_type):
+        body = (text or "").encode("utf-8-sig")
+        disposition_name = (file_name or "report.txt").replace('"', "")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{disposition_name}"')
+        self.end_headers()
+        self.wfile.write(body)
+
     def content_type_for_filename(self, filename):
         extension = Path(filename or "").suffix.lower()
         return {
@@ -558,6 +620,58 @@ class CoreHandlerMixin:
     def first_query_value(self, params, key, default=""):
         values = params.get(key) or []
         return (values[0] if values else default) or default
+
+    def csv_report(self, headers, rows):
+        def escape_cell(value):
+            text = "" if value is None else str(value)
+            if any(character in text for character in [",", '"', "\n", "\r"]):
+                return '"' + text.replace('"', '""') + '"'
+            return text
+
+        lines = [",".join(escape_cell(header) for header in headers)]
+        for row in rows:
+            lines.append(",".join(escape_cell(value) for value in row))
+        return "\r\n".join(lines) + "\r\n"
+
+    def html_report(self, title, headers, rows, summary=None):
+        def esc(value):
+            return (
+                str(value if value is not None else "")
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+            )
+
+        summary_html = ""
+        if summary:
+            summary_html = "<dl>" + "".join(f"<div><dt>{esc(key)}</dt><dd>{esc(value)}</dd></div>" for key, value in summary.items()) + "</dl>"
+        head = "".join(f"<th>{esc(header)}</th>" for header in headers)
+        body = "".join("<tr>" + "".join(f"<td>{esc(value)}</td>" for value in row) + "</tr>" for row in rows)
+        return f"""<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"UTF-8\" />
+    <title>{esc(title)}</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; margin: 24px; color: #101828; }}
+      h1 {{ margin-bottom: 4px; }}
+      .generated {{ color: #667085; margin-bottom: 18px; }}
+      table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+      th, td {{ border: 1px solid #d0d5dd; padding: 8px; text-align: left; vertical-align: top; }}
+      th {{ background: #f2f4f7; }}
+      dl {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }}
+      dt {{ color: #667085; font-size: 11px; text-transform: uppercase; }}
+      dd {{ margin: 4px 0 0; font-weight: 700; }}
+    </style>
+  </head>
+  <body>
+    <h1>{esc(title)}</h1>
+    <p class=\"generated\">Generated {esc(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))}</p>
+    {summary_html}
+    <table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
+  </body>
+</html>"""
 
     def safe_float(self, value, default=0):
         try:

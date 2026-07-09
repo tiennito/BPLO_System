@@ -63,12 +63,13 @@ async function apiFetch(path, options = {}) {
   if (!session?.access_token) {
     throw new Error("Please log in as a department office user.");
   }
+  const isFormData = options.body instanceof FormData;
 
   const response = await fetch(path, {
     ...options,
     headers: {
       "Authorization": `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {}),
     },
   });
@@ -77,6 +78,32 @@ async function apiFetch(path, options = {}) {
     throw new Error(result.error || "Request failed.");
   }
   return result;
+}
+
+async function openAuthenticatedFile(path, fileName, mode = "view") {
+  const response = await fetch(path, {
+    headers: { "Authorization": `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to load file.");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const url = URL.createObjectURL(blob);
+  if (mode === "download") {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = match?.[1] || fileName || "download";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function requireDepartmentSession() {
@@ -431,6 +458,69 @@ function renderInspectionProofFiles(files = []) {
     .join("");
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function renderWorkspaceDocuments(documents = []) {
+  const count = document.querySelector("[data-uploaded-document-count]");
+  const list = document.querySelector("[data-uploaded-document-list]");
+  if (count) {
+    count.textContent = `${documents.length} file${documents.length === 1 ? "" : "s"}`;
+  }
+  if (!list) {
+    return;
+  }
+  if (!documents.length) {
+    list.innerHTML = '<div class="record-item">No applicant documents uploaded yet.</div>';
+    return;
+  }
+  list.innerHTML = documents.map((document) => {
+    const snapshot = document.document_snapshot || {};
+    const name = document.file_name || snapshot.documentName || snapshot.document_name || "Uploaded document";
+    const viewUrl = `/attachments/application-documents/${encodeURIComponent(document.id)}/view`;
+    const downloadUrl = `/attachments/application-documents/${encodeURIComponent(document.id)}/download`;
+    return `
+      <div class="record-item document-record">
+        <strong>${escapeHtml(name)}</strong>
+        <span>${statusPill(document.upload_status || "Uploaded")}</span>
+        <small>${escapeHtml(formatDateTime(document.uploaded_at || document.created_at))}</small>
+        <div class="app-actions">
+          <button class="btn" type="button" data-view-file="${viewUrl}" data-file-name="${escapeHtml(name)}">View</button>
+          <button class="btn btn-blue" type="button" data-download-file="${downloadUrl}" data-file-name="${escapeHtml(name)}">Download</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderEvidenceList(evidence = []) {
+  const list = document.querySelector("[data-evidence-list]");
+  if (!list) {
+    return;
+  }
+  if (!evidence.length) {
+    list.innerHTML = '<div class="record-item">No department evidence uploaded yet.</div>';
+    return;
+  }
+  list.innerHTML = evidence.map((item) => `
+    <div class="record-item evidence-record">
+      <strong>${escapeHtml(item.fileName || "Evidence attachment")}</strong>
+      <span>${escapeHtml(item.remarks || "No remarks")}</span>
+      <small>Uploaded by ${escapeHtml(item.uploadedByName || "Department staff")} on ${escapeHtml(formatDateTime(item.createdAt))}</small>
+      <div class="app-actions">
+        <button class="btn" type="button" data-view-file="${escapeHtml(item.viewUrl)}" data-file-name="${escapeHtml(item.fileName)}">View</button>
+        <button class="btn btn-blue" type="button" data-download-file="${escapeHtml(item.downloadUrl)}" data-file-name="${escapeHtml(item.fileName)}">Download</button>
+        ${item.allowDelete ? `<button class="btn btn-danger" type="button" data-delete-evidence="${escapeHtml(item.id)}">Delete</button>` : ""}
+      </div>
+    </div>
+  `).join("");
+}
+
 function populateAssessmentForm(items = [], item = null) {
   const form = document.querySelector("[data-assessment-form]");
   if (!form) {
@@ -467,6 +557,8 @@ async function loadSelectedApplicationWorkspace(applicationId = selectedApplicat
   if (applicationId === selectedApplicationId) {
     populateAssessmentForm(result.assessmentItems, result.assessmentItem);
     populateInspectionForm(result.inspection);
+    renderWorkspaceDocuments(result.documents || []);
+    renderEvidenceList(result.evidence || []);
   }
   return result;
 }
@@ -1093,8 +1185,29 @@ function bindReportsPage() {
   document.querySelector("[data-report-search]")?.addEventListener("input", applyReportFilters);
   document.querySelector("[data-report-status-filter]")?.addEventListener("change", applyReportFilters);
   document.querySelector("[data-report-type-filter]")?.addEventListener("change", applyReportFilters);
-  document.querySelectorAll("[data-export-placeholder]").forEach((button) => {
-    button.addEventListener("click", () => setStatus("Export design is ready. File export generation can be connected next."));
+  document.querySelectorAll("[data-department-export]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const format = button.dataset.departmentExport === "pdf" ? "pdf" : "csv";
+      setStatus("Preparing report export...");
+      const activeSession = session;
+      const response = await fetch(`/department/api/reports/export?format=${encodeURIComponent(format)}`, {
+        headers: { "Authorization": `Bearer ${activeSession.access_token}` },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Unable to export report.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = format === "pdf" ? "department-report.html" : "department-report.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Report export downloaded.");
+    });
   });
 
   form?.addEventListener("submit", async (event) => {
@@ -1423,12 +1536,7 @@ function bindApplicationsWorkspace() {
     }
   });
 
-  document.querySelectorAll("[data-upload-placeholder]").forEach((button) => {
-    button.addEventListener("click", () => {
-      setStatus("Upload UI is ready. Storage upload endpoint is not configured yet.");
-    });
-  });
-
+  bindEvidenceModal();
   bindDocumentRequestModal();
 }
 
@@ -1445,6 +1553,92 @@ function setDocumentRequestModalOpen(isOpen) {
       modal.querySelector("select, input, textarea, button")?.focus();
     }, 0);
   }
+}
+
+function setEvidenceModalOpen(isOpen) {
+  const modal = document.querySelector("[data-evidence-modal]");
+  if (!modal) {
+    return;
+  }
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("input, textarea, button")?.focus();
+  }
+}
+
+function bindEvidenceModal() {
+  const modal = document.querySelector("[data-evidence-modal]");
+  const form = document.querySelector("[data-evidence-form]");
+  if (!modal || !form) {
+    return;
+  }
+
+  document.querySelectorAll("[data-open-evidence-upload]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const application = getSelectedApplication();
+      if (!application) {
+        setStatus("Select an application before uploading evidence.", true);
+        return;
+      }
+      form.reset();
+      document.querySelector("[data-evidence-application-label]")?.replaceChildren(
+        document.createTextNode(application.referenceNumber || application.businessName || "Selected application")
+      );
+      setEvidenceModalOpen(true);
+    });
+  });
+
+  modal.querySelectorAll("[data-close-evidence-modal]").forEach((button) => {
+    button.addEventListener("click", () => setEvidenceModalOpen(false));
+  });
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      setEvidenceModalOpen(false);
+    }
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const application = getSelectedApplication();
+    if (!application) {
+      setStatus("Select an application before uploading evidence.", true);
+      return;
+    }
+    const file = form.elements.file?.files?.[0];
+    if (!file) {
+      setStatus("Evidence file is required.", true);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setStatus("Evidence file must be 10 MB or smaller.", true);
+      return;
+    }
+    const submitButton = form.querySelector('[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Uploading...";
+    }
+    try {
+      const body = new FormData(form);
+      setStatus("Uploading evidence...");
+      await apiFetch(`/department/api/applications/${encodeURIComponent(application.applicationId)}/evidence`, {
+        method: "POST",
+        body,
+      });
+      setEvidenceModalOpen(false);
+      await loadSelectedApplicationWorkspace(application.applicationId);
+      setStatus("Evidence uploaded.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to upload evidence.", true);
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Upload Evidence";
+      }
+    }
+  });
 }
 
 function bindDocumentRequestModal() {
@@ -1553,6 +1747,18 @@ function bindTableActions() {
       return;
     }
 
+    const viewFilePath = target.dataset.viewFile;
+    if (viewFilePath) {
+      await openAuthenticatedFile(viewFilePath, target.dataset.fileName || "document", "view");
+      return;
+    }
+
+    const downloadFilePath = target.dataset.downloadFile;
+    if (downloadFilePath) {
+      await openAuthenticatedFile(downloadFilePath, target.dataset.fileName || "document", "download");
+      return;
+    }
+
     const requirementId = target.dataset.editRequirement;
     if (requirementId) {
       const recordsNode = document.querySelector("[data-requirements-list]") || document.querySelector("[data-requirements-table]");
@@ -1618,6 +1824,16 @@ function bindTableActions() {
         await apiFetch(`${path}${encodeURIComponent(id)}`, { method: "DELETE" });
         await reload();
       }
+    }
+
+    const evidenceId = target.dataset.deleteEvidence;
+    if (evidenceId) {
+      if (!window.confirm("Delete this evidence attachment?")) {
+        return;
+      }
+      await apiFetch(`/department/api/evidence/${encodeURIComponent(evidenceId)}`, { method: "DELETE" });
+      await loadSelectedApplicationWorkspace(selectedApplicationId);
+      setStatus("Evidence deleted.");
     }
   });
 }
