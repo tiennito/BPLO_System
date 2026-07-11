@@ -853,6 +853,65 @@ button:not(:disabled):not([disabled]):hover {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
 }
 
+.file-preview-modal {
+  width: min(96vw, 1120px);
+  height: min(92vh, 760px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.file-preview-body {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.file-preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.file-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #d7dde8;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.file-preview-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 420px;
+  padding: 28px;
+  color: #475467;
+  text-align: center;
+}
+
+.file-preview-empty svg {
+  width: 42px;
+  height: 42px;
+  color: #2563eb;
+}
+
+.file-preview-empty strong {
+  color: #111827;
+}
+
+.file-preview-empty p {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .completion-modal-body {
   display: grid;
   justify-items: center;

@@ -163,8 +163,8 @@ function soaStatus(record) {
 }
 
 function paymentStatus(record) {
-  if (record.status === "Paid") return "Paid";
-  if (record.currentStep === "Payment" || record.status === "Pending") return "Pending";
+  if (["Paid", "Accepted"].includes(record.status) || Boolean(record.orNo)) return "Paid";
+  if (["Payment", "Payment Queue"].includes(record.currentStep) || ["Pending", "Ready"].includes(record.status)) return "Pending";
   return "Not Paid";
 }
 
@@ -243,6 +243,41 @@ function getFilteredProcessingRecords() {
   });
 }
 
+function getProcessingFocusId() {
+  if (document.body.dataset.page !== "processing") return "";
+  return new URLSearchParams(window.location.search).get("id") || "";
+}
+
+function clearProcessingFilters() {
+  const search = document.querySelector("[data-processing-search]");
+  const step = document.querySelector("[data-step-filter]");
+  const status = document.querySelector("[data-processing-status-filter]");
+  if (search) search.value = "";
+  if (step) step.value = "";
+  if (status) status.value = "";
+}
+
+function focusProcessingRecordFromUrl() {
+  const focusId = getProcessingFocusId();
+  if (!focusId) return false;
+  const targetRecord = recordCache.find((record) => record.id === focusId);
+  if (!targetRecord) {
+    setStatus("The paid transaction was not found in Treasury Processing.", true);
+    return false;
+  }
+  if (!getFilteredProcessingRecords().some((record) => record.id === focusId)) {
+    clearProcessingFilters();
+  }
+  selectedRecordId = focusId;
+  renderProcessingQueue();
+  window.setTimeout(() => {
+    const row = Array.from(document.querySelectorAll("[data-processing-row]")).find((node) => node instanceof HTMLElement && node.dataset.processingRow === focusId);
+    row?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 0);
+  setStatus(`Showing paid transaction ${targetRecord.applicationNo || targetRecord.id}.`);
+  return true;
+}
+
 function renderProcessingQueue(records = getFilteredProcessingRecords()) {
   const table = document.querySelector("[data-processing-queue]");
   if (!table) return;
@@ -252,9 +287,9 @@ function renderProcessingQueue(records = getFilteredProcessingRecords()) {
     renderSelectedTransaction(null);
     return;
   }
-  selectedRecordId = selectedRecordId || records[0].id;
+  selectedRecordId = records.some((record) => record.id === selectedRecordId) ? selectedRecordId : records[0].id;
   table.innerHTML = records.map((record) => `
-    <tr class="${record.id === selectedRecordId ? "is-selected" : ""}">
+    <tr class="${record.id === selectedRecordId ? "is-selected" : ""}" data-processing-row="${escapeHtml(record.id)}">
       <td>${escapeHtml(record.applicationNo)}</td>
       <td>${escapeHtml(record.applicant)}</td>
       <td>${escapeHtml(record.businessName)}</td>
@@ -492,8 +527,8 @@ function renderSelectedTransaction(record) {
       <div class="selected-detail"><span>SOA Status</span><strong>${escapeHtml(soaStatus(record))}</strong></div>
       <div class="selected-detail"><span>Amount Due</span><strong>${money(record.amount)}</strong></div>
       <div class="selected-detail"><span>Payment Status</span><strong>${escapeHtml(paymentStatus(record))}</strong></div>
-      <div class="selected-detail"><span>Payment Amount</span><strong>${record.status === "Paid" ? money(record.amount) : "PHP 0.00"}</strong></div>
-      <div class="selected-detail"><span>Payment Date</span><strong>${escapeHtml(record.status === "Paid" ? record.transactionDate : "-")}</strong></div>
+      <div class="selected-detail"><span>Payment Amount</span><strong>${paymentStatus(record) === "Paid" ? money(record.amount) : "PHP 0.00"}</strong></div>
+      <div class="selected-detail"><span>Payment Date</span><strong>${escapeHtml(paymentStatus(record) === "Paid" ? record.transactionDate : "-")}</strong></div>
       <div class="selected-detail"><span>Official Receipt Status</span><strong>${escapeHtml(orStatus(record))}</strong></div>
       <div class="selected-detail"><span>OR No.</span><strong>${escapeHtml(record.orNo || "-")}</strong></div>
       <div class="selected-detail wide"><button class="action-button" type="button" data-edit-record="${record.id}">View Full Details</button></div>
@@ -599,7 +634,7 @@ function renderReceiptModal(record) {
       <i data-lucide="badge-check"></i>
       <div>
         <strong>Mark as Paid</strong>
-        <p>Set this transaction to paid first, then print the Statement of Account and Official Receipt from the confirmation modal.</p>
+        <p>Set this transaction to paid and open it in Treasury Processing.</p>
       </div>
     </section>
   `;
@@ -762,6 +797,7 @@ async function loadRecords() {
   renderBars();
   window.lucide?.createIcons();
   setStatus(document.body.dataset.page === "treasury-settings" ? "Settings loaded." : document.body.dataset.page === "treasury-reports" ? "Treasury reports loaded." : document.body.dataset.page === "official-receipts" ? "Official receipts loaded." : document.body.dataset.page === "payment-records" ? "Payment records loaded." : document.body.dataset.page === "processing" ? "Treasury processing loaded." : "Treasury dashboard loaded.");
+  focusProcessingRecordFromUrl();
 }
 
 function fillForm(record) {
@@ -951,18 +987,19 @@ function bindReceiptModal() {
   document.querySelector("[data-mark-receipt-paid]")?.addEventListener("click", async (event) => {
     const record = recordCache.find((item) => item.id === receiptModalRecordId);
     const button = event.currentTarget;
-    if (!(button instanceof HTMLButtonElement)) {
+    if (!record) {
+      setStatus("Unable to find the selected receipt.", true);
       return;
     }
+    if (!(button instanceof HTMLButtonElement)) return;
     button.disabled = true;
     const originalLabel = button.textContent;
     button.textContent = "Saving...";
     try {
       const updated = await markReceiptAsPaid(record);
-      printConfirmationRecordId = updated.id;
       setReceiptModalOpen(false);
-      setPrintConfirmationModalOpen(true);
-      setStatus("Payment status updated to Paid.");
+      setStatus("Payment status updated to Paid. Redirecting to Treasury Processing...");
+      window.location.assign(`/treasury/processing?id=${encodeURIComponent(updated.id || record.id || "")}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to update the payment status.", true);
     } finally {

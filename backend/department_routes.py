@@ -575,17 +575,6 @@ class DepartmentRoutesMixin:
                 return
             assessment, item, items = self.get_department_workspace_assessment_item(config, application_id)
             inspection = self.get_department_workspace_inspection(config, application_id)
-            documents = self.service_rest_request(
-                config,
-                "application_documents",
-                query=urlencode(
-                    {
-                        "select": "id,application_id,document_snapshot,file_name,file_url,upload_status,uploaded_at,created_at",
-                        "application_id": f"eq.{application_id}",
-                        "order": "created_at.asc",
-                    }
-                ),
-            ) or []
             evidence_rows = self.service_rest_request(
                 config,
                 "department_evidence",
@@ -595,7 +584,7 @@ class DepartmentRoutesMixin:
                 self.format_department_evidence(row, allow_delete=row.get("uploaded_by") == config["actor"].get("id"))
                 for row in evidence_rows
             ]
-            self.send_json({"assessment": assessment, "assessmentItem": item, "assessmentItems": items, "inspection": inspection, "documents": documents, "evidence": evidence})
+            self.send_json({"assessment": assessment, "assessmentItem": item, "assessmentItems": items, "inspection": inspection, "evidence": evidence})
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to load saved department form data.")
 
@@ -841,6 +830,7 @@ class DepartmentRoutesMixin:
             end_time = (payload.get("endTime") or "").strip()
             location_address = (payload.get("locationAddress") or "").strip()
             proof_files = payload.get("proofFiles") if isinstance(payload.get("proofFiles"), list) else []
+            silent = payload.get("silent") is True
 
             if not application_id or not scheduled_date or not scheduled_time:
                 self.send_json({"error": "Application, date, and time are required."}, status=400)
@@ -898,24 +888,25 @@ class DepartmentRoutesMixin:
                 action = "inspection_created"
                 message = "Inspection schedule created."
             created = self.format_department_inspection_record((rows or [{}])[0])
-            self.create_service_audit_log(
-                config["supabase_url"],
-                config["supabase_service_key"],
-                action,
-                actor=config["actor"],
-                entity_type="department_inspection",
-                entity_id=created.get("id"),
-                details={"department": config["department_key"], "applicationId": application_id},
-            )
-            self.notify_application_owner(
-                config["supabase_url"],
-                config["supabase_service_key"],
-                application_id,
-                "Inspection Scheduled" if action == "inspection_created" else "Inspection Updated",
-                f"{config['department_name']} {'scheduled' if action == 'inspection_created' else 'updated'} your inspection on {scheduled_date} at {scheduled_time}.",
-                notification_type="inspection",
-                source_role=config["department_name"],
-            )
+            if not silent:
+                self.create_service_audit_log(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    action,
+                    actor=config["actor"],
+                    entity_type="department_inspection",
+                    entity_id=created.get("id"),
+                    details={"department": config["department_key"], "applicationId": application_id},
+                )
+                self.notify_application_owner(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    application_id,
+                    "Inspection Scheduled" if action == "inspection_created" else "Inspection Updated",
+                    f"{config['department_name']} {'scheduled' if action == 'inspection_created' else 'updated'} your inspection on {scheduled_date} at {scheduled_time}.",
+                    notification_type="inspection",
+                    source_role=config["department_name"],
+                )
             self.send_json({"message": message, "inspection": created}, status=200 if existing else 201)
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to create inspection schedule.")

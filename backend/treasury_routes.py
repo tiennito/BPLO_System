@@ -304,6 +304,7 @@ class TreasuryRoutesMixin:
             return
         try:
             payload = self.validate_treasury_payload(self.read_json_body())
+            application = self.find_application_by_reference(config["supabase_url"], config["supabase_service_key"], payload["application_no"])
             if payload["status"] == "Paid":
                 if not payload["or_no"]:
                     self.send_json({"error": "Official Receipt number is required before marking payment as Paid."}, status=400)
@@ -319,8 +320,14 @@ class TreasuryRoutesMixin:
                 duplicate_receipts = self.service_rest_request(
                     config,
                     "official_receipts",
-                    query=urlencode({"select": "id", "receipt_number": f"eq.{payload['or_no']}", "limit": 1}),
+                    query=urlencode({"select": "id,application_id", "receipt_number": f"eq.{payload['or_no']}", "limit": 5}),
                 ) or []
+                application_id = application.get("id") if application else None
+                duplicate_receipts = [
+                    receipt
+                    for receipt in duplicate_receipts
+                    if not application_id or receipt.get("application_id") != application_id
+                ]
                 if duplicate_records or duplicate_receipts:
                     self.send_json({"error": "This Official Receipt number is already used."}, status=400)
                     return
@@ -331,7 +338,6 @@ class TreasuryRoutesMixin:
                 self.send_json({"error": "Treasury record not found."}, status=404)
                 return
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "treasury_record_updated", actor=config["actor"], entity_type="treasury_record", entity_id=record_id, details={"applicationNo": payload["application_no"]})
-            application = self.find_application_by_reference(config["supabase_url"], config["supabase_service_key"], payload["application_no"])
             if application:
                 status = payload["status"]
                 if status == "Paid":

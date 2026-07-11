@@ -96,7 +96,6 @@ let uploadedDocumentPreviewUrls = new Map();
 let applicantNotifications = [];
 let autosaveTimer = null;
 let isRestoringDraft = false;
-let currentOcrReview = null;
 let isApplyingBusinessDefaults = false;
 const editedBusinessFields = new Set();
 const businessClassificationState = {
@@ -125,6 +124,81 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function ensureApplicationSuccessModal() {
+  let modal = document.querySelector("[data-application-success-modal]");
+  if (modal) {
+    return modal;
+  }
+
+  modal = document.createElement("section");
+  modal.className = "application-success-modal";
+  modal.dataset.applicationSuccessModal = "";
+  modal.hidden = true;
+  modal.innerHTML = `
+    <div class="application-success-modal__backdrop" data-application-success-close></div>
+    <article class="application-success-modal__card" role="dialog" aria-modal="true" aria-labelledby="application-success-title" aria-describedby="application-success-message">
+      <div class="application-success-modal__badge" aria-hidden="true">
+        <i data-lucide="check" aria-hidden="true"></i>
+      </div>
+      <h2 id="application-success-title">Application Submitted</h2>
+      <p id="application-success-message" data-application-success-message>Your application has been submitted successfully.</p>
+      <button class="application-success-modal__action" type="button" data-application-success-close>
+        <span>OK</span>
+        <i data-lucide="arrow-right" aria-hidden="true"></i>
+      </button>
+    </article>
+  `;
+  document.body.appendChild(modal);
+  window.lucide?.createIcons();
+  return modal;
+}
+
+function showApplicationSuccessModal(message = "Application submitted successfully.") {
+  const modal = ensureApplicationSuccessModal();
+  const messageNode = modal.querySelector("[data-application-success-message]");
+  const closeButton = modal.querySelector(".application-success-modal__action");
+
+  if (messageNode) {
+    messageNode.textContent = message;
+  }
+
+  modal.hidden = false;
+  document.body.classList.add("application-success-modal-open");
+  closeButton?.focus();
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const close = () => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      modal.hidden = true;
+      document.body.classList.remove("application-success-modal-open");
+      modal.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleKeydown);
+      resolve();
+    };
+
+    const handleClick = (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("[data-application-success-close]")) {
+        close();
+      }
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === "Escape" || event.key === "Enter") {
+        event.preventDefault();
+        close();
+      }
+    };
+
+    modal.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleKeydown);
+  });
 }
 
 async function getApplicantAccessToken() {
@@ -956,6 +1030,12 @@ function updateRequirementsNextState() {
   }
 }
 
+function redirectToBusinessInformationForm() {
+  const applicationId = getCurrentApplicationId();
+  const query = applicationId ? `?applicationId=${encodeURIComponent(applicationId)}` : "";
+  window.location.href = `/applicant/business-information${query}`;
+}
+
 function renderChecklistDocuments(documents) {
   if (!dynamicDocumentGrid) {
     return;
@@ -1044,12 +1124,6 @@ async function persistApplicationDocument(permitDocumentId, fileName, uploadStat
   });
 }
 
-function ocrFieldLabel(fieldName) {
-  return String(fieldName || "")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 function structuredOcrFieldsToFlatFields(structuredFields = {}) {
   const flat = {};
   const confidence = {};
@@ -1072,188 +1146,37 @@ function structuredOcrFieldsToFlatFields(structuredFields = {}) {
   return flat;
 }
 
-function ensureOcrReviewModal() {
-  let modal = document.querySelector("[data-ocr-review-modal]");
-  if (modal) {
-    return modal;
-  }
-
-  modal = document.createElement("section");
-  modal.className = "ocr-review-modal";
-  modal.dataset.ocrReviewModal = "";
-  modal.hidden = true;
-  modal.innerHTML = `
-    <div class="ocr-review-dialog" role="dialog" aria-modal="true" aria-labelledby="ocr-review-title">
-      <header>
-        <div>
-          <h2 id="ocr-review-title">Review Extracted Information</h2>
-          <p data-ocr-review-summary>Check each OCR value before using it in your application form.</p>
-        </div>
-        <button class="icon-button" type="button" data-ocr-review-close aria-label="Close OCR review">
-          <i data-lucide="x" aria-hidden="true"></i>
-        </button>
-      </header>
-      <div class="ocr-review-body">
-        <div class="ocr-preview-pane" data-ocr-preview-pane></div>
-        <div class="ocr-fields-pane">
-          <div class="ocr-warning-list" data-ocr-warning-list></div>
-          <div class="ocr-field-list" data-ocr-field-list></div>
-        </div>
-      </div>
-      <footer>
-        <button type="button" class="review-button review-button--secondary" data-ocr-reupload>Re-upload Document</button>
-        <button type="button" class="review-button review-button--primary" data-ocr-accept>Accept and Continue</button>
-      </footer>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  window.lucide?.createIcons();
-  return modal;
+function hasUsableOcrFormField(fields = {}) {
+  return Object.entries(fields || {}).some(([key, value]) =>
+    value !== undefined &&
+    value !== null &&
+    value !== "" &&
+    !key.endsWith("_confidence") &&
+    !OCR_METADATA_KEYS.has(key)
+  );
 }
 
-function renderOcrPreview(modal, review) {
-  const pane = modal.querySelector("[data-ocr-preview-pane]");
-  if (!pane) {
-    return;
+function getExtractedFieldsFromOcrPayload(payload = {}) {
+  const directFields = payload.extractedFields || payload.extracted_fields || {};
+  if (hasUsableOcrFormField(directFields)) {
+    return directFields;
   }
-  const previewUrl = uploadedDocumentPreviewUrls.get(review.permitDocumentId);
-  const fileName = review.fileName || "Uploaded document";
-  if (previewUrl && /\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
-    pane.innerHTML = `<img src="${previewUrl}" alt="${escapeHtml(fileName)} preview" />`;
-    return;
-  }
-  if (previewUrl && /\.pdf$/i.test(fileName)) {
-    pane.innerHTML = `<iframe src="${previewUrl}" title="${escapeHtml(fileName)} preview"></iframe>`;
-    return;
-  }
-  pane.innerHTML = `
-    <div class="ocr-preview-placeholder">
-      <i data-lucide="file-text" aria-hidden="true"></i>
-      <strong>${escapeHtml(fileName)}</strong>
-      <span>Preview is not available for this file type. Review the extracted values on the right.</span>
-    </div>
-  `;
-  window.lucide?.createIcons();
+  return structuredOcrFieldsToFlatFields(payload.structuredFields || {});
 }
 
-function openOcrReviewModal(review) {
-  currentOcrReview = review;
-  const modal = ensureOcrReviewModal();
-  const summary = modal.querySelector("[data-ocr-review-summary]");
-  const warningList = modal.querySelector("[data-ocr-warning-list]");
-  const fieldList = modal.querySelector("[data-ocr-field-list]");
-  const structuredFields = review.structuredFields || {};
-  const warnings = review.warnings || [];
-
-  if (summary) {
-    summary.textContent = `${review.fileName || "Document"} was detected as ${review.documentType || "Unknown Document"}.`;
-  }
-  renderOcrPreview(modal, review);
-
-  if (warningList) {
-    warningList.innerHTML = warnings.length
-      ? warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")
-      : "";
-  }
-
-  if (fieldList) {
-    const entries = Object.entries(structuredFields);
-    fieldList.innerHTML = entries.length
-      ? entries
-        .map(([fieldName, meta]) => {
-          const score = Number(meta.confidence || 0);
-          const status = meta.validation_status || (score >= 80 ? "valid" : "needs_review");
-          return `
-            <article class="ocr-field-card" data-ocr-field="${escapeHtml(fieldName)}">
-              <header>
-                <span>${escapeHtml(ocrFieldLabel(meta.application_field || fieldName))}</span>
-                <strong>${score}%</strong>
-              </header>
-              <input type="text" value="${escapeHtml(meta.corrected_value || meta.value || "")}" data-ocr-correction="${escapeHtml(fieldName)}" />
-              <dl>
-                <dt>Source</dt>
-                <dd>${escapeHtml(meta.source || review.documentType || "OCR")}</dd>
-                <dt>Status</dt>
-                <dd>${escapeHtml(status.replaceAll("_", " "))}</dd>
-              </dl>
-              ${meta.validation_issue ? `<p>${escapeHtml(meta.validation_issue)}</p>` : ""}
-            </article>
-          `;
-        })
-        .join("")
-      : `
-        <article class="ocr-field-card">
-          <p>We could not detect safe form fields from this document. Please enter the details manually or re-upload a clearer file.</p>
-        </article>
-      `;
-  }
-
-  modal.hidden = false;
-}
-
-function closeOcrReviewModal(markSkipped = false) {
-  const modal = document.querySelector("[data-ocr-review-modal]");
-  if (modal) {
-    modal.hidden = true;
-  }
-  if (markSkipped && currentOcrReview?.permitDocumentId) {
-    uploadedDocumentOcrStatus.set(currentOcrReview.permitDocumentId, "Completed");
-    const result = document.querySelector(`[data-upload-result="${CSS.escape(currentOcrReview.permitDocumentId)}"]`);
-    if (result) {
-      result.textContent = `${currentOcrReview.fileName} - OCR review skipped. Please enter details manually.`;
-      result.classList.add("is-uploaded");
-    }
-    currentOcrReview = null;
-    updateRequirementsNextState();
-  }
-}
-
-async function acceptCurrentOcrReview() {
-  if (!currentOcrReview) {
-    return;
-  }
-  const modal = ensureOcrReviewModal();
-  const corrections = {};
-  modal.querySelectorAll("[data-ocr-correction]").forEach((input) => {
-    if (input instanceof HTMLInputElement) {
-      corrections[input.dataset.ocrCorrection || ""] = input.value.trim();
-    }
-  });
-
-  let extractedFields = currentOcrReview.extractedFields || structuredOcrFieldsToFlatFields(currentOcrReview.structuredFields || {});
-  if (currentOcrReview.ocrResultId) {
-    try {
-      const payload = await applicantApi(`/applicant/api/ocr-results/${encodeURIComponent(currentOcrReview.ocrResultId)}/corrections`, {
-        method: "PATCH",
-        body: JSON.stringify({ corrections }),
-      });
-      extractedFields = payload.extractedFields || payload.extracted_fields || extractedFields;
-    } catch (error) {
-      alert(error.message || "Unable to save OCR corrections.");
-      return;
-    }
-  } else {
-    Object.entries(corrections).forEach(([fieldName, value]) => {
-      const meta = currentOcrReview.structuredFields?.[fieldName];
-      const applicationField = meta?.application_field || fieldName;
-      if (value) {
-        extractedFields[applicationField] = value;
-      }
-    });
-  }
-
+function completeUploadedDocumentOcr(permitDocumentId, fileName, payload = {}) {
+  const extractedFields = getExtractedFieldsFromOcrPayload(payload);
   writeStoredOcrFields(extractedFields);
   setSkipOcrAutoFill(false);
   applyOcrFieldsToBusinessForm(extractedFields);
-  uploadedDocumentOcrStatus.set(currentOcrReview.permitDocumentId, "Completed");
+  uploadedDocumentOcrStatus.set(permitDocumentId, "Completed");
   updateRequirementsNextState();
-  closeOcrReviewModal();
-  const result = document.querySelector(`[data-upload-result="${CSS.escape(currentOcrReview.permitDocumentId)}"]`);
+
+  const result = document.querySelector(`[data-upload-result="${CSS.escape(permitDocumentId)}"]`);
   if (result) {
-    result.textContent = `${currentOcrReview.fileName} - OCR reviewed and accepted`;
+    result.textContent = `${fileName} - OCR completed. Click Next Step to continue.`;
     result.classList.add("is-uploaded");
   }
-  currentOcrReview = null;
 }
 
 async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
@@ -1280,22 +1203,7 @@ async function runOcrForUploadedDocument(permitDocumentId, fileName, fileUrl) {
       }),
     });
 
-    if (result) {
-      result.textContent = `${fileName} - OCR completed. Please review extracted fields`;
-      result.classList.add("is-uploaded");
-    }
-
-    openOcrReviewModal({
-      permitDocumentId,
-      fileName,
-      fileUrl,
-      ocrResultId: payload.ocrResultId,
-      documentType: payload.detectedDocumentType || payload.documentType || "Unknown Document",
-      structuredFields: payload.structuredFields || {},
-      extractedFields: payload.extractedFields || payload.extracted_fields || {},
-      warnings: payload.warnings || [],
-    });
-    updateRequirementsNextState();
+    completeUploadedDocumentOcr(permitDocumentId, fileName, payload);
   } catch (error) {
     uploadedDocumentOcrStatus.set(permitDocumentId, "Failed");
     if (result) {
@@ -2519,7 +2427,7 @@ async function handleFinishApplication() {
       currentApplicationId
     );
     clearDraftBackup(currentApplicationId);
-    alert(result.message || "Application submitted successfully.");
+    await showApplicationSuccessModal(result.message || "Application submitted successfully.");
     window.location.href = "/applicant/dashboard";
   } catch (error) {
     alert(error.message || "Failed to submit application.");
@@ -2632,29 +2540,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const ocrAcceptButton = clickedElement?.closest("[data-ocr-accept]");
-  if (ocrAcceptButton instanceof HTMLElement) {
-    void acceptCurrentOcrReview();
-    return;
-  }
-
-  const ocrCloseButton = clickedElement?.closest("[data-ocr-review-close]");
-  if (ocrCloseButton instanceof HTMLElement) {
-    closeOcrReviewModal(true);
-    return;
-  }
-
-  const ocrReuploadButton = clickedElement?.closest("[data-ocr-reupload]");
-  if (ocrReuploadButton instanceof HTMLElement) {
-    const documentId = currentOcrReview?.permitDocumentId || "";
-    closeOcrReviewModal();
-    if (documentId) {
-      const input = document.querySelector(`[data-file-input="${CSS.escape(documentId)}"]`);
-      input?.click();
-    }
-    return;
-  }
-
   const uploadTrigger = clickedElement?.closest("[data-upload-trigger]");
   if (uploadTrigger instanceof HTMLElement) {
     const documentId = uploadTrigger.dataset.uploadTrigger || "";
@@ -2733,7 +2618,7 @@ businessFormShell?.addEventListener("change", (event) => {
 requirementsNextButton?.addEventListener("click", () => {
   updateRequirementsNextState();
   if (!requirementsNextButton.disabled) {
-    window.location.href = "/applicant/business-information";
+    redirectToBusinessInformationForm();
   }
 });
 

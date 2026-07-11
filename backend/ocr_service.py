@@ -142,6 +142,28 @@ class OCRServiceMixin:
         "roque",
     ]
 
+    DTI_CERTIFICATE_PROSE_WORDS = [
+        "act 3883",
+        "amended",
+        "applicable rules",
+        "business name registered",
+        "certificate",
+        "continuing compliance",
+        "department",
+        "industry",
+        "is valid from",
+        "philippines",
+        "provisions",
+        "pursuant",
+        "registered in this office",
+        "regulations",
+        "secretary",
+        "testimony",
+        "trade",
+        "unless voluntarily",
+        "valid from",
+    ]
+
     def prepare_ocr_image_variants(self, image):
         import cv2
         import numpy as np
@@ -328,6 +350,63 @@ class OCRServiceMixin:
         ]
         lower = value.lower()
         return not any(word in lower for word in bad_words)
+
+    def contains_dti_certificate_prose(self, value):
+        lowered = str(value or "").lower()
+        return any(word in lowered for word in self.DTI_CERTIFICATE_PROSE_WORDS)
+
+    def clean_registration_number(self, value):
+        value = self.clean_extracted_value(value)
+        if not value:
+            return ""
+
+        value = re.sub(r"(?i)\b(?:business\s*name|registration|certificate|dti|no|number)\b", " ", value)
+        value = re.sub(r"[^A-Za-z0-9\-]", "", value)
+        value = value.strip("-")
+        if not value:
+            return ""
+
+        match = re.search(r"[A-Za-z0-9][A-Za-z0-9\-]{3,}", value)
+        return match.group(0).upper() if match else ""
+
+    def is_valid_dti_registration_number(self, value):
+        value = self.clean_registration_number(value)
+        return bool(re.fullmatch(r"[A-Z0-9][A-Z0-9\-]{3,24}", value))
+
+    def clean_dti_name_candidate(self, value):
+        value = self.clean_extracted_value(value)
+        if not value:
+            return ""
+
+        value = re.sub(r"\([^)]*\)", " ", value)
+        value = re.sub(
+            r"(?i)\b(?:is\s+a\s+business\s+name\s+registered|is\s+valid\s+from|valid\s+from|registered\s+in\s+this\s+office)\b.*",
+            "",
+            value,
+        )
+        return self.normalize_business_name(value)
+
+    def is_valid_dti_name_candidate(self, value, allow_business_words=False):
+        value = str(value or "").strip()
+        if len(value) < 5 or len(value) > 90:
+            return False
+        if self.contains_known_label(value) or self.contains_dti_certificate_prose(value):
+            return False
+        if re.search(r"\d", value):
+            return False
+        if not re.search(r"[A-Z]", value):
+            return False
+        if not allow_business_words and re.search(r"\b(?:BUSINESS|SHOP|STORE|TRADING|ENTERPRISE|SERVICES)\b", value, re.IGNORECASE):
+            return False
+        return True
+
+    def is_valid_dti_business_name_candidate(self, value):
+        value = str(value or "").strip()
+        if self.is_bad_business_name_candidate(value):
+            return False
+        if self.contains_dti_certificate_prose(value):
+            return False
+        return True
 
     def clean_tin(self, value):
         if not value:
@@ -662,10 +741,62 @@ class OCRServiceMixin:
         owner_name = ""
 
         for index, line in enumerate(lines):
+            if not re.search(r"certif(?:y|ies)\s+that", line, re.IGNORECASE):
+                continue
+
+            for next_line in lines[index + 1 : index + 8]:
+                candidate = self.clean_dti_name_candidate(next_line)
+                if (
+                    candidate
+                    and candidate != owner_name
+                    and self.is_valid_dti_business_name_candidate(candidate)
+                    and not re.search(r"^\([^)]+\)$", next_line.strip())
+                    and not re.search(r"\b(?:NATIONAL|REGION|CALABARZON|LAGUNA|PROVINCE|CITY|MUNICIPALITY|BARANGAY|BRGY)\b", candidate, re.IGNORECASE)
+                ):
+                    business_name_candidates.append((candidate, "high"))
+                    break
+
+        sentence_match = re.search(
+            r"certif(?:y|ies)\s+that\s+(.+?)(?:\s+\([^)]+\))?\s+is\s+a\s+business\s+name\s+registered\b",
+            flattened_text,
+            re.IGNORECASE,
+        )
+        if sentence_match:
+            candidate = self.clean_dti_name_candidate(sentence_match.group(1))
+            if candidate and self.is_valid_dti_business_name_candidate(candidate):
+                business_name_candidates.append((candidate, "high"))
+
+        for index, line in enumerate(lines):
+            if not re.search(r"\bis\s+valid\s+from\b", line, re.IGNORECASE):
+                continue
+
+            for previous_line in reversed(lines[max(0, index - 5) : index]):
+                candidate_owner = self.clean_dti_name_candidate(previous_line)
+                if (
+                    candidate_owner
+                    and candidate_owner not in {candidate for candidate, _ in business_name_candidates}
+                    and self.is_valid_dti_name_candidate(candidate_owner)
+                ):
+                    owner_name = candidate_owner
+                    break
+            if owner_name:
+                break
+
+        owner_validity_match = re.search(
+            r"\b([A-Z][A-Z .'\-]{4,90}?)\s+is\s+valid\s+from\b",
+            flattened_text,
+            re.IGNORECASE,
+        )
+        if owner_validity_match:
+            matched_owner = self.clean_dti_name_candidate(owner_validity_match.group(1))
+            if self.is_valid_dti_name_candidate(matched_owner):
+                owner_name = matched_owner
+
+        for index, line in enumerate(lines):
             if re.search(r"certificate\s+issued\s+to|issued\s+to", line, re.IGNORECASE):
                 for next_line in lines[index + 1 : index + 4]:
-                    candidate_owner = self.normalize_business_name(next_line)
-                    if candidate_owner and len(candidate_owner) <= 80 and not self.is_bad_business_name_candidate(candidate_owner):
+                    candidate_owner = self.clean_dti_name_candidate(next_line)
+                    if candidate_owner and self.is_valid_dti_name_candidate(candidate_owner):
                         owner_name = candidate_owner
                         break
                 break
@@ -676,8 +807,8 @@ class OCRServiceMixin:
             re.IGNORECASE,
         )
         if owner_match:
-            matched_owner = self.normalize_business_name(owner_match.group(1))
-            if matched_owner and len(matched_owner) <= 80:
+            matched_owner = self.clean_dti_name_candidate(owner_match.group(1))
+            if self.is_valid_dti_name_candidate(matched_owner):
                 owner_name = matched_owner
 
         if owner_name:
@@ -685,38 +816,11 @@ class OCRServiceMixin:
             fields.update(self.split_owner_name(owner_name))
 
         for line in lines:
-            match = re.search(r"business\s*name\s*[:\-]?\s*(.+)", line, re.IGNORECASE)
+            match = re.search(r"^\s*business\s*name\s*[:\-]\s*(.+)", line, re.IGNORECASE)
             if match:
-                candidate = self.normalize_business_name(match.group(1))
-                if candidate != owner_name and not self.is_bad_business_name_candidate(candidate):
+                candidate = self.clean_dti_name_candidate(match.group(1))
+                if candidate != owner_name and self.is_valid_dti_business_name_candidate(candidate):
                     business_name_candidates.append((candidate, "high"))
-
-        for index, line in enumerate(lines):
-            if not re.search(r"certif(?:y|ies)\s+that", line, re.IGNORECASE):
-                continue
-
-            for next_line in lines[index + 1 : index + 6]:
-                candidate = self.normalize_business_name(next_line)
-                if not candidate or candidate == owner_name or self.is_bad_business_name_candidate(candidate):
-                    continue
-                if re.search(r"^\([^)]+\)$", candidate):
-                    continue
-                if re.search(r"\b(REGION|CALABARZON|LAGUNA|PROVINCE|CITY|MUNICIPALITY|BARANGAY|BRGY)\b", candidate, re.IGNORECASE):
-                    continue
-                business_name_candidates.append((candidate, "high"))
-                break
-
-        sentence_match = re.search(
-            r"certif(?:y|ies)\s+that\s+(.+?)(?:\s+\([^)]+\))?\s+(?:is\s+a\s+business\s+name\s+registered|is|has been)\s+(?:registered|granted)?",
-            flattened_text,
-            re.IGNORECASE,
-        )
-        if sentence_match:
-            candidate = self.normalize_business_name(sentence_match.group(1))
-            candidate = re.sub(r"\s+\([^)]+\).*$", "", candidate).strip()
-            candidate = re.sub(r"\b(REGION|CALABARZON|LAGUNA|PROVINCE|CITY|MUNICIPALITY|BARANGAY|BRGY)\b.*", "", candidate, flags=re.IGNORECASE).strip()
-            if candidate != owner_name and not self.is_bad_business_name_candidate(candidate):
-                business_name_candidates.append((candidate, "high"))
 
         before_owner_section = True
         for line in lines:
@@ -725,8 +829,8 @@ class OCRServiceMixin:
             if not before_owner_section:
                 continue
 
-            candidate = self.normalize_business_name(line)
-            if candidate == owner_name or self.is_bad_business_name_candidate(candidate):
+            candidate = self.clean_dti_name_candidate(line)
+            if candidate == owner_name or not self.is_valid_dti_business_name_candidate(candidate):
                 continue
 
             uppercase_ratio = sum(1 for character in candidate if character.isupper()) / max(len(candidate), 1)
@@ -742,11 +846,12 @@ class OCRServiceMixin:
 
         registration_number = self.find_first_match(
             [
-                r"(?:certificate\s+no\.?|registration\s+no\.?|business\s+name\s+no\.?|dti\s+registration\s+no\.?)\s*[:\-]?\s*([A-Z0-9\-]+)",
+                r"(?:certificate\s+no\.?|registration\s+no\.?|business\s+name\s+no\.?|dti\s+registration\s+no\.?)\s*[:\-\.]?\s*([A-Z0-9][A-Z0-9\-]*)",
             ],
             flattened_text,
         )
-        if registration_number:
+        registration_number = self.clean_registration_number(registration_number)
+        if self.is_valid_dti_registration_number(registration_number):
             fields["registration_number"] = registration_number
             fields["dti_registration_no"] = registration_number
 
@@ -893,14 +998,18 @@ class OCRServiceMixin:
         if not value:
             return "needs_review", "Value was not found.", 0
 
-        if field_name in {"business_name"} and not self.is_valid_business_name(value):
+        if field_name in {"business_name"} and (not self.is_valid_business_name(value) or self.contains_dti_certificate_prose(value)):
             return "needs_review", "Business name looks unclear or contains document labels.", -30
         if field_name in {"owner_name", "full_name", "lessor_name", "lessee_name"} and len(value.split()) < 2:
             return "needs_review", "Name appears incomplete.", -20
+        if field_name in {"owner_name", "full_name", "lessor_name", "lessee_name"} and self.contains_dti_certificate_prose(value):
+            return "needs_review", "Name includes surrounding certificate text.", -35
         if field_name in {"business_address", "address", "property_address"} and not self.is_valid_address(value):
             return "needs_review", "Address is too short or contains labels.", -25
         if field_name in {"registration_number", "permit_number", "certificate_number", "id_number"} and len(value) < 4:
             return "needs_review", "Number appears incomplete.", -25
+        if field_name == "registration_number" and not self.is_valid_dti_registration_number(value):
+            return "needs_review", "Registration number contains extra text or unreadable characters.", -30
         if "date" in field_name:
             normalized = self.normalize_ocr_date(value)
             if not normalized:
@@ -915,6 +1024,8 @@ class OCRServiceMixin:
 
     def build_structured_field(self, field_name, value, confidence, source, original_label="", validation_status=None, issue=""):
         value = self.clean_extracted_value(value) or ""
+        if field_name == "registration_number":
+            value = self.clean_registration_number(value)
         if "date" in field_name and value:
             value = self.normalize_ocr_date(value)
         validation_status, validation_issue, penalty = self.validate_structured_ocr_value(field_name, value)
@@ -945,27 +1056,42 @@ class OCRServiceMixin:
         return fields
 
     def parse_dti_certificate(self, raw_text):
-        fields = self.build_parser_result(
-            raw_text,
-            "DTI Certificate",
-            {
-                "business_name": [r"business\s*name", r"name\s+of\s+business"],
-                "owner_name": [r"owner", r"proprietor", r"registrant", r"certificate\s+issued\s+to"],
-                "business_address": [r"business\s*address", r"business\s*location", r"address"],
-                "registration_number": [r"registration\s*(?:no|number)", r"certificate\s*(?:no|number)", r"business\s*name\s*(?:no|number)"],
-                "registration_date": [r"registration\s*date", r"date\s*registered", r"issued\s*on"],
-                "expiration_date": [r"expiration\s*date", r"valid\s*until", r"expiry\s*date"],
-            },
-        )
+        fields = {}
         legacy = self.parse_dti_fields(raw_text)
+
+        business_confidence = 96 if legacy.get("business_name_confidence") == "high" else 78
+        if legacy.get("business_name"):
+            fields["business_name"] = self.build_structured_field(
+                "business_name",
+                legacy["business_name"],
+                business_confidence,
+                "DTI Certificate",
+                "certificate title section",
+            )
+
+        if legacy.get("owner_name"):
+            fields["owner_name"] = self.build_structured_field(
+                "owner_name",
+                legacy["owner_name"],
+                94,
+                "DTI Certificate",
+                "owner validity section",
+            )
+
+        if legacy.get("registration_number"):
+            fields["registration_number"] = self.build_structured_field(
+                "registration_number",
+                legacy["registration_number"],
+                96,
+                "DTI Certificate",
+                "Business Name No.",
+            )
+
         for source_key, target_key in {
-            "business_name": "business_name",
-            "owner_name": "owner_name",
             "business_address": "business_address",
-            "registration_number": "registration_number",
             "registration_date": "registration_date",
         }.items():
-            if target_key not in fields and legacy.get(source_key):
+            if legacy.get(source_key):
                 fields[target_key] = self.build_structured_field(target_key, legacy[source_key], 76, "DTI Certificate", "fallback")
         return fields
 

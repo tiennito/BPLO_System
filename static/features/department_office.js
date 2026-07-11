@@ -13,6 +13,10 @@ let inspectionCache = [];
 let reportCache = [];
 let settingsCache = null;
 let workspaceCache = {};
+let inspectionAutosaveTimer = null;
+let isPopulatingInspectionForm = false;
+
+const INSPECTION_DRAFT_PREFIX = "bplo_department_inspection_draft";
 
 function initSupabase() {
   if (!window.supabase?.createClient) {
@@ -102,8 +106,71 @@ async function openAuthenticatedFile(path, fileName, mode = "view") {
     URL.revokeObjectURL(url);
     return;
   }
-  window.open(url, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  showFilePreviewModal(url, blob.type, match?.[1] || fileName || "Preview file");
+}
+
+function setFilePreviewModalOpen(isOpen) {
+  const modal = document.querySelector("[data-file-preview-modal]");
+  if (!modal) {
+    return;
+  }
+  modal.hidden = !isOpen;
+  document.body.style.overflow = isOpen ? "hidden" : "";
+  if (isOpen) {
+    modal.querySelector("[data-close-file-preview]")?.focus();
+  }
+}
+
+function clearFilePreviewModal() {
+  const body = document.querySelector("[data-file-preview-body]");
+  if (!body) {
+    return;
+  }
+  const currentUrl = body.dataset.previewUrl || "";
+  if (currentUrl) {
+    URL.revokeObjectURL(currentUrl);
+  }
+  body.dataset.previewUrl = "";
+  body.innerHTML = "<p>Select a file to preview.</p>";
+}
+
+function showFilePreviewModal(url, mimeType = "", fileName = "Preview file") {
+  const body = document.querySelector("[data-file-preview-body]");
+  const title = document.querySelector("#file-preview-title");
+  if (!body) {
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  clearFilePreviewModal();
+  body.dataset.previewUrl = url;
+  if (title) {
+    title.innerHTML = `<i data-lucide="eye"></i> ${escapeHtml(fileName)}`;
+  }
+
+  const normalizedMime = String(mimeType || "").toLowerCase();
+  const normalizedName = String(fileName || "").toLowerCase();
+  if (normalizedMime.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(normalizedName)) {
+    body.innerHTML = `<img class="file-preview-image" src="${url}" alt="${escapeHtml(fileName)} preview" />`;
+  } else if (normalizedMime === "application/pdf" || normalizedName.endsWith(".pdf")) {
+    body.innerHTML = `<iframe class="file-preview-frame" src="${url}" title="${escapeHtml(fileName)} preview"></iframe>`;
+  } else {
+    body.innerHTML = `
+      <div class="file-preview-empty">
+        <i data-lucide="file-question"></i>
+        <strong>${escapeHtml(fileName)}</strong>
+        <p>This file type cannot be previewed here. Use Download to open it on your device.</p>
+      </div>
+    `;
+  }
+
+  setFilePreviewModalOpen(true);
+  window.lucide?.createIcons();
+}
+
+function closeFilePreviewModal() {
+  setFilePreviewModalOpen(false);
+  clearFilePreviewModal();
 }
 
 async function requireDepartmentSession() {
@@ -428,6 +495,77 @@ function normalizeTimeInput(value) {
   return value ? String(value).slice(0, 5) : "";
 }
 
+function getInspectionDraftKey(applicationId = selectedApplicationId) {
+  if (!applicationId) {
+    return "";
+  }
+  const departmentKey = currentUser?.departmentKey || "department";
+  return `${INSPECTION_DRAFT_PREFIX}:${departmentKey}:${applicationId}`;
+}
+
+function readInspectionDraft(applicationId = selectedApplicationId) {
+  const key = getInspectionDraftKey(applicationId);
+  if (!key) {
+    return null;
+  }
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function writeInspectionDraft(applicationId, payload) {
+  const key = getInspectionDraftKey(applicationId);
+  if (!key) {
+    return;
+  }
+  const draft = {
+    scheduled_date: payload.scheduledDate || "",
+    scheduled_time: payload.scheduledTime || "",
+    end_time: payload.endTime || "",
+    status: payload.status || "Draft",
+    location_address: payload.locationAddress || "",
+    remarks: payload.remarks || "",
+    saved_at: new Date().toISOString(),
+  };
+  try {
+    window.localStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // Local drafts are a convenience layer; server saves remain the source of truth.
+  }
+}
+
+function normalizeInspectionRecordForForm(inspection = {}) {
+  return {
+    scheduled_date: inspection.scheduled_date || "",
+    scheduled_time: normalizeTimeInput(inspection.scheduled_time),
+    end_time: normalizeTimeInput(inspection.end_time),
+    status: inspection.status || "Draft",
+    location_address: inspection.location_address || "",
+    remarks: inspection.remarks || "",
+    proof_files: inspection.proof_files || [],
+  };
+}
+
+function mergeInspectionWithDraft(inspection, applicationId = selectedApplicationId) {
+  const normalized = normalizeInspectionRecordForForm(inspection || {});
+  const draft = readInspectionDraft(applicationId);
+  if (!draft) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    scheduled_date: Object.prototype.hasOwnProperty.call(draft, "scheduled_date") ? draft.scheduled_date : normalized.scheduled_date,
+    scheduled_time: Object.prototype.hasOwnProperty.call(draft, "scheduled_time") ? normalizeTimeInput(draft.scheduled_time) : normalized.scheduled_time,
+    end_time: Object.prototype.hasOwnProperty.call(draft, "end_time") ? normalizeTimeInput(draft.end_time) : normalized.end_time,
+    status: draft.status || normalized.status || "Draft",
+    location_address: Object.prototype.hasOwnProperty.call(draft, "location_address") ? draft.location_address : normalized.location_address,
+    remarks: Object.prototype.hasOwnProperty.call(draft, "remarks") ? draft.remarks : normalized.remarks,
+  };
+}
+
 function getInspectionProofFiles(form) {
   const savedFiles = workspaceCache[selectedApplicationId]?.inspection?.proof_files || [];
   const files = Array.from(form?.elements.inspectionProof?.files || []);
@@ -458,44 +596,83 @@ function renderInspectionProofFiles(files = []) {
     .join("");
 }
 
+function collectInspectionPayload(form, statusOverride = "") {
+  const application = getSelectedApplication();
+  if (!application || !form) {
+    return null;
+  }
+  const formData = new FormData(form);
+  return {
+    applicationId: application.applicationId,
+    scheduledDate: formData.get("scheduledDate").toString(),
+    scheduledTime: formData.get("scheduledTime").toString(),
+    endTime: formData.get("endTime").toString(),
+    locationAddress: formData.get("locationAddress").toString().trim(),
+    status: statusOverride || formData.get("status").toString(),
+    remarks: formData.get("remarks").toString().trim(),
+    proofFiles: getInspectionProofFiles(form),
+  };
+}
+
+async function saveInspectionScheduleFromForm(form, options = {}) {
+  window.clearTimeout(inspectionAutosaveTimer);
+  const payload = collectInspectionPayload(form, options.status || "");
+  if (!payload) {
+    return null;
+  }
+
+  writeInspectionDraft(payload.applicationId, payload);
+
+  if (!payload.scheduledDate || !payload.scheduledTime) {
+    if (options.requireSchedule) {
+      throw new Error("Inspection date and start time are required.");
+    }
+    return null;
+  }
+
+  const result = await apiFetch("/department/api/inspections", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      silent: options.silent !== false,
+    }),
+  });
+  workspaceCache[payload.applicationId] = {
+    ...(workspaceCache[payload.applicationId] || {}),
+    inspection: result.inspection,
+  };
+  return result;
+}
+
+function scheduleInspectionAutosave(form) {
+  if (isPopulatingInspectionForm || !form || !selectedApplicationId) {
+    return;
+  }
+
+  const payload = collectInspectionPayload(form);
+  if (payload) {
+    writeInspectionDraft(payload.applicationId, payload);
+  }
+
+  window.clearTimeout(inspectionAutosaveTimer);
+  inspectionAutosaveTimer = window.setTimeout(async () => {
+    try {
+      const result = await saveInspectionScheduleFromForm(form);
+      if (result?.inspection) {
+        setStatus("Inspection scheduling details saved.");
+      }
+    } catch (error) {
+      setStatus(error.message || "Unable to save inspection scheduling details.", true);
+    }
+  }, 700);
+}
+
 function formatDateTime(value) {
   if (!value) {
     return "-";
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function renderWorkspaceDocuments(documents = []) {
-  const count = document.querySelector("[data-uploaded-document-count]");
-  const list = document.querySelector("[data-uploaded-document-list]");
-  if (count) {
-    count.textContent = `${documents.length} file${documents.length === 1 ? "" : "s"}`;
-  }
-  if (!list) {
-    return;
-  }
-  if (!documents.length) {
-    list.innerHTML = '<div class="record-item">No applicant documents uploaded yet.</div>';
-    return;
-  }
-  list.innerHTML = documents.map((document) => {
-    const snapshot = document.document_snapshot || {};
-    const name = document.file_name || snapshot.documentName || snapshot.document_name || "Uploaded document";
-    const viewUrl = `/attachments/application-documents/${encodeURIComponent(document.id)}/view`;
-    const downloadUrl = `/attachments/application-documents/${encodeURIComponent(document.id)}/download`;
-    return `
-      <div class="record-item document-record">
-        <strong>${escapeHtml(name)}</strong>
-        <span>${statusPill(document.upload_status || "Uploaded")}</span>
-        <small>${escapeHtml(formatDateTime(document.uploaded_at || document.created_at))}</small>
-        <div class="app-actions">
-          <button class="btn" type="button" data-view-file="${viewUrl}" data-file-name="${escapeHtml(name)}">View</button>
-          <button class="btn btn-blue" type="button" data-download-file="${downloadUrl}" data-file-name="${escapeHtml(name)}">Download</button>
-        </div>
-      </div>
-    `;
-  }).join("");
 }
 
 function renderEvidenceList(evidence = []) {
@@ -539,13 +716,19 @@ function populateInspectionForm(inspection) {
   }
   const application = getSelectedApplication();
   const payload = application?.application?.payload || {};
-  form.elements.scheduledDate.value = inspection?.scheduled_date || "";
-  form.elements.scheduledTime.value = normalizeTimeInput(inspection?.scheduled_time);
-  form.elements.endTime.value = normalizeTimeInput(inspection?.end_time);
-  form.elements.status.value = inspection?.status || "Draft";
-  form.elements.locationAddress.value = inspection?.location_address || payload.businessAddress || application?.applicant?.address || "";
-  form.elements.remarks.value = inspection?.remarks || "";
-  renderInspectionProofFiles(inspection?.proof_files || []);
+  const hasDraft = Boolean(readInspectionDraft(selectedApplicationId));
+  const restoredInspection = mergeInspectionWithDraft(inspection, selectedApplicationId);
+  isPopulatingInspectionForm = true;
+  form.elements.scheduledDate.value = restoredInspection.scheduled_date || "";
+  form.elements.scheduledTime.value = normalizeTimeInput(restoredInspection.scheduled_time);
+  form.elements.endTime.value = normalizeTimeInput(restoredInspection.end_time);
+  form.elements.status.value = restoredInspection.status || "Draft";
+  form.elements.locationAddress.value = hasDraft || inspection?.location_address
+    ? restoredInspection.location_address
+    : payload.businessAddress || application?.applicant?.address || "";
+  form.elements.remarks.value = restoredInspection.remarks || "";
+  renderInspectionProofFiles(restoredInspection.proof_files || []);
+  isPopulatingInspectionForm = false;
 }
 
 async function loadSelectedApplicationWorkspace(applicationId = selectedApplicationId) {
@@ -557,7 +740,6 @@ async function loadSelectedApplicationWorkspace(applicationId = selectedApplicat
   if (applicationId === selectedApplicationId) {
     populateAssessmentForm(result.assessmentItems, result.assessmentItem);
     populateInspectionForm(result.inspection);
-    renderWorkspaceDocuments(result.documents || []);
     renderEvidenceList(result.evidence || []);
   }
   return result;
@@ -767,7 +949,7 @@ async function loadApplicationDetails() {
     detailCard("Applicant Contact", application.applicant?.contact),
     detailCard("Applicant Address", application.applicant?.address),
     detailCard("Submitted ID", application.application?.submittedId),
-    `<article class="detail-card field-full"><span>Uploaded Documents / Application Payload</span><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></article>`,
+    `<article class="detail-card field-full"><span>Application Information</span><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></article>`,
   ].join("");
 
   const evaluationForm = document.querySelector("[data-evaluation-form]");
@@ -1358,6 +1540,9 @@ function bindApplicationsWorkspace() {
   });
 
   const staffInspectionForm = document.querySelector("[data-staff-inspection-form]");
+  staffInspectionForm?.addEventListener("input", () => scheduleInspectionAutosave(staffInspectionForm));
+  staffInspectionForm?.addEventListener("change", () => scheduleInspectionAutosave(staffInspectionForm));
+
   document.querySelector("[data-notify-inspection]")?.addEventListener("click", () => {
     const application = getSelectedApplication();
     if (!application) {
@@ -1377,7 +1562,9 @@ function bindApplicationsWorkspace() {
       return;
     }
 
-    showInspectionNotifyModal(getInspectionNotificationPayload(staffInspectionForm));
+    void saveInspectionScheduleFromForm(staffInspectionForm, { requireSchedule: true })
+      .then(() => showInspectionNotifyModal(getInspectionNotificationPayload(staffInspectionForm)))
+      .catch((error) => setStatus(error.message || "Unable to save inspection scheduling details.", true));
   });
 
   document.querySelectorAll("[data-close-inspection-notify]").forEach((button) => {
@@ -1465,21 +1652,9 @@ function bindApplicationsWorkspace() {
       return;
     }
 
-    setStatus("Saving inspection schedule...");
     const status = event.submitter?.dataset?.inspectionStatus || formData.get("status").toString();
-    await apiFetch("/department/api/inspections", {
-      method: "POST",
-      body: JSON.stringify({
-        applicationId: application.applicationId,
-        scheduledDate,
-        scheduledTime,
-        endTime: formData.get("endTime").toString(),
-        locationAddress: formData.get("locationAddress").toString().trim(),
-        status,
-        remarks: formData.get("remarks").toString().trim(),
-        proofFiles: getInspectionProofFiles(staffInspectionForm),
-      }),
-    });
+    setStatus("Saving inspection schedule...");
+    await saveInspectionScheduleFromForm(staffInspectionForm, { status, requireSchedule: true, silent: false });
     const workspace = await loadSelectedApplicationWorkspace(application.applicationId);
     renderInspectionProofFiles(workspace?.inspection?.proof_files || []);
     setStatus("Inspection schedule saved.");
@@ -1733,6 +1908,29 @@ function bindDocumentRequestModal() {
   });
 }
 
+function bindFilePreviewModal() {
+  const modal = document.querySelector("[data-file-preview-modal]");
+  if (!modal) {
+    return;
+  }
+
+  modal.querySelectorAll("[data-close-file-preview]").forEach((button) => {
+    button.addEventListener("click", closeFilePreviewModal);
+  });
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeFilePreviewModal();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.hidden) {
+      closeFilePreviewModal();
+    }
+  });
+}
+
 function bindTableActions() {
   document.addEventListener("click", async (event) => {
     const target = event.target;
@@ -1749,7 +1947,11 @@ function bindTableActions() {
 
     const viewFilePath = target.dataset.viewFile;
     if (viewFilePath) {
-      await openAuthenticatedFile(viewFilePath, target.dataset.fileName || "document", "view");
+      try {
+        await openAuthenticatedFile(viewFilePath, target.dataset.fileName || "document", "view");
+      } catch (error) {
+        setStatus(error.message || "Unable to preview file.", true);
+      }
       return;
     }
 
@@ -2015,6 +2217,7 @@ async function boot() {
       return;
     }
     bindTableActions();
+    bindFilePreviewModal();
     if (page === "dashboard" || page === "applications") {
       if (page === "applications") {
         bindApplicationsWorkspace();

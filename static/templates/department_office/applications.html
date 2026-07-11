@@ -171,17 +171,6 @@
               </form>
             </section>
 
-            <section class="app-card app-section slim-section">
-              <button class="app-section-title" type="button">
-                <i data-lucide="paperclip"></i>
-                <span>Uploaded Documents</span>
-                <em data-uploaded-document-count>0 files</em>
-              </button>
-              <div class="document-actions" data-uploaded-document-list>
-                <div class="record-item">Select an application to view uploaded documents.</div>
-              </div>
-            </section>
-
             <section class="app-card app-section">
               <button class="app-section-title" type="button">
                 <i data-lucide="pencil"></i>
@@ -292,6 +281,23 @@
             </button>
           </footer>
         </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" data-file-preview-modal hidden>
+      <section class="file-preview-modal" role="dialog" aria-modal="true" aria-labelledby="file-preview-title">
+        <header class="modal-header">
+          <h2 id="file-preview-title"><i data-lucide="eye"></i> File Preview</h2>
+          <button type="button" aria-label="Close preview" data-close-file-preview>
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="file-preview-body" data-file-preview-body>
+          <p>Select a file to preview.</p>
+        </div>
+        <footer class="modal-actions">
+          <button class="btn" type="button" data-close-file-preview>Close</button>
+        </footer>
       </section>
     </div>
 

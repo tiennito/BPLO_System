@@ -247,6 +247,23 @@ function closeActionModal() {
   }
 }
 
+function bindModalExitButtons() {
+  const bindings = [
+    { selector: "[data-close-preview]", close: closeDocumentPreview },
+    { selector: "[data-close-routing]", close: closeRoutingConfirmation },
+    { selector: "[data-close-action-modal]", close: closeActionModal },
+  ];
+  bindings.forEach(({ selector, close }) => {
+    document.querySelectorAll(selector).forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      });
+    });
+  });
+}
+
 function openActionModal(action) {
   if (!actionModal || !actionModalCopy || !actionModalConfirm) {
     return;
@@ -473,14 +490,16 @@ function render() {
     `;
 
   if (departmentEvidence) {
+    departmentEvidence.classList.toggle("review-department-content--evidence", Boolean((app.departmentEvidence || []).length));
     departmentEvidence.innerHTML = (app.departmentEvidence || []).length
       ? app.departmentEvidence
           .map((evidence) => `
             <div class="review-evidence-item">
-              <strong>${escapeHtml(evidence.departmentKey || "Department")} - ${escapeHtml(evidence.fileName || "Evidence")}</strong>
-              <span>${escapeHtml(evidence.remarks || "No remarks")}</span>
-              <small>Uploaded by ${escapeHtml(evidence.uploadedByName || "Department staff")} ${evidence.createdAt ? `on ${escapeHtml(dateText(evidence.createdAt))}` : ""}</small>
-              <p>
+              <strong class="review-evidence-title">${escapeHtml(evidence.departmentKey || "Department")}</strong>
+              <span class="review-evidence-file">${escapeHtml(evidence.fileName || "Evidence")}</span>
+              <span class="review-evidence-remarks">${escapeHtml(evidence.remarks || "No remarks")}</span>
+              <small class="review-evidence-meta">Uploaded by ${escapeHtml(evidence.uploadedByName || "Department staff")} ${evidence.createdAt ? `on ${escapeHtml(dateText(evidence.createdAt))}` : ""}</small>
+              <p class="review-evidence-actions">
                 <button class="review-mini-button" type="button" data-preview-evidence="${escapeHtml(evidence.viewUrl)}" data-file-name="${escapeHtml(evidence.fileName || "Evidence")}"><i data-lucide="eye" aria-hidden="true"></i>View</button>
                 <button class="review-mini-button review-mini-button--green" type="button" data-download-evidence="${escapeHtml(evidence.downloadUrl)}" data-file-name="${escapeHtml(evidence.fileName || "Evidence")}"><i data-lucide="download" aria-hidden="true"></i>Download</button>
               </p>
@@ -943,5 +962,6 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
+  bindModalExitButtons();
   void loadReview();
 });

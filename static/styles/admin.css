@@ -3556,16 +3556,78 @@ body.modal-open {
 }
 
 .review-department-card {
+  min-width: 0;
   min-height: 218px;
 }
 
 .review-department-content {
+  min-width: 0;
   min-height: 128px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 10px;
+}
+
+.review-department-content--evidence {
+  width: 100%;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.review-evidence-item {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.review-evidence-title,
+.review-evidence-file,
+.review-evidence-remarks,
+.review-evidence-meta {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-evidence-title {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.review-evidence-file {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.review-evidence-remarks {
+  color: #425045;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.review-evidence-meta {
+  color: #4d5a52;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.review-evidence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+}
+
+.review-evidence-actions .review-mini-button {
+  min-width: 0;
 }
 
 .review-empty-box {
