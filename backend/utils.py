@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from urllib.parse import quote
+import fitz
 import json
 import os
 import re
@@ -254,6 +255,18 @@ class CoreHandlerMixin:
             self.list_applicant_permits()
             return
 
+        if request_path == "/applicant/api/my-permits":
+            self.list_applicant_owned_permits()
+            return
+
+        if request_path == "/applicant/api/my-documents":
+            self.list_applicant_owned_documents()
+            return
+
+        if request_path == "/applicant/api/profile":
+            self.get_applicant_profile_settings()
+            return
+
         if request_path == "/applicant/api/notifications":
             self.list_applicant_notifications()
             return
@@ -369,6 +382,12 @@ class CoreHandlerMixin:
                 self.sync_treasury_record_completion(parts[-2])
                 return
 
+        if request_path.startswith("/treasury/api/records/") and request_path.endswith("/advance"):
+            parts = request_path.strip("/").split("/")
+            if len(parts) == 5:
+                self.advance_treasury_record(parts[-2])
+                return
+
         if request_path == "/admin/api/users":
             self.create_admin_user()
             return
@@ -420,6 +439,11 @@ class CoreHandlerMixin:
 
         if request_path == "/applicant/api/application-documents":
             self.update_applicant_application_document()
+            return
+
+        document_replacement_match = re.fullmatch(r"/applicant/api/documents/([^/]+)/replacement", request_path)
+        if document_replacement_match:
+            self.replace_applicant_document(document_replacement_match.group(1))
             return
 
         if request_path == "/applicant/api/ocr-extract":
@@ -476,6 +500,10 @@ class CoreHandlerMixin:
 
         if request_path == "/applicant/api/notifications/mark-all-read":
             self.mark_all_applicant_notifications_read()
+            return
+
+        if request_path == "/applicant/api/profile":
+            self.update_applicant_profile_settings()
             return
 
         if request_path.startswith("/applicant/api/notifications/") and request_path.endswith("/read"):
@@ -614,6 +642,16 @@ class CoreHandlerMixin:
         self.end_headers()
         self.wfile.write(body)
 
+    def send_binary_download(self, body, file_name, content_type):
+        body = body or b""
+        disposition_name = (file_name or "report.pdf").replace('"', "")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{disposition_name}"')
+        self.end_headers()
+        self.wfile.write(body)
+
     def content_type_for_filename(self, filename):
         extension = Path(filename or "").suffix.lower()
         return {
@@ -696,6 +734,75 @@ class CoreHandlerMixin:
     <table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
   </body>
 </html>"""
+
+    def pdf_report(self, title, headers, rows, summary=None):
+        if not rows:
+            raise ValueError("No records available for export.")
+
+        doc = fitz.open()
+        page_width, page_height = fitz.paper_size("a4-l")
+        margin = 36
+        row_height = 22
+        header_height = 24
+        footer_height = 24
+        table_width = page_width - (margin * 2)
+        col_count = max(len(headers), 1)
+        col_width = table_width / col_count
+        generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        def text(value):
+            return str(value if value is not None else "")
+
+        def draw_wrapped(page, rect, value, fontsize=8, bold=False):
+            fontname = "helv"
+            page.insert_textbox(rect, text(value), fontsize=fontsize, fontname=fontname, color=(0.06, 0.11, 0.24), align=fitz.TEXT_ALIGN_LEFT)
+
+        def new_page(page_number):
+            page = doc.new_page(width=page_width, height=page_height)
+            page.insert_text((margin, 30), title, fontsize=16, fontname="helv", color=(0.02, 0.08, 0.22))
+            page.insert_text((margin, 49), f"Generated {generated}", fontsize=8, color=(0.38, 0.42, 0.52))
+            y = 68
+            if page_number == 1 and summary:
+                summary_text = "   ".join(f"{key}: {value}" for key, value in summary.items())
+                page.insert_textbox(fitz.Rect(margin, y, page_width - margin, y + 26), summary_text, fontsize=8, color=(0.20, 0.25, 0.34))
+                y += 32
+            header_rect = fitz.Rect(margin, y, page_width - margin, y + header_height)
+            page.draw_rect(header_rect, color=(0.82, 0.85, 0.90), fill=(0.94, 0.96, 0.98), width=0.6)
+            x = margin
+            for header in headers:
+                cell = fitz.Rect(x + 3, y + 5, x + col_width - 3, y + header_height - 3)
+                draw_wrapped(page, cell, header, fontsize=7.5, bold=True)
+                x += col_width
+            return page, y + header_height, page_number
+
+        page_number = 1
+        page, y, page_number = new_page(page_number)
+        bottom = page_height - margin - footer_height
+
+        for row in rows:
+            if y + row_height > bottom:
+                page_number += 1
+                page, y, page_number = new_page(page_number)
+            fill = (1, 1, 1) if (int((y - margin) / row_height) % 2) else (0.985, 0.990, 1)
+            page.draw_rect(fitz.Rect(margin, y, page_width - margin, y + row_height), color=(0.88, 0.90, 0.94), fill=fill, width=0.4)
+            x = margin
+            for value in list(row)[:col_count]:
+                cell = fitz.Rect(x + 3, y + 5, x + col_width - 3, y + row_height - 3)
+                draw_wrapped(page, cell, value, fontsize=7)
+                x += col_width
+            y += row_height
+
+        total_pages = doc.page_count
+        for index, page in enumerate(doc, start=1):
+            page.insert_textbox(
+                fitz.Rect(margin, page_height - margin - 10, page_width - margin, page_height - margin + 8),
+                f"Page {index} of {total_pages}",
+                fontsize=8,
+                color=(0.38, 0.42, 0.52),
+                align=fitz.TEXT_ALIGN_CENTER,
+            )
+
+        return doc.tobytes(garbage=4, deflate=True)
 
     def safe_float(self, value, default=0):
         try:

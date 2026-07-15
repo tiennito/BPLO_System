@@ -1369,26 +1369,39 @@ function bindReportsPage() {
   document.querySelector("[data-report-type-filter]")?.addEventListener("change", applyReportFilters);
   document.querySelectorAll("[data-department-export]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const format = button.dataset.departmentExport === "pdf" ? "pdf" : "csv";
-      setStatus("Preparing report export...");
-      const activeSession = session;
-      const response = await fetch(`/department/api/reports/export?format=${encodeURIComponent(format)}`, {
-        headers: { "Authorization": `Bearer ${activeSession.access_token}` },
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || "Unable to export report.");
+      try {
+        button.disabled = true;
+        setStatus("Preparing PDF export...");
+        const activeSession = session;
+        const params = new URLSearchParams({ format: "pdf" });
+        const search = document.querySelector("[data-report-search]")?.value || "";
+        const status = document.querySelector("[data-report-status-filter]")?.value || "";
+        const type = document.querySelector("[data-report-type-filter]")?.value || "";
+        if (search) params.set("search", search);
+        if (status) params.set("status", status);
+        if (type) params.set("type", type);
+        const response = await fetch(`/department/api/reports/export?${params.toString()}`, {
+          headers: { "Authorization": `Bearer ${activeSession.access_token}` },
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || "Unable to export report.");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "department-report.pdf";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setStatus("PDF export downloaded.");
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Unable to export report.", true);
+      } finally {
+        button.disabled = false;
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = format === "pdf" ? "department-report.html" : "department-report.csv";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setStatus("Report export downloaded.");
     });
   });
 

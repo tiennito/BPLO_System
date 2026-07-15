@@ -921,12 +921,23 @@ function renderApplicantProgress(payload) {
   }
 
   progressList.innerHTML = steps
-    .map((step) => {
+    .map((step, index) => {
       const stateClass = String(step.state || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
       const completedAt = formatApplicantTime(step.completedAt);
+      const isCompleted = stateClass === "completed";
+      const isActive = ["in-progress", "pending", "for-revision", "rejected"].includes(stateClass);
+      const stepIcons = ["file-check", "search-check", "building-2", "clipboard-check", "wallet", "badge-check", "package-check"];
+      const icon = isCompleted
+        ? '<i data-lucide="check" aria-hidden="true"></i>'
+        : stateClass === "in-progress"
+          ? '<i data-lucide="clock-3" aria-hidden="true"></i>'
+          : ["locked", "not-yet-available"].includes(stateClass)
+            ? '<i data-lucide="lock" aria-hidden="true"></i>'
+            : `<i data-lucide="${stepIcons[index] || "circle"}" aria-hidden="true"></i>`;
       return `
-        <article class="applicant-progress-item applicant-progress-item--${escapeHtml(stateClass)}">
-          <span>${escapeHtml(step.label)}</span>
+        <article class="applicant-progress-item applicant-progress-item--${escapeHtml(stateClass)} ${isCompleted ? "is-complete" : ""} ${isActive ? "is-active-step" : ""}">
+          <span class="progress-step-marker">${icon}</span>
+          <span class="progress-step-label">${escapeHtml(step.label)}</span>
           <strong>${escapeHtml(step.state || "Pending")}</strong>
           ${completedAt ? `<small>Completed ${escapeHtml(completedAt)}</small>` : ""}
           ${step.remarks ? `<p>${escapeHtml(step.remarks)}</p>` : ""}
@@ -975,6 +986,31 @@ async function loadApplicantProgressForDashboard(applications = []) {
   }
 }
 
+async function showApplicantProgress(applicationId, button = null) {
+  if (!applicationId) {
+    alert("Application status is unavailable for this record.");
+    return;
+  }
+
+  const originalText = button?.textContent || "";
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Loading...";
+    }
+    const payload = await applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/progress`);
+    renderApplicantProgress(payload);
+    progressPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    alert(error.message || "Unable to load application status.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "View Status";
+    }
+  }
+}
+
 function readStoredOcrFields() {
   try {
     return JSON.parse(window.sessionStorage.getItem(OCR_FIELDS_KEY) || "{}");
@@ -993,16 +1029,20 @@ function clearStoredOcrFields() {
   window.sessionStorage.removeItem(OCR_FIELDS_KEY);
 }
 
+function isApplicantUploadRequired(doc) {
+  return doc?.uploadRequired ?? doc?.upload_required ?? doc?.requirementType === "Required";
+}
+
 function updateRequirementsNextState() {
   if (!requirementsNextButton) {
     return;
   }
 
   const missingRequired = checklistDocuments.filter(
-    (doc) => doc.requirementType === "Required" && !uploadedDocumentNames.get(doc.id)
+    (doc) => isApplicantUploadRequired(doc) && !uploadedDocumentNames.get(doc.id)
   );
   const requiredWaitingForOcr = checklistDocuments.filter((doc) => {
-    if (doc.requirementType !== "Required" || !uploadedDocumentNames.get(doc.id)) {
+    if (!isApplicantUploadRequired(doc) || !uploadedDocumentNames.get(doc.id)) {
       return false;
     }
 
@@ -1057,7 +1097,7 @@ function renderChecklistDocuments(documents) {
 
   dynamicDocumentGrid.innerHTML = checklistDocuments
     .map((doc, index) => {
-      const isRequired = doc.requirementType === "Required";
+      const isRequired = isApplicantUploadRequired(doc);
       return `
         <article class="document-card" data-document-card="${escapeHtml(doc.id)}">
           <header>
@@ -2050,12 +2090,14 @@ function handleHistoryBack(event) {
   }
 }
 
-function createPermitRecord(application, userId = "") {
+function createPermitRecord(application, userId = "", applicationId = "") {
   const createdAt = new Date();
   const permitSuffix = `${createdAt.getTime()}`.slice(-6);
   const submittedSuffix = `${createdAt.getTime()}`.slice(-8);
 
   return {
+    id: applicationId,
+    application_id: applicationId,
     user_id: userId,
     permit_id: `BPLO-${permitSuffix}`,
     business_name: application.businessName || "Untitled Business",
@@ -2313,15 +2355,16 @@ async function renderRecentPermits() {
   permits.forEach((permit) => {
     const businessInfo = permit.business_info || permit.application_payload || {};
     const permitSnapshot = permit.permit_snapshot || {};
+    const applicationId = permit.id || permit.application_id || permit.applicationId || "";
     const referenceNumber = permit.permit_id || permit.permitId || permitSnapshot.permitCode || permitSnapshot.permit_code || permit.id || "-";
     const submittedId = permit.submitted_id || permit.submittedId || (permit.id ? permit.id.slice(0, 8) : "-");
     const status = permit.status || "Draft";
     const pickupOnlyStatuses = ["Permit Ready for Release", "For Pickup", "Released"];
     const actionMarkup = status === "Draft"
-      ? `<button class="table-link-button" type="button" data-continue-draft="${escapeHtml(permit.id || "")}" data-draft-permit="${escapeHtml(permit.permit_id || permit.permitId || "")}">Continue</button>`
+      ? `<button class="table-link-button" type="button" data-continue-draft="${escapeHtml(applicationId)}" data-draft-permit="${escapeHtml(permit.permit_id || permit.permitId || "")}">Continue</button>`
       : pickupOnlyStatuses.includes(status)
       ? '<span style="color: var(--green); font-weight: 700;">Claim at BPLO Office</span>'
-      : `<button class="table-link-button" type="button" data-view-progress="${escapeHtml(permit.id || "")}">View Status</button>`;
+      : `<button class="table-link-button" type="button" data-view-progress="${escapeHtml(applicationId)}" ${applicationId ? "" : "disabled"}>View Status</button>`;
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${referenceNumber}</td>
@@ -2416,7 +2459,7 @@ async function handleFinishApplication() {
     });
 
     const permits = readStoredPermits();
-    const record = createPermitRecord(application, currentUser?.id || "");
+    const record = createPermitRecord(application, currentUser?.id || "", currentApplicationId);
     permits.unshift(record);
     writeStoredPermits(permits.slice(0, 10));
 
@@ -2515,6 +2558,16 @@ markAllNotificationsReadButton?.addEventListener("click", (event) => {
 document.addEventListener("click", (event) => {
   const clickedElement = event.target instanceof HTMLElement ? event.target : null;
 
+  const quickActionLink = clickedElement?.closest(".action-button[href]");
+  if (quickActionLink instanceof HTMLAnchorElement && quickActionLink.href && quickActionLink.getAttribute("href") !== "#") {
+    if (quickActionLink.getAttribute("aria-disabled") === "true") {
+      event.preventDefault();
+      return;
+    }
+    quickActionLink.setAttribute("aria-disabled", "true");
+    return;
+  }
+
   const startPermitButton = clickedElement?.closest("[data-start-permit]");
   if (startPermitButton instanceof HTMLElement) {
     const permitId = startPermitButton.dataset.startPermit || "";
@@ -2531,12 +2584,7 @@ document.addEventListener("click", (event) => {
   const viewProgressButton = clickedElement?.closest("[data-view-progress]");
   if (viewProgressButton instanceof HTMLElement) {
     const applicationId = viewProgressButton.dataset.viewProgress || "";
-    if (applicationId) {
-      void applicantApi(`/applicant/api/applications/${encodeURIComponent(applicationId)}/progress`)
-        .then(renderApplicantProgress)
-        .then(() => progressPanel?.scrollIntoView({ behavior: "smooth", block: "start" }))
-        .catch((error) => alert(error.message || "Unable to load application status."));
-    }
+    void showApplicantProgress(applicationId, viewProgressButton);
     return;
   }
 

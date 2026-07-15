@@ -473,17 +473,14 @@ button:not(:disabled):not([disabled]):hover {
   font-size: 10px;
 }
 
-.document-column-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 12px;
-}
-
 .document-table-card {
   border: 1px solid #dcdcdc;
   border-radius: 4px;
   overflow: hidden;
+}
+
+.document-table-card--full {
+  margin-top: 12px;
 }
 
 .document-table-card header {
@@ -497,21 +494,23 @@ button:not(:disabled):not([disabled]):hover {
   background: #ffffff;
 }
 
+.document-table-card h3,
+.document-table-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.document-table-card h3 span,
 .document-table-card h4 span {
   min-width: 20px;
   min-height: 18px;
   display: inline-grid;
   place-items: center;
-  margin-left: 8px;
   border-radius: 999px;
   background: #ffe7ec;
   color: #e11d48;
   font-size: 9px;
-}
-
-.document-table-card:nth-child(2) h4 span {
-  background: #fff2bd;
-  color: #9a6700;
 }
 
 .small-green-button {
@@ -558,7 +557,7 @@ button:not(:disabled):not([disabled]):hover {
 
 .permit-doc-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 860px;
   border-collapse: collapse;
   font-size: 9px;
 }
@@ -574,6 +573,12 @@ button:not(:disabled):not([disabled]):hover {
 .permit-doc-table th {
   background: #fafafa;
   font-weight: 700;
+}
+
+.permit-doc-table th:last-child,
+.permit-doc-table td:last-child {
+  width: 88px;
+  white-space: nowrap;
 }
 
 .upload-pill {
@@ -4933,7 +4938,6 @@ body.modal-open {
   }
 
   .permit-details-grid,
-  .document-column-grid,
   .applicant-preview-card {
     grid-template-columns: 1fr;
   }

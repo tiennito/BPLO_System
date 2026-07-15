@@ -80,38 +80,33 @@
               <i data-lucide="briefcase-business" aria-hidden="true"></i>
               <span>New Business Permit</span>
             </a>
-            <a class="action-button" href="#">
+            <a class="action-button" href="/applicant/permits">
               <i data-lucide="list" aria-hidden="true"></i>
               <span>View All Permits</span>
             </a>
-            <a class="action-button" href="#">
+            <a class="action-button" href="/applicant/documents">
               <i data-lucide="files" aria-hidden="true"></i>
               <span>My Documents</span>
             </a>
-            <a class="action-button" href="#">
+            <a class="action-button" href="/applicant/profile">
               <i data-lucide="user-pen" aria-hidden="true"></i>
               <span>Edit profile</span>
             </a>
           </div>
         </section>
 
-        <section class="applicant-draft-panel" data-draft-panel hidden aria-labelledby="draft-title">
-          <div>
-            <h2 id="draft-title">UNFINISHED APPLICATIONS</h2>
-            <p>You have a saved draft. Continue where you stopped without starting again.</p>
-          </div>
-          <div class="draft-list" data-draft-list></div>
-        </section>
-
         <section class="applicant-progress-panel" data-progress-panel hidden aria-labelledby="progress-title">
           <div class="progress-panel-heading">
+            <span class="progress-heading-icon" aria-hidden="true"><i data-lucide="chart-no-axes-column-increasing"></i></span>
             <div>
               <h2 id="progress-title">APPLICATION PROGRESS</h2>
               <p data-progress-summary>Track what step your application is currently in.</p>
             </div>
+            <span class="progress-auto-badge"><i data-lucide="info" aria-hidden="true"></i>Auto-updates with status changes</span>
           </div>
           <div class="applicant-progress-list" data-progress-list></div>
           <div class="department-progress-list" data-department-progress-list></div>
+          <p class="progress-update-note"><i data-lucide="shield-check" aria-hidden="true"></i>Progress is updated automatically as your application moves through each stage.</p>
         </section>
 
         <section class="permits-section" aria-labelledby="permits-title">

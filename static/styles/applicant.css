@@ -45,6 +45,21 @@ button:not(:disabled):not([disabled]):hover {
   filter: brightness(0.99);
 }
 
+button:disabled,
+a[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0c8c36;
+  outline-offset: 2px;
+}
+
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -1659,24 +1674,68 @@ button:not(:disabled):not([disabled]):hover {
 .applicant-draft-panel,
 .applicant-progress-panel {
   margin-top: 22px;
-  padding: 18px;
-  border: 1px solid rgba(35, 98, 58, 0.16);
-  border-radius: 8px;
+  padding: 20px 22px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
   background: #ffffff;
-  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.progress-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.progress-heading-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #d7efe0;
+  border-radius: 50%;
+  background: #eef9f2;
+  color: var(--green);
+  flex: 0 0 auto;
+}
+
+.progress-heading-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.progress-auto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 7px 10px;
+  border: 1px solid #dbe4ff;
+  border-radius: 7px;
+  background: #eef3ff;
+  color: #1742b8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.progress-auto-badge svg {
+  width: 15px;
+  height: 15px;
 }
 
 .applicant-draft-panel h2,
 .applicant-progress-panel h2 {
   margin: 0 0 6px;
-  font-size: 17px;
-  color: var(--green);
+  font-size: 18px;
+  color: #0f172a;
+  letter-spacing: 0;
 }
 
 .applicant-draft-panel p,
 .applicant-progress-panel p {
   margin: 0;
-  color: #5f6f65;
+  color: #1f2937;
+  font-size: 13px;
 }
 
 .draft-list {
@@ -1727,12 +1786,153 @@ button:not(:disabled):not([disabled]):hover {
 
 .applicant-progress-list {
   display: grid;
-  grid-template-columns: repeat(7, minmax(96px, 1fr));
-  gap: 8px;
-  margin-top: 16px;
+  grid-template-columns: repeat(7, minmax(92px, 1fr));
+  gap: 0;
+  margin-top: 30px;
+  overflow-x: auto;
 }
 
-.applicant-progress-item,
+.applicant-progress-item {
+  position: relative;
+  min-width: 92px;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.applicant-progress-item::before {
+  content: "";
+  position: absolute;
+  top: 23px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: #c9d1d9;
+  transform: translateX(-24px);
+  z-index: 0;
+}
+
+.applicant-progress-item:first-child::before {
+  display: none;
+}
+
+.applicant-progress-item.is-complete::before,
+.applicant-progress-item.is-active-step::before {
+  background: var(--green);
+}
+
+.progress-step-marker {
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #c9d1d9;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 0 0 5px #ffffff;
+}
+
+.progress-step-marker svg {
+  width: 21px;
+  height: 21px;
+}
+
+.applicant-progress-item--completed .progress-step-marker {
+  border-color: #9fe0b8;
+  background: var(--green);
+  color: #ffffff;
+}
+
+.applicant-progress-item--in-progress .progress-step-marker {
+  border-color: #fecaca;
+  background: #ff3b35;
+  color: #ffffff;
+  box-shadow: 0 0 0 6px #fff1f1, 0 0 14px rgba(255, 59, 53, 0.18);
+}
+
+.applicant-progress-item--for-revision .progress-step-marker,
+.applicant-progress-item--rejected .progress-step-marker {
+  border-color: #fecaca;
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.applicant-progress-item--locked .progress-step-marker,
+.applicant-progress-item--not-yet-available .progress-step-marker {
+  background: #ffffff;
+  color: #6b7280;
+}
+
+.progress-step-label {
+  display: block;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.applicant-progress-item strong {
+  display: block;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.applicant-progress-item--completed strong {
+  color: var(--green);
+}
+
+.applicant-progress-item--in-progress {
+  color: #ff3b35;
+}
+
+.applicant-progress-item--in-progress strong,
+.applicant-progress-item--for-revision strong,
+.applicant-progress-item--rejected strong {
+  color: #ff3b35;
+}
+
+.applicant-progress-item small {
+  display: block;
+  color: #667085;
+  font-size: 10px;
+}
+
+.applicant-progress-item p {
+  color: #667085;
+  font-size: 10px;
+}
+
+.progress-update-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px !important;
+  padding-top: 16px;
+  border-top: 1px solid #d9e1ea;
+  color: #667085 !important;
+  font-size: 12px !important;
+}
+
+.progress-update-note svg {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  border-radius: 50%;
+  background: #eef3ff;
+  color: #1742b8;
+  flex: 0 0 auto;
+}
+
 .department-progress-item {
   min-height: 90px;
   padding: 10px;
@@ -1741,40 +1941,16 @@ button:not(:disabled):not([disabled]):hover {
   background: #f8fbf9;
 }
 
-.applicant-progress-item span,
 .department-progress-item span {
   display: block;
   font-size: 12px;
   color: #667085;
 }
 
-.applicant-progress-item strong,
 .department-progress-item strong {
   display: block;
   margin-top: 6px;
   color: #1f2937;
-}
-
-.applicant-progress-item small {
-  display: block;
-  margin-top: 5px;
-  color: #667085;
-}
-
-.applicant-progress-item--completed {
-  border-color: rgba(38, 132, 82, 0.36);
-  background: #eef8f1;
-}
-
-.applicant-progress-item--in-progress {
-  border-color: rgba(28, 100, 242, 0.32);
-  background: #eff6ff;
-}
-
-.applicant-progress-item--rejected,
-.applicant-progress-item--for-revision {
-  border-color: rgba(196, 50, 50, 0.32);
-  background: #fff1f1;
 }
 
 .department-progress-list {
@@ -2029,7 +2205,7 @@ th {
   }
 
   .applicant-progress-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(118px, 1fr));
   }
 
   .department-progress-list {
@@ -2078,8 +2254,36 @@ th {
     flex-direction: column;
   }
 
+  .applicant-progress-panel {
+    padding: 16px 12px;
+  }
+
+  .progress-panel-heading {
+    flex-wrap: wrap;
+  }
+
+  .progress-auto-badge {
+    margin-left: 0;
+  }
+
   .applicant-progress-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(7, minmax(88px, 1fr));
+  }
+
+  .progress-step-marker {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .progress-step-marker svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .applicant-progress-item::before {
+    top: 20px;
+    transform: translateX(-21px);
   }
 
   .business-section {
@@ -2105,5 +2309,284 @@ th {
   .offices-grid {
     grid-template-columns: 1fr;
     row-gap: 21px;
+  }
+}
+
+.applicant-records-page {
+  gap: 18px;
+}
+
+.records-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.records-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.records-header p.is-error,
+.profile-settings-form p.is-error {
+  color: #b42318;
+}
+
+.records-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.records-toolbar input,
+.records-toolbar select,
+.profile-settings-grid input,
+.profile-settings-grid select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.permits-table-wrap td small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.table-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  margin: 2px;
+  border: 1px solid var(--green);
+  background: #ffffff;
+  color: var(--green-dark);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.records-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.records-pagination button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  padding: 5px 9px;
+}
+
+.record-modal[hidden] {
+  display: none;
+}
+
+.record-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.record-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.record-modal__card {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.record-modal__card--wide {
+  width: min(980px, 100%);
+}
+
+.record-modal__card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.record-modal__card h2 {
+  margin: 0;
+  color: var(--green);
+  font-size: 17px;
+}
+
+.record-modal__card header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.record-detail-grid,
+.profile-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.record-detail-grid article,
+.profile-settings-grid label,
+.profile-photo-row {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  padding: 10px;
+}
+
+.record-detail-grid span,
+.profile-settings-grid label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.record-detail-grid strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 13px;
+  text-transform: none;
+}
+
+.release-note,
+.document-remarks {
+  color: #8a4b00;
+  font-size: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.profile-success-card {
+  text-align: center;
+}
+
+.profile-success-card .modal-actions {
+  justify-content: center;
+}
+
+.profile-success-icon {
+  width: 54px;
+  height: 54px;
+  display: inline-grid;
+  place-items: center;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: #edf8f1;
+  color: var(--green);
+}
+
+.profile-success-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.document-preview {
+  min-height: 320px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  background: #f7f7f7;
+}
+
+.document-preview iframe,
+.document-preview img {
+  width: 100%;
+  height: 520px;
+  display: block;
+  border: 0;
+  object-fit: contain;
+}
+
+.profile-settings-form {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-settings-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.profile-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-photo-preview {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #edf8f1 center / cover no-repeat;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-save-button {
+  width: fit-content;
+  min-width: 180px;
+}
+
+@media (max-width: 920px) {
+  .records-toolbar,
+  .record-detail-grid,
+  .profile-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .records-toolbar,
+  .record-detail-grid,
+  .profile-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .records-header,
+  .profile-photo-row,
+  .modal-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Applicant - Profile Settings</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/applicant.css?v=20" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/applicant_self_service.js?v=1"></script>
+  </head>
+  <body data-applicant-page="profile">
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home"><img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" /></a>
+        <nav class="topnav" aria-label="Applicant navigation">
+          <a href="/applicant">Home</a>
+          <a href="/applicant/permits">My Application</a>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" data-profile-toggle>Profile<i data-lucide="chevron-down" aria-hidden="true"></i></button>
+            <div class="profile-dropdown" data-profile-dropdown><strong data-profile-name>Applicant</strong><button type="button" data-logout>Log out</button></div>
+          </div>
+          <span class="avatar" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <section class="dashboard applicant-records-page">
+        <form class="profile-settings-form" data-profile-form>
+          <header class="records-header">
+            <div>
+              <h2>PROFILE SETTINGS</h2>
+              <p data-profile-status>Loading your profile...</p>
+            </div>
+          </header>
+          <section class="profile-photo-row">
+            <span class="profile-photo-preview" data-profile-photo-preview></span>
+            <div>
+              <input type="file" accept="image/png,image/jpeg,image/webp" data-profile-photo-input hidden />
+              <button type="button" class="table-link-button" data-profile-photo-upload>Upload Photo</button>
+              <button type="button" class="table-link-button" data-profile-photo-remove>Remove</button>
+            </div>
+          </section>
+          <div class="profile-settings-grid">
+            <label>First name<input name="firstName" required /></label>
+            <label>Middle name<input name="middleName" /></label>
+            <label>Last name<input name="lastName" required /></label>
+            <label>Suffix<input name="suffix" /></label>
+            <label>Email address<input name="email" type="email" required /></label>
+            <label>Contact number<input name="contactNumber" required /></label>
+            <label>Birthdate<input name="birthdate" type="date" /></label>
+            <label>Sex<select name="sex"><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option></select></label>
+            <label>Civil status<select name="civilStatus"><option value="">Select</option><option>Single</option><option>Married</option><option>Widowed</option><option>Separated</option></select></label>
+            <label>House number<input name="houseNumber" /></label>
+            <label>Street<input name="street" /></label>
+            <label>Barangay<input name="barangay" /></label>
+            <label>Municipality / City<input name="municipalityCity" /></label>
+            <label>Province<input name="province" /></label>
+            <label>Postal code<input name="postalCode" /></label>
+            <label>User ID<input name="userId" readonly /></label>
+            <label>Account role<input name="role" readonly /></label>
+            <label>Account status<input name="accountStatus" readonly /></label>
+            <label>Verified email<input name="verifiedEmail" readonly /></label>
+          </div>
+          <button class="action-button profile-save-button" type="submit"><i data-lucide="save" aria-hidden="true"></i><span>Save Changes</span></button>
+        </form>
+      </section>
+
+      <section class="record-modal" data-confirm-modal hidden>
+        <div class="record-modal__backdrop" data-close-modal></div>
+        <article class="record-modal__card" role="dialog" aria-modal="true" aria-labelledby="confirm-profile-title">
+          <header><h2 id="confirm-profile-title">Save Profile?</h2><button type="button" data-close-modal><i data-lucide="x" aria-hidden="true"></i></button></header>
+          <p>Confirm that you want to update your applicant profile.</p>
+          <div class="modal-actions"><button type="button" class="table-link-button" data-confirm-save>Confirm</button><button type="button" class="table-link-button" data-close-modal>Cancel</button></div>
+        </article>
+      </section>
+
+      <section class="record-modal" data-success-modal hidden>
+        <div class="record-modal__backdrop" data-close-modal></div>
+        <article class="record-modal__card profile-success-card" role="dialog" aria-modal="true" aria-labelledby="profile-success-title">
+          <div class="profile-success-icon" aria-hidden="true"><i data-lucide="check" aria-hidden="true"></i></div>
+          <h2 id="profile-success-title">Profile Updated</h2>
+          <p data-success-message>Your profile changes have been saved successfully.</p>
+          <div class="modal-actions"><button type="button" class="table-link-button" data-close-modal>OK</button></div>
+        </article>
+      </section>
+
+      <footer class="site-footer">
+        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

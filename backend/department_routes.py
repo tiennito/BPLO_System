@@ -683,7 +683,6 @@ class DepartmentRoutesMixin:
             return
         try:
             params = self.get_query_params()
-            fmt = self.first_query_value(params, "format", "csv").lower()
             rows = self.service_rest_request(
                 config,
                 "department_reports",
@@ -709,21 +708,45 @@ class DepartmentRoutesMixin:
                 ]
                 for row in rows
             ]
-            if fmt == "pdf":
-                self.send_text_download(
-                    self.html_report(
-                        f"{config['department_name']} Department Report",
-                        headers,
-                        data,
-                        {"Total Reports": len(data), "Department": config["department_name"]},
-                    ),
-                    "department-report.html",
-                    "text/html; charset=utf-8",
-                )
+            search = self.first_query_value(params, "search", "").lower()
+            status = self.first_query_value(params, "status", "")
+            report_type = self.first_query_value(params, "type", "")
+            date_from = self.first_query_value(params, "dateFrom", "")
+            date_to = self.first_query_value(params, "dateTo", "")
+            if search or status or report_type or date_from or date_to:
+                filtered = []
+                for row in data:
+                    haystack = " ".join(str(value or "") for value in row).lower()
+                    report_date = str(row[4] or "")
+                    if search and search not in haystack:
+                        continue
+                    if status and row[5] != status:
+                        continue
+                    if report_type and row[3] != report_type:
+                        continue
+                    if date_from and report_date < date_from:
+                        continue
+                    if date_to and report_date > date_to:
+                        continue
+                    filtered.append(row)
+                data = filtered
+            if not data:
+                self.send_json({"error": "No records available for export."}, status=404)
                 return
-            self.send_text_download(self.csv_report(headers, data), "department-report.csv", "text/csv; charset=utf-8")
+            self.send_binary_download(
+                self.pdf_report(
+                    f"{config['department_name']} Department Report",
+                    headers,
+                    data,
+                    {"Total Reports": len(data), "Department": config["department_name"]},
+                ),
+                "department-report.pdf",
+                "application/pdf",
+            )
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.department_error(error, "Unable to export department report.")
+        except ValueError as error:
+            self.send_json({"error": str(error) or "No records available for export."}, status=404)
 
     def list_department_owned_records(self, table, response_key):
         config = self.ensure_department_request()

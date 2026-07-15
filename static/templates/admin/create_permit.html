@@ -28,10 +28,6 @@
             <i data-lucide="layout-grid" aria-hidden="true"></i>
             <span>Dashboard</span>
           </a>
-          <a href="/admin/staff-administrator">
-            <i data-lucide="briefcase-business" aria-hidden="true"></i>
-            <span>Staff Admin</span>
-          </a>
           <a href="/admin/create-user">
             <i data-lucide="user" aria-hidden="true"></i>
             <span>Create User</span>
@@ -120,58 +116,30 @@
             </section>
 
             <section class="permit-section document-requirements-card">
-              <h3>Document Requirements</h3>
-              <div class="document-column-grid">
-                <article class="document-table-card">
-                  <header>
-                    <h4>Required Documents <span data-doc-count="required">0</span></h4>
-                    <button class="small-green-button" type="button" data-add-document="required">
-                      <i data-lucide="plus" aria-hidden="true"></i>
-                      Add Document
-                    </button>
-                  </header>
-                  <div class="permit-table-wrap">
-                    <table class="permit-doc-table">
-                      <thead>
-                        <tr>
-                          <th>Document Name</th>
-                          <th>Short Description</th>
-                          <th>Accepted File Types</th>
-                          <th>Max File Size</th>
-                          <th>Applicant Upload Required</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody data-document-body="required"></tbody>
-                    </table>
-                  </div>
-                </article>
-
-                <article class="document-table-card">
-                  <header>
-                    <h4>Optional Documents <span data-doc-count="optional">0</span></h4>
-                    <button class="small-green-button" type="button" data-add-document="optional">
-                      <i data-lucide="plus" aria-hidden="true"></i>
-                      Add Document
-                    </button>
-                  </header>
-                  <div class="permit-table-wrap">
-                    <table class="permit-doc-table">
-                      <thead>
-                        <tr>
-                          <th>Document Name</th>
-                          <th>Short Description</th>
-                          <th>Accepted File Types</th>
-                          <th>Max File Size</th>
-                          <th>Applicant Upload Required</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody data-document-body="optional"></tbody>
-                    </table>
-                  </div>
-                </article>
-              </div>
+              <article class="document-table-card document-table-card--full">
+                <header>
+                  <h3>Document Requirements <span data-doc-count>0</span></h3>
+                  <button class="small-green-button" type="button" data-add-document>
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    Add Document
+                  </button>
+                </header>
+                <div class="permit-table-wrap">
+                  <table class="permit-doc-table">
+                    <thead>
+                      <tr>
+                        <th>Document Name</th>
+                        <th>Short Description</th>
+                        <th>Accepted File Types</th>
+                        <th>Max File Size</th>
+                        <th>Applicant Upload Required</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody data-document-body></tbody>
+                  </table>
+                </div>
+              </article>
             </section>
 
             <section class="permit-section required-offices-card">
@@ -193,7 +161,7 @@
                   <h3>Applicant View Preview / Upload Rules</h3>
                   <p><i data-lucide="check" aria-hidden="true"></i> Applicants must upload one file per requirement.</p>
                   <p><i data-lucide="check" aria-hidden="true"></i> Accepted file formats and maximum file size are shown on the upload page.</p>
-                  <p><i data-lucide="check" aria-hidden="true"></i> Optional documents appear separately from required documents.</p>
+                  <p><i data-lucide="check" aria-hidden="true"></i> Documents marked No are optional and will not block submission.</p>
                 </div>
               </article>
               <label class="applicant-note">
@@ -221,7 +189,6 @@
               </button>
             </header>
             <input name="id" type="hidden" />
-            <input name="group" type="hidden" />
             <label class="field">
               <span>Document Name <em>*</em></span>
               <input name="name" required />
@@ -238,9 +205,12 @@
               <span>Max File Size <em>*</em></span>
               <input name="maxSize" placeholder="10 MB" required />
             </label>
-            <label class="checkbox-row">
-              <input name="uploadRequired" type="checkbox" />
-              <span>Applicant upload required</span>
+            <label class="field">
+              <span>Applicant Upload Required <em>*</em></span>
+              <select name="uploadRequired" required>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
             </label>
             <footer>
               <button class="permit-button permit-button--plain" type="button" data-close-document-dialog>Cancel</button>

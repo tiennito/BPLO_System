@@ -116,7 +116,6 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 .treasury-form textarea { min-height: 58px; padding: 9px 10px; resize: vertical; }
 .treasury-form .wide { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.form-actions button[type="reset"] { min-height: 32px; padding: 0 14px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
 
 .treasury-bottom-grid { display: grid; grid-template-columns: 1.45fr .7fr .95fr; gap: 14px; }
 .chart-card { min-height: 230px; }
@@ -236,7 +235,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .processing-filters {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) 130px 180px 180px 90px;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(2, minmax(112px, .65fr)) repeat(2, minmax(145px, .9fr)) minmax(86px, max-content);
   gap: 10px;
   padding: 14px;
   border-bottom: 1px solid var(--line);
@@ -244,12 +243,14 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .processing-filters label {
   position: relative;
+  min-width: 0;
 }
 
 .processing-filters input,
 .processing-filters select,
 .processing-filters button {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -404,17 +405,22 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .payment-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.3fr) 210px 150px 210px 110px 120px 85px;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(2, minmax(112px, .65fr)) minmax(140px, .85fr) minmax(170px, 1fr) minmax(118px, max-content) minmax(92px, max-content);
   gap: 10px;
   align-items: center;
   padding: 16px;
   border-bottom: 1px solid var(--line);
 }
 
+.payment-toolbar label {
+  min-width: 0;
+}
+
 .payment-toolbar input,
 .payment-toolbar select,
 .payment-toolbar button {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -439,7 +445,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .payment-date-filter,
 .export-button,
-.reset-button {
+.refresh-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -449,10 +455,6 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .export-button.pdf {
   color: #ef4444;
-}
-
-.export-button.excel {
-  color: #16a34a;
 }
 
 .payment-table {
@@ -590,6 +592,13 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
   overflow-wrap: anywhere;
 }
 
+.payment-detail-card input[readonly] {
+  border-color: #d0d5dd;
+  background: #f2f4f7;
+  color: var(--text);
+  cursor: default;
+}
+
 .payment-detail-card.wide {
   grid-column: 1 / -1;
 }
@@ -646,17 +655,22 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .receipt-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 210px 170px 90px;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(2, minmax(130px, .75fr)) minmax(170px, .9fr);
   gap: 10px;
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
 }
 
+.receipt-toolbar label {
+  min-width: 0;
+}
+
 .receipt-toolbar input,
 .receipt-toolbar select,
 .receipt-toolbar button {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -739,7 +753,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 
 .reports-toolbar {
   display: grid;
-  grid-template-columns: 180px 180px 150px minmax(240px, 1fr) 165px;
+  grid-template-columns: minmax(130px, .7fr) minmax(130px, .7fr) minmax(160px, .9fr) minmax(140px, .7fr) minmax(240px, 1.4fr) minmax(165px, max-content);
   gap: 12px;
   align-items: end;
   padding: 14px 16px;
@@ -750,6 +764,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 .report-export-actions {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .reports-toolbar span,
@@ -763,6 +778,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 .reports-toolbar select,
 .reports-toolbar button {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -786,7 +802,7 @@ button:not(:disabled):not([disabled]):hover { transform: translateY(-1px); box-s
 }
 
 .report-export-actions {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
 }
 
 .report-export-actions span {

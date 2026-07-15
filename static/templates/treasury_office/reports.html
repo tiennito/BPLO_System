@@ -53,8 +53,12 @@
           <article class="treasury-card reports-card">
             <section class="reports-toolbar" aria-label="Treasury report filters">
               <label>
-                <span>Date Range</span>
-                <button type="button" class="payment-date-filter"><i data-lucide="calendar-days"></i>Date Range</button>
+                <span>Date From</span>
+                <input type="date" data-report-date-from />
+              </label>
+              <label>
+                <span>Date To</span>
+                <input type="date" data-report-date-to />
               </label>
               <label>
                 <span>Report Type</span>
@@ -82,8 +86,7 @@
               </label>
               <div class="report-export-actions">
                 <span>Export Report</span>
-                <button type="button" class="export-button pdf" data-report-export="pdf"><i data-lucide="file-text"></i>PDF</button>
-                <button type="button" class="export-button excel" data-report-export="excel"><i data-lucide="file-spreadsheet"></i>Excel</button>
+                <button type="button" class="export-button pdf" data-report-export="pdf"><i data-lucide="file-text"></i>Export PDF</button>
               </div>
             </section>
 
@@ -108,12 +111,7 @@
             </div>
             <footer class="payment-footer">
               <span data-report-entry-count>Showing 0 entries</span>
-              <nav class="processing-pagination" aria-label="Treasury report pages">
-                <button type="button"><i data-lucide="chevron-left"></i></button>
-                <button class="is-active" type="button">1</button>
-                <button type="button"><i data-lucide="chevron-right"></i></button>
-                <select><option>10 / page</option></select>
-              </nav>
+              <nav class="processing-pagination" data-report-pagination aria-label="Treasury report pages"></nav>
             </footer>
           </article>
 

@@ -43,9 +43,19 @@ async function staffSession() {
   return staffReportSession;
 }
 
-async function downloadStaffReport(format) {
+function activeReportRange() {
+  const activeTab = document.querySelector(".staff-report-tabs button.is-active");
+  return (activeTab?.textContent || "Today").trim().toLowerCase();
+}
+
+async function downloadStaffReport() {
   const session = await staffSession();
-  const response = await fetch(`/admin/api/reports/export?type=applications&format=${encodeURIComponent(format)}`, {
+  const params = new URLSearchParams({
+    type: "applications",
+    format: "pdf",
+    range: activeReportRange(),
+  });
+  const response = await fetch(`/admin/api/reports/export?${params.toString()}`, {
     headers: { "Authorization": `Bearer ${session.access_token}` },
   });
   if (!response.ok) {
@@ -58,7 +68,7 @@ async function downloadStaffReport(format) {
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.href = url;
-  link.download = match?.[1] || (format === "pdf" ? "applications-report.html" : "applications-report.csv");
+  link.download = match?.[1] || "applications-report.pdf";
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -67,14 +77,20 @@ async function downloadStaffReport(format) {
 
 window.addEventListener("DOMContentLoaded", () => {
   window.lucide?.createIcons();
+  document.querySelectorAll(".staff-report-tabs button").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".staff-report-tabs button").forEach((item) => item.classList.remove("is-active"));
+      tab.classList.add("is-active");
+      staffReportStatus(`${tab.textContent.trim()} report range selected.`);
+    });
+  });
   document.querySelectorAll("[data-staff-report-export]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const format = button.dataset.staffReportExport === "pdf" ? "pdf" : "csv";
       try {
         button.disabled = true;
-        staffReportStatus("Preparing report export...");
-        await downloadStaffReport(format);
-        staffReportStatus("Report export downloaded.");
+        staffReportStatus("Preparing PDF export...");
+        await downloadStaffReport();
+        staffReportStatus("PDF export downloaded.");
       } catch (error) {
         staffReportStatus(error instanceof Error ? error.message : "Unable to export report.", true);
       } finally {

@@ -15,68 +15,64 @@ const SUPABASE_ANON_KEY =
   window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
 let supabaseClient = null;
 let existingPermits = [];
-const documents = {
-  required: [
-    {
-      id: crypto.randomUUID(),
-      name: "DTI/SEC Registration",
-      description: "Business registration certificate",
-      fileTypes: "PDF",
-      maxSize: "10 MB",
-      uploadRequired: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "Barangay Clearance",
-      description: "Clearance from barangay",
-      fileTypes: "PDF",
-      maxSize: "5 MB",
-      uploadRequired: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "Valid ID",
-      description: "Government-issued ID",
-      fileTypes: "PDF, JPG, PNG",
-      maxSize: "5 MB",
-      uploadRequired: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "Lease Contract",
-      description: "Proof of business address",
-      fileTypes: "PDF",
-      maxSize: "10 MB",
-      uploadRequired: true,
-    },
-  ],
-  optional: [
-    {
-      id: crypto.randomUUID(),
-      name: "Authorization Letter",
-      description: "Authorization from owner if applicable",
-      fileTypes: "PDF",
-      maxSize: "5 MB",
-      uploadRequired: false,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "Previous Permit",
-      description: "Copy of previous business permit",
-      fileTypes: "PDF",
-      maxSize: "10 MB",
-      uploadRequired: false,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "Supporting Document",
-      description: "Other supporting documents",
-      fileTypes: "PDF, JPG, PNG",
-      maxSize: "10 MB",
-      uploadRequired: false,
-    },
-  ],
-};
+let documents = [
+  {
+    id: crypto.randomUUID(),
+    name: "DTI/SEC Registration",
+    description: "Business registration certificate",
+    fileTypes: "PDF",
+    maxSize: "10 MB",
+    uploadRequired: true,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Barangay Clearance",
+    description: "Clearance from barangay",
+    fileTypes: "PDF",
+    maxSize: "5 MB",
+    uploadRequired: true,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Valid ID",
+    description: "Government-issued ID",
+    fileTypes: "PDF, JPG, PNG",
+    maxSize: "5 MB",
+    uploadRequired: true,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Lease Contract",
+    description: "Proof of business address",
+    fileTypes: "PDF",
+    maxSize: "10 MB",
+    uploadRequired: true,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Authorization Letter",
+    description: "Authorization from owner if applicable",
+    fileTypes: "PDF",
+    maxSize: "5 MB",
+    uploadRequired: false,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Previous Permit",
+    description: "Copy of previous business permit",
+    fileTypes: "PDF",
+    maxSize: "10 MB",
+    uploadRequired: false,
+  },
+  {
+    id: crypto.randomUUID(),
+    name: "Supporting Document",
+    description: "Other supporting documents",
+    fileTypes: "PDF, JPG, PNG",
+    maxSize: "10 MB",
+    uploadRequired: false,
+  },
+];
 let offices = [];
 
 function initSupabase() {
@@ -136,28 +132,27 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function renderDocuments(group) {
-  const body = document.querySelector(`[data-document-body="${group}"]`);
-  const count = document.querySelector(`[data-doc-count="${group}"]`);
+function renderDocuments() {
+  const body = document.querySelector("[data-document-body]");
+  const count = document.querySelector("[data-doc-count]");
   if (!body) {
     return;
   }
 
-  const rows = documents[group] || [];
   if (count) {
-    count.textContent = String(rows.length);
+    count.textContent = String(documents.length);
   }
 
-  if (!rows.length) {
+  if (!documents.length) {
     body.innerHTML = `
       <tr>
-        <td colspan="6" class="permit-empty-row">No ${escapeHtml(group)} documents yet.</td>
+        <td colspan="6" class="permit-empty-row">No document requirements yet.</td>
       </tr>
     `;
     return;
   }
 
-  body.innerHTML = rows
+  body.innerHTML = documents
     .map(
       (doc) => `
         <tr>
@@ -167,10 +162,10 @@ function renderDocuments(group) {
           <td>${escapeHtml(doc.maxSize)}</td>
           <td><span class="upload-pill ${doc.uploadRequired ? "is-yes" : "is-no"}">${doc.uploadRequired ? "Yes" : "No"}</span></td>
           <td>
-            <button class="icon-table-button" type="button" data-edit-document="${escapeHtml(doc.id)}" data-group="${escapeHtml(group)}" aria-label="Edit document">
+            <button class="icon-table-button" type="button" data-edit-document="${escapeHtml(doc.id)}" aria-label="Edit document">
               <i data-lucide="pencil" aria-hidden="true"></i>
             </button>
-            <button class="icon-table-button is-danger" type="button" data-delete-document="${escapeHtml(doc.id)}" data-group="${escapeHtml(group)}" aria-label="Delete document">
+            <button class="icon-table-button is-danger" type="button" data-delete-document="${escapeHtml(doc.id)}" aria-label="Delete document">
               <i data-lucide="trash-2" aria-hidden="true"></i>
             </button>
           </td>
@@ -182,8 +177,7 @@ function renderDocuments(group) {
 }
 
 function renderAllDocuments() {
-  renderDocuments("required");
-  renderDocuments("optional");
+  renderDocuments();
 }
 
 function renderOffices() {
@@ -211,19 +205,18 @@ function renderOffices() {
     .join("");
 }
 
-function openDocumentDialog(group, doc = null) {
+function openDocumentDialog(doc = null) {
   if (!documentDialog || !documentForm) {
     return;
   }
 
   documentDialogTitle.textContent = doc ? "Edit Document" : "Add Document";
   documentForm.elements.id.value = doc?.id || "";
-  documentForm.elements.group.value = group;
   documentForm.elements.name.value = doc?.name || "";
   documentForm.elements.description.value = doc?.description || "";
   documentForm.elements.fileTypes.value = doc?.fileTypes || "";
   documentForm.elements.maxSize.value = doc?.maxSize || "";
-  documentForm.elements.uploadRequired.checked = doc?.uploadRequired ?? group === "required";
+  documentForm.elements.uploadRequired.value = (doc?.uploadRequired ?? true) ? "yes" : "no";
   documentDialog.showModal();
   window.lucide?.createIcons();
 }
@@ -342,10 +335,10 @@ function buildPermitPayload(status) {
     processingFee: formData.get("processingFee").toString().trim(),
     applicantNotes: formData.get("applicantNotes").toString().trim(),
     requiredOfficeIds: selectedOfficeIds,
-    documents: [
-      ...documents.required.map((doc) => ({ ...doc, requirementType: "Required" })),
-      ...documents.optional.map((doc) => ({ ...doc, requirementType: "Optional" })),
-    ],
+    documents: documents.map((doc) => ({
+      ...doc,
+      requirementType: doc.uploadRequired ? "Required" : "Optional",
+    })),
   };
 }
 
@@ -374,7 +367,7 @@ async function savePermitRecord(status) {
 
 document.querySelectorAll("[data-add-document]").forEach((button) => {
   button.addEventListener("click", () => {
-    openDocumentDialog(button.getAttribute("data-add-document") || "required");
+    openDocumentDialog();
   });
 });
 
@@ -386,17 +379,15 @@ document.addEventListener("click", (event) => {
 
   const editButton = target.closest("[data-edit-document]");
   if (editButton instanceof HTMLElement) {
-    const group = editButton.dataset.group || "required";
-    const doc = documents[group].find((item) => item.id === editButton.dataset.editDocument);
-    openDocumentDialog(group, doc);
+    const doc = documents.find((item) => item.id === editButton.dataset.editDocument);
+    openDocumentDialog(doc);
     return;
   }
 
   const deleteButton = target.closest("[data-delete-document]");
   if (deleteButton instanceof HTMLElement) {
-    const group = deleteButton.dataset.group || "required";
-    documents[group] = documents[group].filter((item) => item.id !== deleteButton.dataset.deleteDocument);
-    renderDocuments(group);
+    documents = documents.filter((item) => item.id !== deleteButton.dataset.deleteDocument);
+    renderDocuments();
     setPermitStatus("Document removed.");
   }
 });
@@ -408,7 +399,6 @@ document.querySelectorAll("[data-close-document-dialog]").forEach((button) => {
 documentForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const formData = new FormData(documentForm);
-  const group = formData.get("group").toString() || "required";
   const id = formData.get("id").toString() || crypto.randomUUID();
   const doc = {
     id,
@@ -416,17 +406,17 @@ documentForm?.addEventListener("submit", (event) => {
     description: formData.get("description").toString().trim(),
     fileTypes: formData.get("fileTypes").toString().trim(),
     maxSize: formData.get("maxSize").toString().trim(),
-    uploadRequired: Boolean(formData.get("uploadRequired")),
+    uploadRequired: formData.get("uploadRequired") === "yes",
   };
 
-  const existingIndex = documents[group].findIndex((item) => item.id === id);
+  const existingIndex = documents.findIndex((item) => item.id === id);
   if (existingIndex >= 0) {
-    documents[group][existingIndex] = doc;
+    documents[existingIndex] = doc;
   } else {
-    documents[group].push(doc);
+    documents.push(doc);
   }
 
-  renderDocuments(group);
+  renderDocuments();
   documentDialog?.close();
   setPermitStatus("Document requirement saved.");
 });
@@ -450,8 +440,8 @@ draftButton?.addEventListener("click", async () => {
 
 permitForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!documents.required.length) {
-    setPermitStatus("Add at least one required document before creating a permit.", true);
+  if (!documents.some((doc) => doc.uploadRequired)) {
+    setPermitStatus("Mark at least one document as applicant upload required before creating a permit.", true);
     return;
   }
 
@@ -477,8 +467,7 @@ permitForm?.addEventListener("submit", async (event) => {
 closePermitSuccessButton?.addEventListener("click", () => {
   hidePermitSuccessModal();
   permitForm?.reset();
-  documents.required = [];
-  documents.optional = [];
+  documents = [];
   renderAllDocuments();
   setPermitStatus("");
 });

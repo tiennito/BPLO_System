@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Applicant - My Permits</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/applicant.css?v=20" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/applicant_self_service.js?v=1"></script>
+  </head>
+  <body data-applicant-page="permits">
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+        </a>
+        <nav class="topnav" aria-label="Applicant navigation">
+          <a href="/applicant">Home</a>
+          <a href="/applicant/permits">My Application</a>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" data-profile-toggle>Profile<i data-lucide="chevron-down" aria-hidden="true"></i></button>
+            <div class="profile-dropdown" data-profile-dropdown>
+              <strong data-profile-name>Applicant</strong>
+              <button type="button" data-logout>Log out</button>
+            </div>
+          </div>
+          <span class="avatar" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <section class="dashboard applicant-records-page">
+        <section class="permits-section" aria-labelledby="permits-title">
+          <header class="records-header">
+            <div>
+              <h2 id="permits-title">MY PERMITS</h2>
+              <p data-record-status>Loading your permits...</p>
+            </div>
+          </header>
+          <div class="records-toolbar">
+            <input type="search" placeholder="Search permit number, business name, or reference no." data-permit-search />
+            <select data-permit-status-filter><option value="">All statuses</option></select>
+            <select data-permit-type-filter><option value="">All permit types</option></select>
+            <select data-application-type-filter><option value="">All application types</option></select>
+            <select data-permit-sort>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="expiration">Expiration date</option>
+            </select>
+          </div>
+          <div class="permits-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>PERMIT NO.</th>
+                  <th>REFERENCE NO.</th>
+                  <th>PERMIT TYPE</th>
+                  <th>BUSINESS NAME</th>
+                  <th>APPLICATION</th>
+                  <th>STATUS</th>
+                  <th>ACTION</th>
+                </tr>
+              </thead>
+              <tbody data-permits-body>
+                <tr><td colspan="7" class="empty-state">Loading permits...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="records-pagination" data-permit-pagination></div>
+        </section>
+      </section>
+
+      <section class="record-modal" data-permit-modal hidden>
+        <div class="record-modal__backdrop" data-close-modal></div>
+        <article class="record-modal__card" role="dialog" aria-modal="true" aria-labelledby="permit-modal-title">
+          <header><h2 id="permit-modal-title">Permit Details</h2><button type="button" data-close-modal><i data-lucide="x" aria-hidden="true"></i></button></header>
+          <div data-permit-modal-body></div>
+        </article>
+      </section>
+
+      <footer class="site-footer">
+        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

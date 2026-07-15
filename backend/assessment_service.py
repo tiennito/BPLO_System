@@ -240,7 +240,7 @@ class AssessmentServiceMixin:
                 ) or []
             info = app.get("business_info") or {}
             try:
-                self.service_rest_request(config, "treasury_records", method="POST", payload={"application_no": (application_id or "")[:8], "applicant": self.app_owner_name(info), "business_name": self.app_business_name(info), "amount": assessment.get("grand_total") or 0, "step": "Assessment", "status": "Ready", "current_step": "Payment Queue", "record_type": "payment", "transaction_date": datetime.now(timezone.utc).date().isoformat(), "remarks": "Generated from completed assessment."}, prefer="return=minimal")
+                self.service_rest_request(config, "treasury_records", method="POST", payload={"application_no": (application_id or "")[:8], "applicant": self.app_owner_name(info), "business_name": self.app_business_name(info), "amount": assessment.get("grand_total") or 0, "step": "Assessment", "status": "Ready", "current_step": "Assessment", "record_type": "payment", "transaction_date": datetime.now(timezone.utc).date().isoformat(), "remarks": "Assessment completed and queued for Treasury workflow."}, prefer="return=minimal")
             except HTTPError:
                 pass
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "assessment_completed", actor=config["actor"], entity_type="assessment", entity_id=assessment.get("id"), details={"grandTotal": assessment.get("grand_total")})

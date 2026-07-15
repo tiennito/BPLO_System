@@ -72,6 +72,593 @@ class ApplicantRoutesMixin:
             "hasFile": bool(document.get("file_url")),
         }
 
+    def normalize_applicant_record_status(self, *values):
+        for value in values:
+            status = (value or "").strip()
+            if status:
+                aliases = {
+                    "Assessment Finalized": "For Payment",
+                    "Payment Verified": "Paid",
+                    "Permit Ready for Release": "Ready for Release",
+                    "Ready for Pickup": "Ready for Release",
+                    "Permit Released": "Released",
+                    "Under Office Evaluation": "Under Department Evaluation",
+                }
+                return aliases.get(status, status)
+        return "Draft"
+
+    def applicant_application_reference(self, application):
+        return (
+            application.get("application_reference_number")
+            or application.get("reference_number")
+            or application.get("reference_no")
+            or (f"APP-{str(application.get('id') or '')[:8].upper()}" if application.get("id") else "")
+        )
+
+    def format_applicant_owned_permit(self, application, business_permit=None):
+        business_permit = business_permit or {}
+        info = application.get("business_info") or {}
+        snapshot = application.get("permit_snapshot") or {}
+        app_status = self.normalize_applicant_record_status(application.get("status"))
+        permit_status = self.normalize_applicant_record_status(business_permit.get("status"), app_status)
+        expiration_date = business_permit.get("expiration_date") or business_permit.get("expires_at") or ""
+        is_released = permit_status == "Released"
+        is_ready = permit_status == "Ready for Release"
+        return {
+            "id": business_permit.get("id") or application.get("id"),
+            "applicationId": application.get("id"),
+            "permitId": application.get("permit_id"),
+            "permitNumber": business_permit.get("permit_number") or business_permit.get("permit_no") or "",
+            "applicationReferenceNumber": self.applicant_application_reference(application),
+            "permitType": business_permit.get("permit_type") or snapshot.get("permitName") or snapshot.get("permit_name") or "Business Permit",
+            "businessName": business_permit.get("business_name") or self.app_business_name(info),
+            "businessOwner": business_permit.get("owner_name") or self.app_owner_name(info),
+            "applicationType": application.get("application_type") or info.get("application_type") or info.get("applicationType") or "New",
+            "dateSubmitted": application.get("submitted_at") or "",
+            "dateApproved": application.get("approved_at") or application.get("finalized_at") or business_permit.get("issue_date") or "",
+            "validityStartDate": business_permit.get("issue_date") or business_permit.get("validity_start_date") or "",
+            "expirationDate": expiration_date,
+            "applicationStatus": app_status,
+            "permitStatus": "Expired" if self.is_date_in_past(expiration_date) and permit_status == "Released" else permit_status,
+            "releaseStatus": "Released" if is_released else ("Ready for Pickup" if is_ready else "Not Ready"),
+            "paymentStatus": application.get("payment_status") or ("Paid" if app_status in {"Paid", "For Finalization", "Ready for Release", "Released"} else "Unpaid"),
+            "dateReleased": business_permit.get("released_at") or "",
+            "createdDate": application.get("created_at") or business_permit.get("created_at") or "",
+            "lastUpdatedDate": application.get("updated_at") or business_permit.get("updated_at") or "",
+            "canPrint": False,
+            "canDownload": False,
+            "renewalEligible": self.is_renewal_eligible(expiration_date, permit_status),
+        }
+
+    def is_date_in_past(self, value):
+        if not value:
+            return False
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date() < datetime.now(timezone.utc).date()
+        except ValueError:
+            try:
+                return datetime.strptime(value[:10], "%Y-%m-%d").date() < datetime.now(timezone.utc).date()
+            except ValueError:
+                return False
+
+    def is_renewal_eligible(self, expiration_date, status):
+        if status not in {"Released", "Expired"}:
+            return False
+        if not expiration_date:
+            return status == "Expired"
+        try:
+            expiry = datetime.fromisoformat(expiration_date.replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                expiry = datetime.strptime(expiration_date[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return False
+        days_until_expiry = (expiry - datetime.now(timezone.utc).date()).days
+        return days_until_expiry <= 60
+
+    def require_applicant_role_for_self_service(self, supabase_url, service_key, user):
+        profile = self.get_profile_by_auth_user_id(supabase_url, service_key, user.get("id")) or {}
+        role = normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role"))
+        if role != "applicant":
+            self.send_json({"error": "This action is only available to applicant accounts."}, status=403)
+            return False
+        if profile_status(profile.get("status")) != "active":
+            self.send_json({"error": "This applicant account is not active."}, status=403)
+            return False
+        return True
+
+    def list_applicant_owned_permits(self):
+        config = self.ensure_applicant_request("permit record listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        if not self.require_applicant_role_for_self_service(supabase_url, supabase_service_key, user):
+            return
+        try:
+            applications = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,submitted_at,finalized_at,created_at,updated_at",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "order": "created_at.desc",
+                    "limit": 1000,
+                },
+            ) or []
+
+            application_ids = [row.get("id") for row in applications if row.get("id")]
+            permits_by_application = {}
+            if application_ids:
+                try:
+                    business_permits = self.supabase_rest_request(
+                        supabase_url,
+                        supabase_service_key,
+                        "business_permits",
+                        {
+                            "select": "*",
+                            "application_id": f"in.({','.join(application_ids)})",
+                            "order": "created_at.desc",
+                        },
+                    ) or []
+                    permits_by_application = {row.get("application_id"): row for row in business_permits if row.get("application_id")}
+                except HTTPError:
+                    permits_by_application = {}
+
+            records = [
+                self.format_applicant_owned_permit(application, permits_by_application.get(application.get("id")))
+                for application in applications
+            ]
+            self.send_json({"permits": records, "total": len(records)})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load your permits.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load your permits."}, status=500)
+
+    def document_category_from_snapshot(self, snapshot):
+        text = " ".join(
+            str(snapshot.get(key) or "")
+            for key in ("documentName", "document_name", "category", "documentCategory", "notes", "shortDescription")
+        ).lower()
+        if "renewal" in text:
+            return "Renewal documents"
+        if any(token in text for token in ("barangay", "dti", "sec", "cda", "registration")):
+            return "Business registration documents"
+        if any(token in text for token in ("zoning", "fire", "sanitary", "engineering", "department")):
+            return "Department requirements"
+        if any(token in text for token in ("valid id", "government", "cedula", "photo")):
+            return "Personal documents"
+        if any(token in text for token in ("permit", "requirement")):
+            return "Business permit requirements"
+        return "Supporting documents"
+
+    def normalize_document_verification_status(self, value):
+        status = (value or "").strip()
+        aliases = {
+            "Pending": "Pending Review",
+            "Uploaded": "Pending Review",
+            "Approved": "Verified",
+            "Denied": "Rejected",
+            "Reupload": "Requires Re-upload",
+            "Re-upload": "Requires Re-upload",
+        }
+        return aliases.get(status, status or "Pending Review")
+
+    def format_applicant_owned_document(self, document, application=None, review=None):
+        snapshot = document.get("document_snapshot") or {}
+        review = review or {}
+        file_name = document.get("file_name") or ""
+        file_path = document.get("file_url") or ""
+        application = application or {}
+        verification_status = self.normalize_document_verification_status(
+            review.get("verification_status") or review.get("status") or document.get("verification_status") or document.get("upload_status")
+        )
+        return {
+            "id": document.get("id"),
+            "documentId": document.get("id"),
+            "applicantId": application.get("applicant_id"),
+            "applicationId": document.get("application_id"),
+            "permitId": application.get("permit_id"),
+            "documentType": snapshot.get("documentName") or snapshot.get("document_name") or document.get("document_type") or "Document",
+            "documentCategory": document.get("document_category") or self.document_category_from_snapshot(snapshot),
+            "originalFilename": document.get("original_filename") or file_name,
+            "storedFilename": Path(file_path).name if file_path else "",
+            "storagePath": file_path,
+            "fileUrl": f"/attachments/application-documents/{document.get('id')}/view" if file_path else "",
+            "downloadUrl": f"/attachments/application-documents/{document.get('id')}/download" if file_path else "",
+            "fileFormat": (Path(file_name).suffix or Path(file_path).suffix or "").lstrip(".").upper(),
+            "fileSize": document.get("file_size") or document.get("size") or "",
+            "uploadDate": document.get("uploaded_at") or "",
+            "verificationStatus": verification_status,
+            "verifiedBy": review.get("reviewed_by") or review.get("verified_by") or "",
+            "verificationDate": review.get("reviewed_at") or review.get("verified_at") or "",
+            "rejectionRemarks": review.get("remarks") or document.get("remarks") or "",
+            "ocrProcessingStatus": document.get("ocr_status") or "Pending",
+            "ocrConfidenceScore": document.get("ocr_confidence_score") or "",
+            "documentExpirationDate": document.get("expiration_date") or "",
+            "createdDate": document.get("created_at") or "",
+            "lastUpdatedDate": document.get("updated_at") or "",
+            "applicationReferenceNumber": self.applicant_application_reference(application),
+            "businessName": self.app_business_name(application.get("business_info") or {}),
+            "acceptedFileTypes": snapshot.get("acceptedFileTypes") or snapshot.get("accepted_file_types") or "pdf,png,jpg,jpeg",
+            "maxFileSize": snapshot.get("maxFileSize") or snapshot.get("max_file_size") or "10MB",
+            "canReplace": verification_status in {"Rejected", "Requires Re-upload", "Expired"},
+        }
+
+    def list_applicant_owned_documents(self):
+        config = self.ensure_applicant_request("document listing")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        if not self.require_applicant_role_for_self_service(supabase_url, supabase_service_key, user):
+            return
+        try:
+            applications = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applications",
+                {
+                    "select": "id,permit_id,applicant_id,business_info,permit_snapshot,created_at",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "order": "created_at.desc",
+                    "limit": 1000,
+                },
+            ) or []
+            application_by_id = {row.get("id"): row for row in applications if row.get("id")}
+            application_ids = list(application_by_id.keys())
+            if not application_ids:
+                self.send_json({"documents": [], "total": 0, "applications": []})
+                return
+
+            documents = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id,application_id,permit_document_id,document_snapshot,file_name,file_url,upload_status,ocr_status,remarks,uploaded_at,created_at,updated_at",
+                    "application_id": f"in.({','.join(application_ids)})",
+                    "order": "created_at.desc",
+                    "limit": 1000,
+                },
+            ) or []
+
+            reviews = []
+            try:
+                reviews = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "application_document_reviews",
+                    {
+                        "select": "*",
+                        "application_id": f"in.({','.join(application_ids)})",
+                        "is_deleted": "eq.false",
+                        "order": "created_at.desc",
+                    },
+                ) or []
+            except HTTPError:
+                reviews = []
+            review_by_document = {}
+            for review in reviews:
+                document_id = review.get("application_document_id") or review.get("document_id")
+                if document_id and document_id not in review_by_document:
+                    review_by_document[document_id] = review
+
+            formatted = [
+                self.format_applicant_owned_document(document, application_by_id.get(document.get("application_id")), review_by_document.get(document.get("id")))
+                for document in documents
+            ]
+            app_options = [
+                {
+                    "id": app.get("id"),
+                    "label": f"{self.applicant_application_reference(app)} - {self.app_business_name(app.get('business_info') or {})}",
+                }
+                for app in applications
+            ]
+            self.send_json({"documents": formatted, "total": len(formatted), "applications": app_options})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load your documents.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load your documents."}, status=500)
+
+    def replace_applicant_document(self, document_id):
+        config = self.ensure_applicant_request("document replacement")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        if not self.require_applicant_role_for_self_service(supabase_url, supabase_service_key, user):
+            return
+        try:
+            payload = self.read_json_body()
+            file_name = (payload.get("fileName") or "").strip()
+            file_url = (payload.get("fileUrl") or "").strip()
+            if not file_name or not file_url:
+                self.send_json({"error": "Replacement file name and storage path are required."}, status=400)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id,application_id,document_snapshot,file_name,file_url,applications(id,applicant_id)",
+                    "id": f"eq.{document_id}",
+                    "limit": 1,
+                },
+            ) or []
+            if not rows:
+                self.send_json({"error": "Document not found."}, status=404)
+                return
+            document = rows[0]
+            application = document.get("applications") or {}
+            if application.get("applicant_id") != user.get("id"):
+                self.send_json({"error": "You are not allowed to update this document."}, status=403)
+                return
+
+            duplicate_rows = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {
+                    "select": "id",
+                    "application_id": f"eq.{document.get('application_id')}",
+                    "file_name": f"eq.{file_name}",
+                    "id": f"neq.{document_id}",
+                    "limit": 1,
+                },
+            ) or []
+            if duplicate_rows:
+                self.send_json({"error": "A document with the same filename already exists for this application."}, status=400)
+                return
+
+            updated = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "application_documents",
+                {"id": f"eq.{document_id}"},
+                method="PATCH",
+                payload={
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "upload_status": "Uploaded",
+                    "ocr_status": "Pending",
+                    "remarks": None,
+                    "uploaded_at": utc_now_iso(),
+                    "updated_at": utc_now_iso(),
+                },
+                prefer="return=representation",
+            ) or []
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "document_replaced",
+                actor=user,
+                entity_type="application_document",
+                entity_id=document_id,
+                details={"applicationId": document.get("application_id"), "fileName": file_name},
+            )
+            self.send_json({"message": "Replacement uploaded.", "document": updated[0] if updated else {}})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to replace document.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to replace document."}, status=500)
+
+    def load_optional_applicant_profile(self, supabase_url, service_key, user_id):
+        try:
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applicants",
+                {"select": "*", "user_id": f"eq.{user_id}", "limit": 1},
+            ) or []
+            return rows[0] if rows else {}
+        except HTTPError:
+            return {}
+
+    def format_applicant_profile_settings(self, user, profile=None, applicant=None):
+        metadata = user.get("user_metadata") or {}
+        profile = profile or {}
+        applicant = applicant or {}
+        def pick(*values):
+            for value in values:
+                if value is not None and str(value).strip() != "":
+                    return str(value).strip()
+            return ""
+
+        return {
+            "userId": user.get("id"),
+            "role": normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role")),
+            "accountStatus": profile_status(profile.get("status")),
+            "verifiedEmail": bool(user.get("email_confirmed_at") or user.get("confirmed_at")),
+            "firstName": pick(applicant.get("first_name_raw"), applicant.get("first_name"), profile.get("first_name"), metadata.get("first_name")),
+            "middleName": pick(applicant.get("middle_name"), profile.get("middle_name"), metadata.get("middle_name")),
+            "lastName": pick(applicant.get("last_name"), profile.get("last_name"), metadata.get("last_name")),
+            "suffix": pick(applicant.get("suffix"), profile.get("suffix"), metadata.get("suffix")),
+            "email": pick(profile.get("email"), applicant.get("email"), user.get("email")),
+            "contactNumber": pick(applicant.get("contact_number"), profile.get("contact_number"), metadata.get("contact_number")),
+            "birthdate": pick(applicant.get("birthdate"), applicant.get("birth_date"), metadata.get("birthdate")),
+            "sex": pick(applicant.get("sex"), applicant.get("gender"), metadata.get("sex")),
+            "civilStatus": pick(applicant.get("civil_status"), metadata.get("civil_status")),
+            "houseNumber": pick(applicant.get("house_number"), metadata.get("house_number")),
+            "street": pick(applicant.get("address_street"), applicant.get("street"), metadata.get("address_street")),
+            "barangay": pick(applicant.get("address_barangay"), applicant.get("barangay"), metadata.get("address_barangay")),
+            "municipalityCity": pick(applicant.get("address_city"), applicant.get("city"), metadata.get("address_city")),
+            "province": pick(applicant.get("address_province"), applicant.get("province"), metadata.get("address_province")),
+            "postalCode": pick(applicant.get("postal_code"), metadata.get("postal_code")),
+            "profilePhotoUrl": pick(applicant.get("profile_photo_url"), profile.get("profile_photo_url"), metadata.get("profile_photo_url")),
+            "createdAt": pick(applicant.get("created_at"), profile.get("created_at"), user.get("created_at")),
+            "updatedAt": pick(applicant.get("updated_at"), profile.get("updated_at"), user.get("updated_at")),
+        }
+
+    def get_applicant_profile_settings(self):
+        config = self.ensure_applicant_request("profile loading")
+        if not config:
+            return
+        supabase_url, supabase_service_key, user = config
+        try:
+            profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id")) or {}
+            if normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role")) != "applicant":
+                self.send_json({"error": "This profile page is only for applicant accounts."}, status=403)
+                return
+            applicant = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
+            self.send_json({"profile": self.format_applicant_profile_settings(user, profile, applicant)})
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load profile.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load profile."}, status=500)
+
+    def validate_applicant_profile_payload(self, payload):
+        required = {
+            "firstName": "First name",
+            "lastName": "Last name",
+            "email": "Email address",
+            "contactNumber": "Contact number",
+        }
+        missing = [label for key, label in required.items() if not str(payload.get(key) or "").strip()]
+        if missing:
+            raise ValueError(f"Please complete: {', '.join(missing)}.")
+
+        email = str(payload.get("email") or "").strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            raise ValueError("Enter a valid email address.")
+
+        contact = re.sub(r"[\s()-]+", "", str(payload.get("contactNumber") or "").strip())
+        if not re.fullmatch(r"(\+639|09)\d{9}", contact):
+            raise ValueError("Enter a valid Philippine mobile number, for example 09XXXXXXXXX or +639XXXXXXXXX.")
+
+        return {
+            "firstName": str(payload.get("firstName") or "").strip(),
+            "middleName": str(payload.get("middleName") or "").strip(),
+            "lastName": str(payload.get("lastName") or "").strip(),
+            "suffix": str(payload.get("suffix") or "").strip(),
+            "email": email,
+            "contactNumber": contact,
+            "birthdate": str(payload.get("birthdate") or "").strip(),
+            "sex": str(payload.get("sex") or "").strip(),
+            "civilStatus": str(payload.get("civilStatus") or "").strip(),
+            "houseNumber": str(payload.get("houseNumber") or "").strip(),
+            "street": str(payload.get("street") or "").strip(),
+            "barangay": str(payload.get("barangay") or "").strip(),
+            "municipalityCity": str(payload.get("municipalityCity") or "").strip(),
+            "province": str(payload.get("province") or "").strip(),
+            "postalCode": str(payload.get("postalCode") or "").strip(),
+            "profilePhotoUrl": str(payload.get("profilePhotoUrl") or "").strip(),
+        }
+
+    def update_applicant_profile_settings(self):
+        config = self.ensure_applicant_request("profile update")
+        if not config:
+            return
+
+        supabase_url, supabase_service_key, user = config
+        try:
+            payload = self.validate_applicant_profile_payload(self.read_json_body())
+            profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id")) or {}
+            if normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role")) != "applicant":
+                self.send_json({"error": "Only applicant accounts can update this profile."}, status=403)
+                return
+
+            current_email = (profile.get("email") or user.get("email") or "").lower()
+            if payload["email"] != current_email:
+                duplicate = self.get_profile_by_email(supabase_url, supabase_service_key, payload["email"])
+                if duplicate and duplicate.get("auth_user_id") != user.get("id"):
+                    self.send_json({"error": "That email address is already used by another account."}, status=409)
+                    return
+
+            profile_payload = {
+                "first_name": payload["firstName"],
+                "middle_name": payload["middleName"],
+                "last_name": payload["lastName"],
+                "suffix": payload["suffix"],
+                "email": payload["email"],
+                "contact_number": payload["contactNumber"],
+            }
+            updated_profile = self.update_profile_record(supabase_url, supabase_service_key, profile.get("id"), profile_payload)
+
+            applicant_payload = {
+                "user_id": user.get("id"),
+                "first_name": payload["firstName"],
+                "first_name_raw": payload["firstName"],
+                "middle_name": payload["middleName"],
+                "last_name": payload["lastName"],
+                "suffix": payload["suffix"],
+                "email": payload["email"],
+                "contact_number": payload["contactNumber"],
+                "birthdate": payload["birthdate"] or None,
+                "sex": payload["sex"] or None,
+                "civil_status": payload["civilStatus"] or None,
+                "house_number": payload["houseNumber"] or None,
+                "address_street": payload["street"] or None,
+                "address_barangay": payload["barangay"] or None,
+                "address_city": payload["municipalityCity"] or None,
+                "address_province": payload["province"] or None,
+                "postal_code": payload["postalCode"] or None,
+                "profile_photo_url": payload["profilePhotoUrl"] or None,
+                "updated_at": utc_now_iso(),
+            }
+            try:
+                existing = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
+                if existing.get("id"):
+                    self.supabase_rest_request(
+                        supabase_url,
+                        supabase_service_key,
+                        "applicants",
+                        {"id": f"eq.{existing.get('id')}"},
+                        method="PATCH",
+                        payload=applicant_payload,
+                        prefer="return=minimal",
+                    )
+                else:
+                    self.supabase_rest_request(
+                        supabase_url,
+                        supabase_service_key,
+                        "applicants",
+                        method="POST",
+                        payload=applicant_payload,
+                        prefer="return=minimal",
+                    )
+            except HTTPError:
+                # Some deployments only use the centralized profiles table.
+                pass
+
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                "profile_updated",
+                actor=user,
+                entity_type="profile",
+                entity_id=profile.get("id"),
+                details={"emailChanged": payload["email"] != current_email},
+            )
+            if payload["email"] != current_email:
+                self.create_notification(
+                    supabase_url,
+                    supabase_service_key,
+                    user.get("id"),
+                    "Email Verification Required",
+                    "Your email address was changed in your profile. Please verify the new email address before using it for account recovery.",
+                    notification_type="profile",
+                    source_role="System",
+                )
+
+            refreshed_profile = updated_profile or self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id")) or {}
+            refreshed_applicant = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
+            self.send_json(
+                {
+                    "message": "Profile updated successfully.",
+                    "emailVerificationRequired": payload["email"] != current_email,
+                    "profile": self.format_applicant_profile_settings(user, refreshed_profile, refreshed_applicant),
+                }
+            )
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=400)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to update profile.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to update profile."}, status=500)
+
     def load_owned_applicant_application(self, supabase_url, service_key, user_id, application_id, select="*"):
         rows = self.supabase_rest_request(
             supabase_url,
@@ -1164,12 +1751,11 @@ class ApplicantRoutesMixin:
             processing_documents = []
             for document in document_rows or []:
                 snapshot = document.get("document_snapshot") or {}
-                requirement_type = snapshot.get("requirementType") or snapshot.get("requirement_type") or ""
                 upload_required = snapshot.get("uploadRequired")
                 if upload_required is None:
                     upload_required = snapshot.get("upload_required", True)
 
-                if requirement_type == "Required" and upload_required is not False:
+                if upload_required is not False:
                     if not document.get("file_url") or document.get("upload_status") != "Uploaded":
                         missing_documents.append(document)
 

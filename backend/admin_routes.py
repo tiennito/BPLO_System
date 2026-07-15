@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
@@ -1265,7 +1265,6 @@ class AdminRoutesMixin:
             return
         try:
             params = self.get_query_params()
-            fmt = self.first_query_value(params, "format", "csv").lower()
             report_type = self.first_query_value(params, "type", "applications").lower()
             title = "BPLO Applications Report"
             headers = ["Application ID", "Business Name", "Owner Name", "Permit Type", "Status", "Payment Status", "Date Submitted", "Date Finalized"]
@@ -1351,18 +1350,55 @@ class AdminRoutesMixin:
                     for row in rows
                 ]
 
-            status_counts = {}
+            search = self.first_query_value(params, "search", "").lower()
+            status_filter = self.first_query_value(params, "status", "")
+            date_from = self.first_query_value(params, "dateFrom", "")
+            date_to = self.first_query_value(params, "dateTo", "")
+            range_filter = self.first_query_value(params, "range", "").lower()
+            today = datetime.now(timezone.utc).date()
+            if range_filter == "today":
+                date_from = date_to = today.isoformat()
+            elif range_filter == "week":
+                date_from = (today - timedelta(days=6)).isoformat()
+                date_to = today.isoformat()
+            elif range_filter == "monthly":
+                date_from = today.replace(day=1).isoformat()
+                date_to = today.isoformat()
+            elif range_filter == "yearly":
+                date_from = today.replace(month=1, day=1).isoformat()
+                date_to = today.isoformat()
+
             status_index = headers.index("Status") if "Status" in headers else -1
+            date_index = next((index for index, header in enumerate(headers) if header.lower().startswith("date ")), -1)
+            if search or status_filter or date_from or date_to:
+                filtered = []
+                for row in data:
+                    haystack = " ".join(str(value or "") for value in row).lower()
+                    row_date = str(row[date_index] or "")[:10] if date_index >= 0 else ""
+                    if search and search not in haystack:
+                        continue
+                    if status_filter and (status_index < 0 or row[status_index] != status_filter):
+                        continue
+                    if date_from and row_date < date_from:
+                        continue
+                    if date_to and row_date > date_to:
+                        continue
+                    filtered.append(row)
+                data = filtered
+
+            status_counts = {}
             if status_index >= 0:
                 for row in data:
                     status_counts[row[status_index] or "-"] = status_counts.get(row[status_index] or "-", 0) + 1
             summary = {"Total Records": len(data), **status_counts}
-            if fmt == "pdf":
-                self.send_text_download(self.html_report(title, headers, data, summary), f"{report_type}-report.html", "text/html; charset=utf-8")
+            if not data:
+                self.send_json({"error": "No records available for export."}, status=404)
                 return
-            self.send_text_download(self.csv_report(headers, data), f"{report_type}-report.csv", "text/csv; charset=utf-8")
+            self.send_binary_download(self.pdf_report(title, headers, data, summary), f"{report_type}-report.pdf", "application/pdf")
         except (HTTPError, json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to export report."}, status=500)
+        except ValueError as error:
+            self.send_json({"error": str(error) or "No records available for export."}, status=404)
 
     def admin_config_with_actor(self, action_label):
         config = self.ensure_admin_request(action_label)

@@ -9,6 +9,14 @@ let selectedRecordId = "";
 let paymentDetailsRecordId = "";
 let receiptModalRecordId = "";
 let printConfirmationRecordId = "";
+let processingPage = 1;
+let processingPageSize = 10;
+let paymentPage = 1;
+let paymentPageSize = 10;
+let reportPage = 1;
+let reportPageSize = 10;
+let receiptPage = 1;
+let receiptPageSize = 10;
 
 function initSupabase() {
   if (!window.supabase?.createClient) return null;
@@ -157,18 +165,22 @@ function renderRows() {
 }
 
 function soaStatus(record) {
+  if (record.soaStatus) return record.soaStatus;
   if (record.currentStep === "SOA Generation" && record.status === "Ready") return "Ready";
   if (["Payment", "Official Receipt"].includes(record.currentStep) || ["Generated", "Paid", "Accepted"].includes(record.status)) return "Generated";
   return "Not Generated";
 }
 
 function paymentStatus(record) {
+  if (record.paymentStatus) return record.paymentStatus;
   if (["Paid", "Accepted"].includes(record.status) || Boolean(record.orNo)) return "Paid";
+  if (record.currentStep === "Official Receipt" && record.status === "Ready") return "Paid";
   if (["Payment", "Payment Queue"].includes(record.currentStep) || ["Pending", "Ready"].includes(record.status)) return "Pending";
   return "Not Paid";
 }
 
 function orStatus(record) {
+  if (record.orStatus) return record.orStatus;
   if (record.currentStep === "Official Receipt" && record.status === "Ready") return "Ready";
   if (record.status === "Paid" || record.status === "Accepted") return "Issued";
   return "Not Issued";
@@ -192,6 +204,7 @@ function soaNumber(record) {
 }
 
 function actionLabel(record) {
+  if (record.actionLabel) return record.actionLabel;
   if (record.currentStep === "Assessment") return "View Assessment";
   if (record.currentStep === "SOA Generation") return "Generate SOA";
   if (record.currentStep === "Payment" && record.status === "Pending") return "Accept Payment";
@@ -237,9 +250,16 @@ function getFilteredProcessingRecords() {
   const search = (document.querySelector("[data-processing-search]")?.value || "").toLowerCase();
   const step = document.querySelector("[data-step-filter]")?.value || "";
   const status = document.querySelector("[data-processing-status-filter]")?.value || "";
+  const dateFrom = document.querySelector("[data-processing-date-from]")?.value || "";
+  const dateTo = document.querySelector("[data-processing-date-to]")?.value || "";
   return recordCache.filter((record) => {
     const haystack = `${record.applicationNo} ${record.applicant} ${record.businessName}`.toLowerCase();
-    return haystack.includes(search) && (!step || record.currentStep === step) && (!status || [record.status, soaStatus(record), paymentStatus(record), orStatus(record)].includes(status));
+    const txDate = record.transactionDate || "";
+    return haystack.includes(search)
+      && (!step || record.currentStep === step)
+      && (!status || [record.status, soaStatus(record), paymentStatus(record), orStatus(record)].includes(status))
+      && (!dateFrom || txDate >= dateFrom)
+      && (!dateTo || txDate <= dateTo);
   });
 }
 
@@ -252,9 +272,14 @@ function clearProcessingFilters() {
   const search = document.querySelector("[data-processing-search]");
   const step = document.querySelector("[data-step-filter]");
   const status = document.querySelector("[data-processing-status-filter]");
+  const dateFrom = document.querySelector("[data-processing-date-from]");
+  const dateTo = document.querySelector("[data-processing-date-to]");
   if (search) search.value = "";
   if (step) step.value = "";
   if (status) status.value = "";
+  if (dateFrom) dateFrom.value = "";
+  if (dateTo) dateTo.value = "";
+  processingPage = 1;
 }
 
 function focusProcessingRecordFromUrl() {
@@ -269,6 +294,10 @@ function focusProcessingRecordFromUrl() {
     clearProcessingFilters();
   }
   selectedRecordId = focusId;
+  const focusIndex = getFilteredProcessingRecords().findIndex((record) => record.id === focusId);
+  if (focusIndex >= 0) {
+    processingPage = Math.floor(focusIndex / processingPageSize) + 1;
+  }
   renderProcessingQueue();
   window.setTimeout(() => {
     const row = Array.from(document.querySelectorAll("[data-processing-row]")).find((node) => node instanceof HTMLElement && node.dataset.processingRow === focusId);
@@ -281,14 +310,19 @@ function focusProcessingRecordFromUrl() {
 function renderProcessingQueue(records = getFilteredProcessingRecords()) {
   const table = document.querySelector("[data-processing-queue]");
   if (!table) return;
+  const totalPages = Math.max(1, Math.ceil(records.length / processingPageSize));
+  processingPage = Math.min(Math.max(processingPage, 1), totalPages);
+  const startIndex = (processingPage - 1) * processingPageSize;
+  const pageRecords = records.slice(startIndex, startIndex + processingPageSize);
   if (!records.length) {
     table.innerHTML = '<tr><td colspan="9">No processing records found.</td></tr>';
     document.querySelector("[data-processing-entry-count]").textContent = "Showing 0 entries";
+    renderProcessingPagination(0, 1);
     renderSelectedTransaction(null);
     return;
   }
-  selectedRecordId = records.some((record) => record.id === selectedRecordId) ? selectedRecordId : records[0].id;
-  table.innerHTML = records.map((record) => `
+  selectedRecordId = pageRecords.some((record) => record.id === selectedRecordId) ? selectedRecordId : pageRecords[0].id;
+  table.innerHTML = pageRecords.map((record) => `
     <tr class="${record.id === selectedRecordId ? "is-selected" : ""}" data-processing-row="${escapeHtml(record.id)}">
       <td>${escapeHtml(record.applicationNo)}</td>
       <td>${escapeHtml(record.applicant)}</td>
@@ -301,18 +335,53 @@ function renderProcessingQueue(records = getFilteredProcessingRecords()) {
       <td><button class="action-button" type="button" data-process-record="${record.id}">${escapeHtml(actionLabel(record))}</button></td>
     </tr>
   `).join("");
-  document.querySelector("[data-processing-entry-count]").textContent = `Showing 1 to ${records.length} of ${recordCache.length} entries`;
-  renderSelectedTransaction(records.find((record) => record.id === selectedRecordId) || records[0]);
+  document.querySelector("[data-processing-entry-count]").textContent = `Showing ${startIndex + 1} to ${startIndex + pageRecords.length} of ${records.length} entries`;
+  renderProcessingPagination(records.length, totalPages);
+  renderSelectedTransaction(pageRecords.find((record) => record.id === selectedRecordId) || pageRecords[0]);
+}
+
+function renderProcessingPagination(totalRows, totalPages) {
+  const nav = document.querySelector("[data-processing-pagination]");
+  if (!nav) return;
+  const previousDisabled = processingPage <= 1 ? "disabled" : "";
+  const nextDisabled = processingPage >= totalPages ? "disabled" : "";
+  const pages = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    if (page === 1 || page === totalPages || Math.abs(page - processingPage) <= 1) {
+      pages.push(`<button type="button" class="${page === processingPage ? "is-active" : ""}" data-processing-page="${page}">${page}</button>`);
+    }
+  }
+  nav.innerHTML = `
+    <button type="button" data-processing-page="${processingPage - 1}" ${previousDisabled}><i data-lucide="chevron-left"></i></button>
+    ${pages.join("")}
+    <button type="button" data-processing-page="${processingPage + 1}" ${nextDisabled}><i data-lucide="chevron-right"></i></button>
+    <select data-processing-page-size aria-label="Rows per page">
+      ${[10, 25, 50].map((size) => `<option value="${size}" ${size === processingPageSize ? "selected" : ""}>${size} / page</option>`).join("")}
+    </select>
+  `;
+  if (!totalRows) {
+    nav.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+  window.lucide?.createIcons();
 }
 
 function getFilteredPaymentRecords() {
   const search = (document.querySelector("[data-payment-search]")?.value || "").toLowerCase();
   const status = document.querySelector("[data-payment-status-filter]")?.value || "";
   const method = document.querySelector("[data-payment-method-filter]")?.value || "";
+  const dateFrom = document.querySelector("[data-payment-date-from]")?.value || "";
+  const dateTo = document.querySelector("[data-payment-date-to]")?.value || "";
   return recordCache.filter((record) => {
     const paymentMethod = record.paymentMethod || record.method || "";
     const haystack = `${record.orNo} ${record.applicant} ${record.businessName}`.toLowerCase();
-    return haystack.includes(search) && (!status || record.status === status) && (!method || paymentMethod === method);
+    const txDate = record.transactionDate || "";
+    return haystack.includes(search)
+      && (!status || record.status === status)
+      && (!method || paymentMethod === method)
+      && (!dateFrom || txDate >= dateFrom)
+      && (!dateTo || txDate <= dateTo);
   });
 }
 
@@ -337,13 +406,18 @@ function renderPaymentRecords(records = getFilteredPaymentRecords()) {
   const table = document.querySelector("[data-payment-records-table]");
   if (!table) return;
   renderPaymentCounts(records);
+  const totalPages = Math.max(1, Math.ceil(records.length / paymentPageSize));
+  paymentPage = Math.min(Math.max(paymentPage, 1), totalPages);
+  const startIndex = (paymentPage - 1) * paymentPageSize;
+  const pageRecords = records.slice(startIndex, startIndex + paymentPageSize);
   if (!records.length) {
     table.innerHTML = '<tr><td class="payment-empty-state" colspan="9">No payment records yet.</td></tr>';
     const count = document.querySelector("[data-payment-entry-count]");
     if (count) count.textContent = "Showing 0 entries";
+    renderPaymentPagination(0, 1);
     return;
   }
-  table.innerHTML = records.map((record) => `
+  table.innerHTML = pageRecords.map((record) => `
     <tr>
       <td>${escapeHtml(record.orNo || "-")}</td>
       <td>${escapeHtml(record.transactionDate || "-")}</td>
@@ -357,16 +431,50 @@ function renderPaymentRecords(records = getFilteredPaymentRecords()) {
     </tr>
   `).join("");
   const count = document.querySelector("[data-payment-entry-count]");
-  if (count) count.textContent = `Showing 1 to ${records.length} of ${recordCache.length} entries`;
+  if (count) count.textContent = `Showing ${startIndex + 1} to ${startIndex + pageRecords.length} of ${records.length} entries`;
+  renderPaymentPagination(records.length, totalPages);
+}
+
+function renderPaymentPagination(totalRows, totalPages) {
+  const nav = document.querySelector("[data-payment-pagination]");
+  if (!nav) return;
+  const previousDisabled = paymentPage <= 1 ? "disabled" : "";
+  const nextDisabled = paymentPage >= totalPages ? "disabled" : "";
+  const pages = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    if (page === 1 || page === totalPages || Math.abs(page - paymentPage) <= 1) {
+      pages.push(`<button type="button" class="${page === paymentPage ? "is-active" : ""}" data-payment-page="${page}">${page}</button>`);
+    }
+  }
+  nav.innerHTML = `
+    <button type="button" data-payment-page="${paymentPage - 1}" ${previousDisabled}><i data-lucide="chevron-left"></i></button>
+    ${pages.join("")}
+    <button type="button" data-payment-page="${paymentPage + 1}" ${nextDisabled}><i data-lucide="chevron-right"></i></button>
+    <select data-payment-page-size aria-label="Rows per page">
+      ${[10, 25, 50].map((size) => `<option value="${size}" ${size === paymentPageSize ? "selected" : ""}>${size} / page</option>`).join("")}
+    </select>
+  `;
+  if (!totalRows) {
+    nav.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+  window.lucide?.createIcons();
 }
 
 function getFilteredOfficialReceipts() {
   const search = (document.querySelector("[data-receipt-search]")?.value || "").toLowerCase();
   const status = document.querySelector("[data-receipt-status-filter]")?.value || "";
+  const dateFrom = document.querySelector("[data-receipt-date-from]")?.value || "";
+  const dateTo = document.querySelector("[data-receipt-date-to]")?.value || "";
   return getIssuedReceiptRecords().filter((record) => {
     const derivedStatus = orStatus(record);
     const haystack = `${record.orNo} ${record.applicant} ${record.businessName}`.toLowerCase();
-    return haystack.includes(search) && (!status || derivedStatus === status);
+    const txDate = record.transactionDate || "";
+    return haystack.includes(search)
+      && (!status || derivedStatus === status)
+      && (!dateFrom || txDate >= dateFrom)
+      && (!dateTo || txDate <= dateTo);
   });
 }
 
@@ -399,6 +507,7 @@ function renderOfficialReceipts(records = getFilteredOfficialReceipts()) {
     table.innerHTML = '<tr><td class="payment-empty-state" colspan="8">No official receipts yet.</td></tr>';
     const count = document.querySelector("[data-receipt-entry-count]");
     if (count) count.textContent = "Showing 0 entries";
+    renderReceiptPagination(0, 1);
     const details = document.querySelector("[data-receipt-details]");
     if (details) {
       details.innerHTML = '<i data-lucide="receipt-text"></i><strong>No receipt selected</strong><p>Receipt details will appear here after records are available.</p><button class="action-button" type="button" disabled>View Full Receipt</button>';
@@ -406,7 +515,11 @@ function renderOfficialReceipts(records = getFilteredOfficialReceipts()) {
     window.lucide?.createIcons();
     return;
   }
-  table.innerHTML = records.map((record) => `
+  const totalPages = Math.max(1, Math.ceil(records.length / receiptPageSize));
+  receiptPage = Math.min(Math.max(receiptPage, 1), totalPages);
+  const startIndex = (receiptPage - 1) * receiptPageSize;
+  const pageRecords = records.slice(startIndex, startIndex + receiptPageSize);
+  table.innerHTML = pageRecords.map((record) => `
     <tr>
       <td>${escapeHtml(record.orNo || "-")}</td>
       <td>${escapeHtml(record.applicant)}</td>
@@ -419,13 +532,14 @@ function renderOfficialReceipts(records = getFilteredOfficialReceipts()) {
     </tr>
   `).join("");
   const count = document.querySelector("[data-receipt-entry-count]");
-  if (count) count.textContent = `Showing 1 to ${records.length} of ${issuedRecords.length} entries`;
+  if (count) count.textContent = `Showing ${startIndex + 1} to ${startIndex + pageRecords.length} of ${records.length} entries`;
+  renderReceiptPagination(records.length, totalPages);
   const details = document.querySelector("[data-receipt-details]");
   if (details) {
     const requestedId = getRequestedRecordId();
-    const selected = records.find((record) => record.id === requestedId)
-      || records.find((record) => record.id === selectedRecordId)
-      || records[0];
+    const selected = pageRecords.find((record) => record.id === requestedId)
+      || pageRecords.find((record) => record.id === selectedRecordId)
+      || pageRecords[0];
     selectedRecordId = selected.id;
     details.innerHTML = `
       <div class="selected-detail-grid">
@@ -442,10 +556,39 @@ function renderOfficialReceipts(records = getFilteredOfficialReceipts()) {
   window.lucide?.createIcons();
 }
 
+function renderReceiptPagination(totalRows, totalPages) {
+  const nav = document.querySelector("[data-receipt-pagination]");
+  if (!nav) return;
+  const previousDisabled = receiptPage <= 1 ? "disabled" : "";
+  const nextDisabled = receiptPage >= totalPages ? "disabled" : "";
+  const pages = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    if (page === 1 || page === totalPages || Math.abs(page - receiptPage) <= 1) {
+      pages.push(`<button type="button" class="${page === receiptPage ? "is-active" : ""}" data-receipt-page="${page}">${page}</button>`);
+    }
+  }
+  nav.innerHTML = `
+    <button type="button" data-receipt-page="${receiptPage - 1}" ${previousDisabled}><i data-lucide="chevron-left"></i></button>
+    ${pages.join("")}
+    <button type="button" data-receipt-page="${receiptPage + 1}" ${nextDisabled}><i data-lucide="chevron-right"></i></button>
+    <select data-receipt-page-size aria-label="Rows per page">
+      ${[10, 25, 50].map((size) => `<option value="${size}" ${size === receiptPageSize ? "selected" : ""}>${size} / page</option>`).join("")}
+    </select>
+  `;
+  if (!totalRows) {
+    nav.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+  window.lucide?.createIcons();
+}
+
 function getFilteredTreasuryReports() {
   const search = (document.querySelector("[data-report-search]")?.value || "").toLowerCase();
   const type = document.querySelector("[data-report-type-filter]")?.value || "";
   const status = document.querySelector("[data-report-status-filter]")?.value || "";
+  const dateFrom = document.querySelector("[data-report-date-from]")?.value || "";
+  const dateTo = document.querySelector("[data-report-date-to]")?.value || "";
   const derived = recordCache.map((record) => ({
     id: `RPT-${record.applicationNo || record.id || ""}`,
     reportType: record.currentStep === "Official Receipt"
@@ -464,7 +607,12 @@ function getFilteredTreasuryReports() {
   }));
   return derived.filter((report) => {
     const haystack = `${report.id} ${report.generatedBy}`.toLowerCase();
-    return haystack.includes(search) && (!type || report.reportType === type) && (!status || report.status === status);
+    const reportDate = report.coveredPeriod === "-" ? "" : report.coveredPeriod;
+    return haystack.includes(search)
+      && (!type || report.reportType === type)
+      && (!status || report.status === status)
+      && (!dateFrom || reportDate >= dateFrom)
+      && (!dateTo || reportDate <= dateTo);
   });
 }
 
@@ -489,10 +637,15 @@ function renderTreasuryReports(records = getFilteredTreasuryReports()) {
     table.innerHTML = '<tr><td class="payment-empty-state" colspan="8">No treasury reports yet.</td></tr>';
     const count = document.querySelector("[data-report-entry-count]");
     if (count) count.textContent = "Showing 0 entries";
+    renderReportPagination(0, 1);
     window.lucide?.createIcons();
     return;
   }
-  table.innerHTML = records.map((report) => `
+  const totalPages = Math.max(1, Math.ceil(records.length / reportPageSize));
+  reportPage = Math.min(Math.max(reportPage, 1), totalPages);
+  const startIndex = (reportPage - 1) * reportPageSize;
+  const pageRecords = records.slice(startIndex, startIndex + reportPageSize);
+  table.innerHTML = pageRecords.map((report) => `
     <tr>
       <td>${escapeHtml(report.id)}</td>
       <td>${escapeHtml(report.reportType)}</td>
@@ -501,12 +654,52 @@ function renderTreasuryReports(records = getFilteredTreasuryReports()) {
       <td><span class="status-pill ${statusClass(report.status)}">${escapeHtml(report.status)}</span></td>
       <td>${escapeHtml(report.generatedBy)}</td>
       <td>${escapeHtml(report.generatedOn)}</td>
-      <td><button class="action-button" type="button" data-edit-record="${report.sourceId}">View</button></td>
+      <td><button class="action-button" type="button" data-view-report="${report.sourceId}">View</button></td>
     </tr>
   `).join("");
   const count = document.querySelector("[data-report-entry-count]");
-  if (count) count.textContent = `Showing 1 to ${records.length} of ${records.length} entries`;
+  if (count) count.textContent = `Showing ${startIndex + 1} to ${startIndex + pageRecords.length} of ${records.length} entries`;
+  renderReportPagination(records.length, totalPages);
   window.lucide?.createIcons();
+}
+
+function renderReportPagination(totalRows, totalPages) {
+  const nav = document.querySelector("[data-report-pagination]");
+  if (!nav) return;
+  const previousDisabled = reportPage <= 1 ? "disabled" : "";
+  const nextDisabled = reportPage >= totalPages ? "disabled" : "";
+  const pages = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    if (page === 1 || page === totalPages || Math.abs(page - reportPage) <= 1) {
+      pages.push(`<button type="button" class="${page === reportPage ? "is-active" : ""}" data-report-page="${page}">${page}</button>`);
+    }
+  }
+  nav.innerHTML = `
+    <button type="button" data-report-page="${reportPage - 1}" ${previousDisabled}><i data-lucide="chevron-left"></i></button>
+    ${pages.join("")}
+    <button type="button" data-report-page="${reportPage + 1}" ${nextDisabled}><i data-lucide="chevron-right"></i></button>
+    <select data-report-page-size aria-label="Rows per page">
+      ${[10, 25, 50].map((size) => `<option value="${size}" ${size === reportPageSize ? "selected" : ""}>${size} / page</option>`).join("")}
+    </select>
+  `;
+  if (!totalRows) {
+    nav.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+  window.lucide?.createIcons();
+}
+
+function viewReportRecord(record) {
+  if (!record) {
+    setStatus("Unable to find the selected report record.", true);
+    return;
+  }
+  if (orStatus(record) === "Issued" || record.currentStep === "Official Receipt") {
+    window.location.assign(`/treasury/official-receipts?id=${encodeURIComponent(record.id)}`);
+    return;
+  }
+  window.location.assign(`/treasury/processing?id=${encodeURIComponent(record.id)}`);
 }
 
 function renderSelectedTransaction(record) {
@@ -567,9 +760,9 @@ function renderPaymentDetails(record) {
       <article class="payment-detail-card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "No remarks recorded.")}</p></article>
     </div>
     <div class="payment-details-grid">
-      <label class="payment-detail-card"><span>Official Receipt No.</span><input name="officialReceiptNumber" data-receipt-or-number value="${escapeHtml(record.orNo || "")}" required /></label>
-      <label class="payment-detail-card"><span>Payment Date</span><input name="paymentDate" type="date" data-receipt-payment-date value="${escapeHtml(record.transactionDate || new Date().toISOString().slice(0, 10))}" required /></label>
-      <label class="payment-detail-card"><span>Amount Paid</span><input name="amountPaid" type="number" min="${Number(record.amount || 0)}" step="0.01" data-receipt-amount-paid value="${escapeHtml(record.amount || "")}" required /></label>
+      <label class="payment-detail-card"><span>Official Receipt No.</span><input name="officialReceiptNumber" data-receipt-or-number value="${escapeHtml(record.orNo || "")}" readonly required /></label>
+      <label class="payment-detail-card"><span>Payment Date</span><input name="paymentDate" type="date" data-receipt-payment-date value="${escapeHtml(record.transactionDate || new Date().toISOString().slice(0, 10))}" readonly required /></label>
+      <label class="payment-detail-card"><span>Amount Paid</span><input name="amountPaid" type="number" min="${Number(record.amount || 0)}" step="0.01" data-receipt-amount-paid value="${escapeHtml(record.amount || "")}" readonly required /></label>
       <label class="payment-detail-card wide"><span>Payment Remarks</span><textarea name="paymentRemarks" data-receipt-remarks>${escapeHtml(record.remarks || "")}</textarea></label>
     </div>
     <section class="payment-process-note">
@@ -614,8 +807,10 @@ function setPrintConfirmationModalOpen(isOpen) {
 
 function renderReceiptModal(record) {
   const body = document.querySelector("[data-receipt-modal-body]");
+  const actionButton = document.querySelector("[data-mark-receipt-paid]");
   if (!body || !record) return;
   receiptModalRecordId = record.id;
+  const isReady = orStatus(record) === "Ready";
   body.innerHTML = `
     <div class="payment-details-grid">
       <article class="payment-detail-card"><span>OR No.</span><strong>${escapeHtml(record.orNo || "-")}</strong></article>
@@ -630,14 +825,25 @@ function renderReceiptModal(record) {
       <article class="payment-detail-card"><span>Current Step</span><strong>${escapeHtml(record.currentStep || "-")}</strong></article>
       <article class="payment-detail-card wide"><span>Remarks</span><p>${escapeHtml(record.remarks || "No remarks recorded.")}</p></article>
     </div>
+    ${isReady ? `
+    <div class="payment-details-grid">
+      <label class="payment-detail-card"><span>Official Receipt No.</span><input name="officialReceiptNumber" data-receipt-or-number value="${escapeHtml(record.orNo || "")}" readonly required /></label>
+      <label class="payment-detail-card"><span>Payment Date</span><input name="paymentDate" type="date" data-receipt-payment-date value="${escapeHtml(record.transactionDate || new Date().toISOString().slice(0, 10))}" readonly required /></label>
+      <label class="payment-detail-card"><span>Amount Paid</span><input name="amountPaid" type="number" min="${Number(record.amount || 0)}" step="0.01" data-receipt-amount-paid value="${escapeHtml(record.amount || "")}" readonly required /></label>
+      <label class="payment-detail-card wide"><span>Receipt Remarks</span><textarea name="paymentRemarks" data-receipt-remarks>${escapeHtml(record.remarks || "")}</textarea></label>
+    </div>` : ""}
     <section class="payment-process-note">
-      <i data-lucide="badge-check"></i>
+      <i data-lucide="${isReady ? "badge-check" : "receipt-text"}"></i>
       <div>
-        <strong>Mark as Paid</strong>
-        <p>Set this transaction to paid and open it in Treasury Processing.</p>
+        <strong>${isReady ? "Issue Official Receipt" : "Official Receipt Issued"}</strong>
+        <p>${isReady ? "Complete the receipt details to issue the OR for this paid transaction." : "This transaction has completed the Treasury workflow."}</p>
       </div>
     </section>
   `;
+  if (actionButton instanceof HTMLButtonElement) {
+    actionButton.hidden = !isReady;
+    actionButton.textContent = "Issue OR";
+  }
   window.lucide?.createIcons();
 }
 
@@ -747,34 +953,17 @@ async function markReceiptAsPaid(record) {
   if (!amountPaid || amountPaid < Number(record.amount || 0)) {
     throw new Error("Amount paid must match or cover the total amount due.");
   }
-  const paidRecord = {
-    ...record,
-    currentStep: "Official Receipt",
-    step: "Official Receipt",
-    status: "Paid",
-    transactionDate: paymentDate,
-    orNo: orNumber,
-    amount: amountPaid,
-    remarks,
-  };
-  await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}`, {
-    method: "PATCH",
+  const result = await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}/advance`, {
+    method: "POST",
     body: JSON.stringify({
-      applicationNo: paidRecord.applicationNo,
-      orNo: paidRecord.orNo,
-      applicant: paidRecord.applicant,
-      businessName: paidRecord.businessName,
-      amount: amountPaid,
-      step: paidRecord.step,
-      currentStep: paidRecord.currentStep,
-      status: paidRecord.status,
-      transactionDate: paidRecord.transactionDate,
+      officialReceiptNumber: orNumber,
+      paymentDate,
+      amountPaid,
       remarks,
     }),
   });
-  await syncTreasuryCompletion(paidRecord);
   await loadRecords();
-  return recordCache.find((item) => item.id === record.id) || paidRecord;
+  return recordCache.find((item) => item.id === record.id) || result.record || record;
 }
 
 function renderBars() {
@@ -785,7 +974,8 @@ function renderBars() {
   node.innerHTML = values.map((value, index) => `<span><em style="height:${Math.max(18, Math.round((value / max) * 150))}px"></em><small>${String(index + 1).padStart(2, "0")}</small></span>`).join("");
 }
 
-async function loadRecords() {
+async function loadRecords(options = {}) {
+  const shouldFocusFromUrl = options.focusFromUrl !== false;
   const result = await apiFetch("/treasury/api/records");
   recordCache = result.records || [];
   renderCounts(result.counts || {});
@@ -797,7 +987,24 @@ async function loadRecords() {
   renderBars();
   window.lucide?.createIcons();
   setStatus(document.body.dataset.page === "treasury-settings" ? "Settings loaded." : document.body.dataset.page === "treasury-reports" ? "Treasury reports loaded." : document.body.dataset.page === "official-receipts" ? "Official receipts loaded." : document.body.dataset.page === "payment-records" ? "Payment records loaded." : document.body.dataset.page === "processing" ? "Treasury processing loaded." : "Treasury dashboard loaded.");
-  focusProcessingRecordFromUrl();
+  if (shouldFocusFromUrl) {
+    focusProcessingRecordFromUrl();
+  }
+}
+
+async function refreshRecords() {
+  await loadRecords({ focusFromUrl: false });
+}
+
+function appendIfPresent(params, key, selector) {
+  const value = document.querySelector(selector)?.value || "";
+  if (value) params.set(key, value);
+}
+
+async function exportTreasuryPdf(type, filename, extra = {}) {
+  const params = new URLSearchParams({ type, format: "pdf", ...extra });
+  const path = `/treasury/api/reports/export?${params.toString()}`;
+  await downloadAuthenticatedFile(path, filename);
 }
 
 function fillForm(record) {
@@ -873,7 +1080,12 @@ function bindCrud() {
           processButton.textContent = "Processing...";
         }
         try {
-          await advanceProcessingRecord(record);
+          const updated = await advanceProcessingRecord(record);
+          if (updated?.currentStep) {
+            setStatus(`Transaction is now at ${updated.currentStep}.`);
+          }
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : "Unable to process this treasury record.", true);
         } finally {
           if (processButton instanceof HTMLButtonElement) {
             processButton.disabled = false;
@@ -891,43 +1103,26 @@ function bindCrud() {
 }
 
 async function advanceProcessingRecord(record) {
-  const next = { ...record };
-  if (record.currentStep === "Assessment") {
-    next.currentStep = "SOA Generation";
-    next.step = "SOA Generation";
-    next.status = "Ready";
-  } else if (record.currentStep === "SOA Generation") {
-    next.currentStep = "Payment";
-    next.step = "Payment";
-    next.status = "Generated";
-  } else if (record.currentStep === "Payment") {
-    next.currentStep = "Official Receipt";
-    next.step = "Official Receipt";
-    next.status = "Paid";
-  } else {
-    next.status = "Accepted";
+  if (record.currentStep === "Official Receipt" && orStatus(record) === "Ready") {
+    openReceiptModal(record);
+    return record;
   }
-  await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      applicationNo: next.applicationNo,
-      orNo: next.orNo || `OR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`,
-      applicant: next.applicant,
-      businessName: next.businessName,
-      amount: next.amount,
-      step: next.step,
-      currentStep: next.currentStep,
-      status: next.status,
-      transactionDate: next.transactionDate || new Date().toISOString().slice(0, 10),
-      remarks: next.remarks || "",
-    }),
+  if (orStatus(record) === "Issued") {
+    selectedRecordId = record.id;
+    if (document.body.dataset.page === "processing") {
+      window.location.assign(`/treasury/official-receipts?id=${encodeURIComponent(record.id)}`);
+    } else {
+      openReceiptModal(record);
+    }
+    return record;
+  }
+  const result = await apiFetch(`/treasury/api/records/${encodeURIComponent(record.id)}/advance`, {
+    method: "POST",
+    body: JSON.stringify({}),
   });
-  if (next.currentStep === "Official Receipt" || next.status === "Accepted") {
-    await syncTreasuryCompletion(next);
-  }
   selectedRecordId = record.id;
   await loadRecords();
-  return next;
+  return result.record || recordCache.find((item) => item.id === record.id) || record;
 }
 
 function bindPaymentDetailsModal() {
@@ -1049,10 +1244,33 @@ function bindPrintConfirmationModal() {
 }
 
 function bindProcessingPage() {
-  document.querySelector("[data-processing-search]")?.addEventListener("input", () => renderProcessingQueue());
-  document.querySelector("[data-step-filter]")?.addEventListener("change", () => renderProcessingQueue());
-  document.querySelector("[data-processing-status-filter]")?.addEventListener("change", () => renderProcessingQueue());
-  document.querySelector("[data-refresh-processing]")?.addEventListener("click", () => loadRecords());
+  const rerenderFromFirstPage = () => {
+    processingPage = 1;
+    renderProcessingQueue();
+  };
+  document.querySelector("[data-processing-search]")?.addEventListener("input", rerenderFromFirstPage);
+  document.querySelector("[data-step-filter]")?.addEventListener("change", rerenderFromFirstPage);
+  document.querySelector("[data-processing-status-filter]")?.addEventListener("change", rerenderFromFirstPage);
+  document.querySelector("[data-processing-date-from]")?.addEventListener("change", rerenderFromFirstPage);
+  document.querySelector("[data-processing-date-to]")?.addEventListener("change", rerenderFromFirstPage);
+  document.querySelectorAll("[data-refresh-processing]").forEach((button) => {
+    button.addEventListener("click", () => refreshRecords());
+  });
+  document.querySelector("[data-processing-export]")?.addEventListener("click", async () => {
+    try {
+      const params = new URLSearchParams();
+      appendIfPresent(params, "search", "[data-processing-search]");
+      appendIfPresent(params, "dateFrom", "[data-processing-date-from]");
+      appendIfPresent(params, "dateTo", "[data-processing-date-to]");
+      appendIfPresent(params, "step", "[data-step-filter]");
+      appendIfPresent(params, "status", "[data-processing-status-filter]");
+      setStatus("Preparing processing queue PDF...");
+      await exportTreasuryPdf("processing", "treasury-processing-queue.pdf", Object.fromEntries(params));
+      setStatus("Processing queue PDF downloaded.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to export processing queue.", true);
+    }
+  });
   document.querySelector("[data-processing-queue]")?.addEventListener("click", (event) => {
     const row = event.target instanceof HTMLElement ? event.target.closest("tr") : null;
     const button = event.target instanceof HTMLElement ? event.target.closest("[data-process-record]") : null;
@@ -1060,88 +1278,157 @@ function bindProcessingPage() {
       return;
     }
     const rows = getFilteredProcessingRecords();
+    const pageRows = rows.slice((processingPage - 1) * processingPageSize, processingPage * processingPageSize);
     const index = row ? Array.from(row.parentElement?.children || []).indexOf(row) : -1;
-    const record = index >= 0 ? rows[index] : null;
+    const record = index >= 0 ? pageRows[index] : null;
     if (record) {
       selectedRecordId = record.id;
       renderProcessingQueue();
     }
   });
-  document.querySelector("[data-reset-processing-filters]")?.addEventListener("click", () => {
-    const search = document.querySelector("[data-processing-search]");
-    const step = document.querySelector("[data-step-filter]");
-    const status = document.querySelector("[data-processing-status-filter]");
-    if (search) search.value = "";
-    if (step) step.value = "";
-    if (status) status.value = "";
+  document.querySelector("[data-processing-pagination]")?.addEventListener("click", (event) => {
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-processing-page]") : null;
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+    processingPage = Number(button.dataset.processingPage || processingPage);
+    renderProcessingQueue();
+  });
+  document.querySelector("[data-processing-pagination]")?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.matches("[data-processing-page-size]")) return;
+    processingPageSize = Number(target.value || 10);
+    processingPage = 1;
     renderProcessingQueue();
   });
 }
 
 function bindPaymentRecordsPage() {
-  document.querySelector("[data-payment-search]")?.addEventListener("input", () => renderPaymentRecords());
-  document.querySelector("[data-payment-status-filter]")?.addEventListener("change", () => renderPaymentRecords());
-  document.querySelector("[data-payment-method-filter]")?.addEventListener("change", () => renderPaymentRecords());
-  document.querySelector("[data-reset-payment-filters]")?.addEventListener("click", () => {
-    const search = document.querySelector("[data-payment-search]");
-    const status = document.querySelector("[data-payment-status-filter]");
-    const method = document.querySelector("[data-payment-method-filter]");
-    if (search) search.value = "";
-    if (status) status.value = "";
-    if (method) method.value = "";
+  const renderPaymentsFromFirstPage = () => {
+    paymentPage = 1;
     renderPaymentRecords();
+  };
+  document.querySelector("[data-payment-search]")?.addEventListener("input", renderPaymentsFromFirstPage);
+  document.querySelector("[data-payment-date-from]")?.addEventListener("change", renderPaymentsFromFirstPage);
+  document.querySelector("[data-payment-date-to]")?.addEventListener("change", renderPaymentsFromFirstPage);
+  document.querySelector("[data-payment-status-filter]")?.addEventListener("change", renderPaymentsFromFirstPage);
+  document.querySelector("[data-payment-method-filter]")?.addEventListener("change", renderPaymentsFromFirstPage);
+  document.querySelectorAll("[data-refresh-payments]").forEach((button) => {
+    button.addEventListener("click", () => refreshRecords());
   });
   document.querySelectorAll("[data-payment-export]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const format = button.dataset.paymentExport === "pdf" ? "pdf" : "csv";
       try {
-        setStatus("Preparing payment report...");
-        await downloadAuthenticatedFile(`/treasury/api/reports/export?format=${encodeURIComponent(format)}`, format === "pdf" ? "treasury-collection-report.html" : "treasury-collection-report.csv");
-        setStatus("Payment report downloaded.");
+        const params = new URLSearchParams();
+        appendIfPresent(params, "search", "[data-payment-search]");
+        appendIfPresent(params, "dateFrom", "[data-payment-date-from]");
+        appendIfPresent(params, "dateTo", "[data-payment-date-to]");
+        appendIfPresent(params, "status", "[data-payment-status-filter]");
+        appendIfPresent(params, "method", "[data-payment-method-filter]");
+        setStatus("Preparing payment PDF...");
+        await exportTreasuryPdf("payments", "treasury-payment-records.pdf", Object.fromEntries(params));
+        setStatus("Payment PDF downloaded.");
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Unable to export payment report.", true);
       }
     });
   });
+  document.querySelector("[data-payment-pagination]")?.addEventListener("click", (event) => {
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-payment-page]") : null;
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+    paymentPage = Number(button.dataset.paymentPage || paymentPage);
+    renderPaymentRecords();
+  });
+  document.querySelector("[data-payment-pagination]")?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.matches("[data-payment-page-size]")) return;
+    paymentPageSize = Number(target.value || 10);
+    paymentPage = 1;
+    renderPaymentRecords();
+  });
 }
 
 function bindOfficialReceiptsPage() {
-  document.querySelector("[data-receipt-search]")?.addEventListener("input", () => renderOfficialReceipts());
-  document.querySelector("[data-receipt-status-filter]")?.addEventListener("change", () => renderOfficialReceipts());
-  document.querySelector("[data-reset-receipt-filters]")?.addEventListener("click", () => {
-    const search = document.querySelector("[data-receipt-search]");
-    const status = document.querySelector("[data-receipt-status-filter]");
-    if (search) search.value = "";
-    if (status) status.value = "";
+  const renderReceiptsFromFirstPage = () => {
+    receiptPage = 1;
+    renderOfficialReceipts();
+  };
+  document.querySelector("[data-receipt-search]")?.addEventListener("input", renderReceiptsFromFirstPage);
+  document.querySelector("[data-receipt-date-from]")?.addEventListener("change", renderReceiptsFromFirstPage);
+  document.querySelector("[data-receipt-date-to]")?.addEventListener("change", renderReceiptsFromFirstPage);
+  document.querySelector("[data-receipt-status-filter]")?.addEventListener("change", renderReceiptsFromFirstPage);
+  document.querySelectorAll("[data-refresh-receipts]").forEach((button) => {
+    button.addEventListener("click", () => refreshRecords());
+  });
+  document.querySelector("[data-receipt-export]")?.addEventListener("click", () => {
+    const params = new URLSearchParams();
+    appendIfPresent(params, "search", "[data-receipt-search]");
+    appendIfPresent(params, "dateFrom", "[data-receipt-date-from]");
+    appendIfPresent(params, "dateTo", "[data-receipt-date-to]");
+    appendIfPresent(params, "status", "[data-receipt-status-filter]");
+    setStatus("Preparing official receipts PDF...");
+    exportTreasuryPdf("receipts", "treasury-official-receipts.pdf", Object.fromEntries(params))
+      .then(() => setStatus("Official receipts PDF downloaded."))
+      .catch((error) => setStatus(error instanceof Error ? error.message : "Unable to export official receipts.", true));
+  });
+  document.querySelector("[data-receipt-pagination]")?.addEventListener("click", (event) => {
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-receipt-page]") : null;
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+    receiptPage = Number(button.dataset.receiptPage || receiptPage);
     renderOfficialReceipts();
   });
-  document.querySelector("[data-refresh-receipts]")?.addEventListener("click", () => loadRecords());
-  document.querySelector("[data-receipt-export]")?.addEventListener("click", async () => {
-    try {
-      setStatus("Preparing official receipt report...");
-      await downloadAuthenticatedFile("/treasury/api/reports/export?format=csv", "treasury-official-receipts.csv");
-      setStatus("Official receipt report downloaded.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to export official receipts.", true);
-    }
+  document.querySelector("[data-receipt-pagination]")?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.matches("[data-receipt-page-size]")) return;
+    receiptPageSize = Number(target.value || 10);
+    receiptPage = 1;
+    renderOfficialReceipts();
   });
 }
 
 function bindTreasuryReportsPage() {
-  document.querySelector("[data-report-search]")?.addEventListener("input", () => renderTreasuryReports());
-  document.querySelector("[data-report-type-filter]")?.addEventListener("change", () => renderTreasuryReports());
-  document.querySelector("[data-report-status-filter]")?.addEventListener("change", () => renderTreasuryReports());
+  const renderReportsFromFirstPage = () => {
+    reportPage = 1;
+    renderTreasuryReports();
+  };
+  document.querySelector("[data-report-date-from]")?.addEventListener("change", renderReportsFromFirstPage);
+  document.querySelector("[data-report-date-to]")?.addEventListener("change", renderReportsFromFirstPage);
+  document.querySelector("[data-report-search]")?.addEventListener("input", renderReportsFromFirstPage);
+  document.querySelector("[data-report-type-filter]")?.addEventListener("change", renderReportsFromFirstPage);
+  document.querySelector("[data-report-status-filter]")?.addEventListener("change", renderReportsFromFirstPage);
+  document.querySelector("[data-reports-table]")?.addEventListener("click", (event) => {
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-view-report]") : null;
+    if (!(button instanceof HTMLButtonElement)) return;
+    const record = recordCache.find((item) => item.id === button.dataset.viewReport);
+    viewReportRecord(record);
+  });
   document.querySelectorAll("[data-report-export]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const format = button.dataset.reportExport === "pdf" ? "pdf" : "csv";
       try {
-        setStatus("Preparing treasury report...");
-        await downloadAuthenticatedFile(`/treasury/api/reports/export?format=${encodeURIComponent(format)}`, format === "pdf" ? "treasury-report.html" : "treasury-report.csv");
-        setStatus("Treasury report downloaded.");
+        const params = new URLSearchParams();
+        appendIfPresent(params, "dateFrom", "[data-report-date-from]");
+        appendIfPresent(params, "dateTo", "[data-report-date-to]");
+        appendIfPresent(params, "reportType", "[data-report-type-filter]");
+        appendIfPresent(params, "status", "[data-report-status-filter]");
+        appendIfPresent(params, "search", "[data-report-search]");
+        setStatus("Preparing treasury reports PDF...");
+        await exportTreasuryPdf("reports", "treasury-reports.pdf", Object.fromEntries(params));
+        setStatus("Treasury reports PDF downloaded.");
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Unable to export treasury report.", true);
+        setStatus(error instanceof Error ? error.message : "Unable to export treasury reports.", true);
       }
     });
+  });
+  document.querySelector("[data-report-pagination]")?.addEventListener("click", (event) => {
+    const button = event.target instanceof HTMLElement ? event.target.closest("[data-report-page]") : null;
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+    reportPage = Number(button.dataset.reportPage || reportPage);
+    renderTreasuryReports();
+  });
+  document.querySelector("[data-report-pagination]")?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.matches("[data-report-page-size]")) return;
+    reportPageSize = Number(target.value || 10);
+    reportPage = 1;
+    renderTreasuryReports();
   });
 }
 
@@ -1165,6 +1452,7 @@ async function boot() {
     bindCrud();
     if (document.body.dataset.page === "processing") {
       bindProcessingPage();
+      bindReceiptModal();
     }
     if (document.body.dataset.page === "payment-records") {
       bindPaymentRecordsPage();

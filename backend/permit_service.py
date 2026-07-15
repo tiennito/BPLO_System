@@ -107,8 +107,8 @@ class PermitServiceMixin:
                 }
             )
 
-        if status == "Active" and not any(doc["requirement_type"] == "Required" for doc in normalized_documents):
-            raise ValueError("Add at least one required document before activating a permit.")
+        if status == "Active" and not any(doc["upload_required"] for doc in normalized_documents):
+            raise ValueError("Mark at least one document as applicant upload required before activating a permit.")
 
         required_office_ids = []
         for office_id in payload.get("requiredOfficeIds") or []:
