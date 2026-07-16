@@ -9,6 +9,7 @@ from .department_routes import DepartmentRoutesMixin
 from .notification_service import NotificationServiceMixin
 from .ocr_service import OCRServiceMixin
 from .permit_service import PermitServiceMixin
+from .renewal_service import RenewalServiceMixin
 from .supabase_client import SupabaseClientMixin
 from .treasury_routes import TreasuryRoutesMixin
 from .utils import CoreHandlerMixin
@@ -21,6 +22,7 @@ class AppHandler(
     OCRServiceMixin,
     NotificationServiceMixin,
     PermitServiceMixin,
+    RenewalServiceMixin,
     AssessmentServiceMixin,
     AdminRoutesMixin,
     ApplicantRoutesMixin,

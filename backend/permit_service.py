@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
@@ -21,6 +20,7 @@ from .utils import (
     slugify_key,
     utc_now_iso,
 )
+from .renewal_service import calendar_permit_validity, manila_now
 
 
 class PermitServiceMixin:
@@ -579,8 +579,8 @@ class PermitServiceMixin:
 
             info = app.get("business_info") or {}
             permit_snapshot = app.get("permit_snapshot") or {}
-            issue_date = datetime.now(timezone.utc).date()
-            expiration_date = issue_date.replace(year=issue_date.year + 1)
+            issue_date = manila_now().date()
+            validity = calendar_permit_validity(issue_date)
             permit_number = self.generate_workflow_number("BP")
             verification_code = self.generate_workflow_number("VERIFY")
             permit_payload = {
@@ -592,8 +592,13 @@ class PermitServiceMixin:
                 "business_classification": (bundle.get("classification") or {}).get("name") or info.get("business_classification") or "",
                 "business_address": self.app_business_address(info),
                 "permit_type": permit_snapshot.get("permitName") or permit_snapshot.get("permit_name") or "Business Permit",
-                "issue_date": issue_date.isoformat(),
-                "expiration_date": expiration_date.isoformat(),
+                "issue_date": validity["issued_date"],
+                "issued_date": validity["issued_date"],
+                "expiration_date": validity["valid_until"],
+                "valid_until": validity["valid_until"],
+                "permit_year": validity["permit_year"],
+                "renewal_year": validity["renewal_year"],
+                "renewal_status": "not_open",
                 "status": "Ready for Release",
                 "verification_code": verification_code,
                 "qr_code_value": f"BPLO:{permit_number}:{verification_code}",
@@ -606,6 +611,15 @@ class PermitServiceMixin:
                 method="PATCH",
                 payload={"status": "Permit Ready for Release", "progress": "Permit Generated", "finalized_by": config["actor"].get("id"), "finalized_at": utc_now_iso(), "updated_at": utc_now_iso()},
                 query=urlencode({"id": f"eq.{application_id}"}),
+            )
+            self.create_service_audit_log(
+                config["supabase_url"],
+                config["supabase_service_key"],
+                "permit_validity_dates_generated",
+                actor=config["actor"],
+                entity_type="business_permit",
+                entity_id=(rows[0] if rows else {}).get("id"),
+                details={"permitNumber": permit_number, **validity, "applicationType": app.get("application_type") or "new"},
             )
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "permit_generated", actor=config["actor"], entity_type="business_permit", entity_id=(rows[0] if rows else {}).get("id"), details={"permitNumber": permit_number})
             self.send_json({"message": "Application finalized and business permit generated.", "permit": rows[0] if rows else permit_payload})
@@ -638,6 +652,8 @@ class PermitServiceMixin:
                 return
 
             now = utc_now_iso()
+            release_date = manila_now().date()
+            validity = calendar_permit_validity(release_date)
             self.service_rest_request(
                 config,
                 "applications",
@@ -649,11 +665,41 @@ class PermitServiceMixin:
                 config,
                 "business_permits",
                 method="PATCH",
-                payload={"status": "Released", "released_at": now, "released_by": config["actor"].get("id"), "updated_at": now},
+                payload={
+                    "status": "Released",
+                    "issue_date": validity["issued_date"],
+                    "issued_date": validity["issued_date"],
+                    "expiration_date": validity["valid_until"],
+                    "valid_until": validity["valid_until"],
+                    "permit_year": validity["permit_year"],
+                    "renewal_year": validity["renewal_year"],
+                    "renewal_status": "not_open",
+                    "released_at": now,
+                    "released_by": config["actor"].get("id"),
+                    "updated_at": now,
+                },
                 query=urlencode({"id": f"eq.{permit.get('id')}"}),
                 prefer="return=representation",
             ) or []
             permit = released_permits[0] if released_permits else {**permit, "status": "Released", "released_at": now}
+            if (app.get("application_type") or "new") == "renewal" and app.get("source_permit_id"):
+                self.service_rest_request(
+                    config,
+                    "business_permits",
+                    method="PATCH",
+                    payload={"renewal_status": "renewed", "renewed_at": now, "updated_at": now},
+                    query=urlencode({"id": f"eq.{app.get('source_permit_id')}"}),
+                    prefer="return=minimal",
+                )
+                self.create_service_audit_log(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    "renewed_permit_released",
+                    actor=config["actor"],
+                    entity_type="business_permit",
+                    entity_id=app.get("source_permit_id"),
+                    details={"renewalApplicationId": application_id, "newPermitId": permit.get("id"), "permitNumber": permit.get("permit_number")},
+                )
             self.create_service_audit_log(
                 config["supabase_url"],
                 config["supabase_service_key"],
@@ -661,7 +707,7 @@ class PermitServiceMixin:
                 actor=config["actor"],
                 entity_type="business_permit",
                 entity_id=permit.get("id"),
-                details={"permitNumber": permit.get("permit_number"), "applicationId": application_id},
+                details={"permitNumber": permit.get("permit_number"), "applicationId": application_id, **validity},
             )
             self.notify_application_owner(
                 config["supabase_url"],
@@ -672,6 +718,10 @@ class PermitServiceMixin:
                 notification_type="permit",
                 source_role="BPLO",
             )
+            try:
+                self.process_daily_renewals(config, only_permit_id=permit.get("id"))
+            except Exception:
+                pass
             self.send_json({"message": "Business permit released successfully and applicant notified for pickup.", "permit": permit})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to release the business permit.")}, status=error.code)

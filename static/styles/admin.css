@@ -4064,10 +4064,52 @@ body.modal-open {
   grid-column: 1 / -1;
 }
 
+.staff-renewal-page {
+  grid-template-columns: 1fr;
+}
+
+.renewal-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.renewal-summary-grid button {
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 14px;
+  border: 1px solid #d8e0db;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #263129;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.05);
+}
+
+.renewal-summary-grid span {
+  color: #68736c;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.renewal-summary-grid strong {
+  color: #007f34;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.renewal-summary-grid svg {
+  width: 24px;
+  height: 24px;
+}
+
 .staff-renewal-search-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) 230px;
-  gap: 18px;
+  grid-template-columns: minmax(170px, 1.2fr) minmax(190px, 1.4fr) repeat(3, minmax(140px, 1fr)) 130px;
+  gap: 12px;
   padding: 0 18px 8px;
 }
 
@@ -4082,7 +4124,10 @@ body.modal-open {
   font-weight: 700;
 }
 
-.staff-renewal-search-grid input {
+.staff-renewal-search-grid input,
+.staff-renewal-search-grid select,
+.renewal-form-grid input,
+.renewal-form-grid select {
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid #d8e0db;
@@ -4090,6 +4135,71 @@ body.modal-open {
   color: #263129;
   font-size: 10px;
   outline: none;
+}
+
+.renewal-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+  gap: 14px;
+}
+
+.renewal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 18px 14px;
+}
+
+.renewal-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: #263129;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.renewal-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.renewal-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.renewal-checkbox input {
+  min-height: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.renewal-settings-form > button,
+.renewal-extension-form > button {
+  margin: 0 18px 18px;
+}
+
+.renewal-pagination {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.renewal-pagination button,
+.table-action {
+  min-height: 30px;
+  border: 1px solid #007f34;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #007f34;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.renewal-pagination button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .staff-renewal-search-grid button,

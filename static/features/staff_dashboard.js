@@ -16,6 +16,7 @@ const chartEmpty = document.querySelector("[data-dashboard-chart-empty]");
 let staffDashboardClient = null;
 let dashboardApplications = [];
 let dashboardRange = "today";
+let renewalSummary = null;
 
 function initStaffDashboardSupabase() {
   if (!window.supabase?.createClient) {
@@ -208,6 +209,29 @@ function renderRenewals() {
     return;
   }
 
+  if (renewalSummary) {
+    const rows = [
+      ["Open", renewalSummary.open || 0],
+      ["Submitted", renewalSummary.submitted || 0],
+      ["Late", renewalSummary.late || 0],
+      ["For Payment", renewalSummary.for_payment || 0],
+      ["Renewed", renewalSummary.renewed || 0],
+    ].filter((item) => item[1] > 0);
+    const total = Number(renewalSummary.total || Object.values(renewalSummary).reduce((sum, value) => sum + Number(value || 0), 0));
+    if (renewalNote) {
+      renewalNote.textContent = total ? `${total} renewal permit record${total === 1 ? "" : "s"} monitored.` : "No renewal records yet.";
+    }
+    renewalList.hidden = !rows.length;
+    renewalEmpty.hidden = Boolean(rows.length);
+    renewalList.innerHTML = rows.map(([label, count]) => `
+      <li>
+        <i data-lucide="clipboard-check" aria-hidden="true"></i>
+        <span><strong>${escapeHtml(label)}</strong><small>${count} record${count === 1 ? "" : "s"}</small></span>
+      </li>
+    `).join("");
+    return;
+  }
+
   const renewals = dashboardApplications.filter(isRenewalApplication).slice(0, 4);
   if (renewalNote) {
     renewalNote.textContent = renewals.length
@@ -316,17 +340,21 @@ function renderDashboard() {
 async function loadStaffDashboard() {
   try {
     const session = await getStaffDashboardSession();
-    const response = await fetch("/admin/api/applications", {
-      headers: { "Authorization": `Bearer ${session.access_token}` },
-    });
+    const [response, renewalResponse] = await Promise.all([
+      fetch("/admin/api/applications", { headers: { "Authorization": `Bearer ${session.access_token}` } }),
+      fetch("/admin/api/renewals/summary", { headers: { "Authorization": `Bearer ${session.access_token}` } }),
+    ]);
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || "Unable to load dashboard data.");
     }
+    const renewalPayload = await renewalResponse.json();
+    renewalSummary = renewalResponse.ok ? { ...(renewalPayload.summary || {}), total: renewalPayload.total || 0 } : null;
     dashboardApplications = Array.isArray(payload.applications) ? payload.applications : [];
     renderDashboard();
   } catch (error) {
     dashboardApplications = [];
+    renewalSummary = null;
     renderDashboard();
     if (dashboardApplicationFooter) {
       dashboardApplicationFooter.textContent = error.message || "Unable to load dashboard data.";

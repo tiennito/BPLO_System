@@ -1421,7 +1421,7 @@ class AdminRoutesMixin:
             service_key,
             "applications",
             {
-                "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,business_classification_id,submitted_at,reviewed_at,initial_reviewed_by,initial_reviewed_at,finalized_by,finalized_at,created_at,updated_at",
+                "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,business_classification_id,submitted_at,reviewed_at,initial_reviewed_by,initial_reviewed_at,finalized_by,finalized_at,created_at,updated_at,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date,filed_at,payment_completed_at,is_late",
                 "id": f"eq.{application_id}",
                 "limit": 1,
             },

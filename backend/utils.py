@@ -186,6 +186,11 @@ class CoreHandlerMixin:
             self.list_treasury_payment_queue()
             return
 
+        treasury_renewal_assessment_match = re.fullmatch(r"/treasury/api/renewals/([^/]+)/assessment", request_path)
+        if treasury_renewal_assessment_match:
+            self.get_treasury_renewal_assessment(treasury_renewal_assessment_match.group(1))
+            return
+
         if request_path == "/treasury/api/reports/export":
             self.export_treasury_reports()
             return
@@ -212,6 +217,18 @@ class CoreHandlerMixin:
 
         if request_path == "/admin/api/applications":
             self.list_admin_applications()
+            return
+
+        if request_path == "/admin/api/renewals/summary":
+            self.get_admin_renewal_summary()
+            return
+
+        if request_path == "/admin/api/renewals":
+            self.list_admin_renewals()
+            return
+
+        if request_path == "/admin/api/renewal/settings":
+            self.get_renewal_settings()
             return
 
         if request_path.startswith("/admin/api/applications/"):
@@ -296,6 +313,14 @@ class CoreHandlerMixin:
             self.get_applicant_permit(permit_id)
             return
 
+        applicant_renew_page_match = re.fullmatch(r"/applicant/permits/([^/]+)/renew", request_path)
+        if applicant_renew_page_match:
+            target = f"/applicant/permits?focus={quote(applicant_renew_page_match.group(1))}"
+            self.send_response(302)
+            self.send_header("Location", target)
+            self.end_headers()
+            return
+
         if request_path == "/config.js":
             supabase_url = os.getenv("SUPABASE_URL", "")
             supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
@@ -370,6 +395,11 @@ class CoreHandlerMixin:
                 self.confirm_treasury_payment(parts[-2])
                 return
 
+        treasury_finalize_renewal_match = re.fullmatch(r"/treasury/api/renewals/([^/]+)/assessment/finalize", request_path)
+        if treasury_finalize_renewal_match:
+            self.calculate_renewal_assessment(treasury_finalize_renewal_match.group(1), finalize=True)
+            return
+
         if request_path.startswith("/treasury/api/records/") and request_path.endswith("/print-notify"):
             parts = request_path.strip("/").split("/")
             if len(parts) == 5:
@@ -398,6 +428,28 @@ class CoreHandlerMixin:
 
         if request_path == "/admin/api/permits":
             self.create_admin_permit()
+            return
+
+        if request_path == "/admin/api/renewals/run-daily":
+            self.run_admin_renewal_job()
+            return
+
+        if request_path == "/admin/api/renewal/deadline-extensions":
+            self.create_renewal_deadline_extension()
+            return
+
+        if request_path == "/admin/api/renewal/requirements":
+            self.upsert_renewal_requirement()
+            return
+
+        admin_calculate_renewal_match = re.fullmatch(r"/admin/api/renewals/([^/]+)/assessment/calculate", request_path)
+        if admin_calculate_renewal_match:
+            self.calculate_renewal_assessment(admin_calculate_renewal_match.group(1), finalize=False)
+            return
+
+        admin_void_renewal_assessment_match = re.fullmatch(r"/admin/api/renewal-assessments/([^/]+)/void", request_path)
+        if admin_void_renewal_assessment_match:
+            self.void_renewal_assessment(admin_void_renewal_assessment_match.group(1))
             return
 
         if request_path.startswith("/admin/api/applications/"):
@@ -435,6 +487,11 @@ class CoreHandlerMixin:
 
         if request_path == "/applicant/api/applications":
             self.start_applicant_application()
+            return
+
+        applicant_renew_match = re.fullmatch(r"/applicant/api/permits/([^/]+)/renew", request_path)
+        if applicant_renew_match:
+            self.create_or_continue_applicant_renewal(applicant_renew_match.group(1))
             return
 
         if request_path == "/applicant/api/application-documents":
@@ -491,6 +548,10 @@ class CoreHandlerMixin:
 
         if request_path == "/department/api/settings":
             self.upsert_department_settings()
+            return
+
+        if request_path == "/admin/api/renewal/settings":
+            self.update_renewal_settings()
             return
 
         if request_path.startswith("/treasury/api/records/"):

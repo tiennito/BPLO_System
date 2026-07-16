@@ -9,7 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant_self_service.js?v=1"></script>
+    <script defer src="/features/applicant_self_service.js?v=2"></script>
   </head>
   <body data-applicant-page="permits">
     <main class="app-shell">
@@ -50,6 +50,7 @@
               <option value="expiration">Expiration date</option>
             </select>
           </div>
+          <div class="renewal-card-grid" data-renewal-permit-cards></div>
           <div class="permits-table-wrap">
             <table>
               <thead>

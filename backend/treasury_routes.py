@@ -32,7 +32,7 @@ class TreasuryRoutesMixin:
             rows = self.service_rest_request(
                 config,
                 "treasury_payment_queue",
-                query=urlencode({"select": "*,assessments(*),applications(id,status,business_info,permit_snapshot)", "order": "queued_at.desc", "limit": "300"}),
+                query=urlencode({"select": "*,assessments(*),applications(id,status,business_info,permit_snapshot,application_type,source_permit_id)", "order": "queued_at.desc", "limit": "300"}),
             ) or []
             queue = []
             for row in rows:
@@ -53,6 +53,7 @@ class TreasuryRoutesMixin:
                         "applicant": self.app_owner_name(info),
                         "businessName": self.app_business_name(info),
                         "permitType": (app.get("permit_snapshot") or {}).get("permitName") or (app.get("permit_snapshot") or {}).get("permit_name") or "Business Permit",
+                        "applicationType": app.get("application_type") or "new",
                     }
                 )
             self.send_json({"queue": queue, "total": len(queue)})
@@ -87,6 +88,12 @@ class TreasuryRoutesMixin:
                 self.send_json({"error": "Payment queue record not found."}, status=404)
                 return
             queue = queue_rows[0]
+            app_rows = self.service_rest_request(
+                config,
+                "applications",
+                query=urlencode({"select": "id,application_type,source_permit_id,business_info", "id": f"eq.{queue.get('application_id')}", "limit": 1}),
+            ) or []
+            application = app_rows[0] if app_rows else {}
             amount_due = self.safe_float(queue.get("amount_due"), 0)
             if queue.get("status") == "Paid":
                 self.send_json({"error": "This payment has already been confirmed."}, status=400)
@@ -122,7 +129,34 @@ class TreasuryRoutesMixin:
             now = utc_now_iso()
             self.service_rest_request(config, "treasury_payment_queue", method="PATCH", payload={"status": "Paid", "completed_at": now, "assigned_cashier_id": config["actor"].get("id"), "updated_at": now}, query=urlencode({"id": f"eq.{queue_id}"}))
             self.service_rest_request(config, "assessments", method="PATCH", payload={"status": "Paid", "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('assessment_id')}"}))
-            self.service_rest_request(config, "applications", method="PATCH", payload={"status": "Payment Verified", "progress": "Ready for Finalization", "payment_status": "Payment Verified", "assessment_status": "Paid", "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('application_id')}"}))
+            self.service_rest_request(config, "applications", method="PATCH", payload={"status": "Payment Verified", "progress": "Ready for Finalization", "payment_status": "Payment Verified", "assessment_status": "Paid", "payment_completed_at": now, "updated_at": now}, query=urlencode({"id": f"eq.{queue.get('application_id')}"}))
+            if (application.get("application_type") or "new") == "renewal":
+                renewal_rows = self.service_rest_request(
+                    config,
+                    "renewal_fee_assessments",
+                    method="PATCH",
+                    payload={"status": "paid", "updated_at": now},
+                    query=urlencode({"application_id": f"eq.{queue.get('application_id')}", "status": "eq.finalized"}),
+                    prefer="return=representation",
+                ) or []
+                if application.get("source_permit_id"):
+                    self.service_rest_request(
+                        config,
+                        "business_permits",
+                        method="PATCH",
+                        payload={"renewal_status": "paid", "updated_at": now},
+                        query=urlencode({"id": f"eq.{application.get('source_permit_id')}"}),
+                        prefer="return=minimal",
+                    )
+                self.create_service_audit_log(
+                    config["supabase_url"],
+                    config["supabase_service_key"],
+                    "renewal_payment_completed",
+                    actor=config["actor"],
+                    entity_type="application",
+                    entity_id=queue.get("application_id"),
+                    details={"officialReceiptNumber": or_number, "amountPaid": amount_paid, "renewalAssessments": [row.get("id") for row in renewal_rows]},
+                )
             record_rows = self.service_rest_request(
                 config,
                 "treasury_records",
@@ -142,8 +176,7 @@ class TreasuryRoutesMixin:
             if record_rows:
                 self.service_rest_request(config, "treasury_records", method="PATCH", payload=treasury_record_payload, query=urlencode({"id": f"eq.{record_rows[0].get('id')}"}), prefer="return=minimal")
             else:
-                app_rows = self.service_rest_request(config, "applications", query=urlencode({"select": "business_info", "id": f"eq.{queue.get('application_id')}", "limit": 1})) or []
-                info = ((app_rows[0] if app_rows else {}) or {}).get("business_info") or {}
+                info = (application or {}).get("business_info") or {}
                 treasury_record_payload.update({"applicant": self.app_owner_name(info), "business_name": self.app_business_name(info), "record_type": "payment", "created_by": config["actor"].get("id")})
                 self.service_rest_request(config, "treasury_records", method="POST", payload=treasury_record_payload, prefer="return=minimal")
             self.create_service_audit_log(config["supabase_url"], config["supabase_service_key"], "payment_confirmed", actor=config["actor"], entity_type="payment", entity_id=payment.get("id"), details={"officialReceiptNumber": or_number, "amountPaid": amount_paid})

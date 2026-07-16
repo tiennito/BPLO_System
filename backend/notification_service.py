@@ -24,7 +24,19 @@ from .utils import (
 
 
 class NotificationServiceMixin:
-    def create_notification(self, supabase_url, service_key, user_id, title, message, notification_type="system", source_role="System", application_id=None):
+    def create_notification(
+        self,
+        supabase_url,
+        service_key,
+        user_id,
+        title,
+        message,
+        notification_type="system",
+        source_role="System",
+        application_id=None,
+        related_permit_id=None,
+        action_url=None,
+    ):
         if not user_id or not title or not message:
             return None
 
@@ -41,6 +53,8 @@ class NotificationServiceMixin:
                     "message": message,
                     "type": notification_type,
                     "source_role": source_role,
+                    "related_permit_id": related_permit_id,
+                    "action_url": action_url,
                 },
                 prefer="return=representation",
             )
@@ -197,6 +211,8 @@ class NotificationServiceMixin:
             "id": notification.get("id"),
             "userId": notification.get("user_id"),
             "applicationId": notification.get("application_id"),
+            "relatedPermitId": notification.get("related_permit_id"),
+            "actionUrl": notification.get("action_url") or "",
             "title": notification.get("title") or "",
             "message": notification.get("message") or "",
             "type": notification.get("type") or "system",

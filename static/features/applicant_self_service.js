@@ -40,6 +40,13 @@ function formatDate(value) {
   return date.toLocaleDateString();
 }
 
+function money(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const amount = Number(value);
+  if (Number.isNaN(amount)) return String(value);
+  return amount.toLocaleString(undefined, { style: "currency", currency: "PHP" });
+}
+
 function normalize(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -147,9 +154,53 @@ function filteredPermits() {
   return rows;
 }
 
+function renewalActionLabel(permit) {
+  if (permit.renewalApplicationId) return "Continue Renewal";
+  if (permit.renewalEligible) return "Start Renewal";
+  if (permit.renewalStatus === "renewed") return "Renewed";
+  if (permit.renewalStatus === "not_open") return "Not Open";
+  return "Unavailable";
+}
+
+function renderRenewalCards() {
+  const container = document.querySelector("[data-renewal-permit-cards]");
+  if (!container) return;
+  const rows = permits.filter((permit) => permit.permitNumber);
+  if (!rows.length) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = rows.map((permit) => {
+    const canAct = Boolean(permit.renewalEligible || permit.renewalApplicationId);
+    const status = permit.renewalStatus || "not_open";
+    const total = permit.renewalOfficialTotal ? money(permit.renewalOfficialTotal) : "Pending assessment";
+    return `
+      <article class="renewal-card" data-renewal-card="${esc(permit.id)}">
+        <header>
+          <span>${esc(permit.permitNumber || "-")}</span>
+          <strong>${esc(permit.businessName || "Business Permit")}</strong>
+        </header>
+        <dl>
+          <div><dt>Permit Year</dt><dd>${esc(permit.permitYear || "-")}</dd></div>
+          <div><dt>Valid Until</dt><dd>${esc(formatDate(permit.validUntil || permit.expirationDate))}</dd></div>
+          <div><dt>Renewal Year</dt><dd>${esc(permit.renewalYear || "-")}</dd></div>
+          <div><dt>Deadline</dt><dd>${esc(formatDate(permit.renewalDueDate))}</dd></div>
+          <div><dt>Status</dt><dd>${esc(status.replaceAll("_", " "))}</dd></div>
+          <div><dt>Official Total</dt><dd>${esc(total)}</dd></div>
+        </dl>
+        <footer>
+          <button class="table-link-button renewal-action" type="button" data-renew-permit="${esc(permit.id)}" ${canAct ? "" : "disabled"}>${esc(renewalActionLabel(permit))}</button>
+          <button class="table-link-button" type="button" data-view-permit="${esc(permit.id)}">Details</button>
+        </footer>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderPermits() {
   const body = document.querySelector("[data-permits-body]");
   if (!body) return;
+  renderRenewalCards();
   const rows = filteredPermits();
   const start = (permitPage - 1) * pageSize;
   const visible = rows.slice(start, start + pageSize);
@@ -211,11 +262,26 @@ function showPermitDetails(id) {
     <p class="release-note">Final permit download or printing is unavailable here. Please follow the release or pickup status shown by BPLO.</p>
     <div class="modal-actions">
       <a class="table-link-button" href="/applicant/business-information?applicationId=${encodeURIComponent(permit.applicationId || "")}">Open Application</a>
-      ${permit.renewalEligible ? '<a class="table-link-button" href="/applicant/application-type?type=renewal">Start Renewal</a>' : ""}
+      ${(permit.renewalEligible || permit.renewalApplicationId) ? `<button class="table-link-button" type="button" data-renew-permit="${esc(permit.id)}">${esc(renewalActionLabel(permit))}</button>` : ""}
     </div>
   `;
   modal.hidden = false;
   window.lucide?.createIcons();
+}
+
+async function startPermitRenewal(permitId, button) {
+  if (!permitId) return;
+  setBusy(button, true);
+  try {
+    const payload = await api(`/applicant/api/permits/${encodeURIComponent(permitId)}/renew`, { method: "POST", body: "{}" });
+    const nextUrl = payload.nextUrl || `/applicant/business-information?applicationId=${encodeURIComponent(payload.application?.id || "")}`;
+    setStatus(payload.message || "Renewal application is ready.");
+    window.location.href = nextUrl;
+  } catch (error) {
+    setStatus(error.message || "Unable to start renewal.", true);
+  } finally {
+    setBusy(button, false);
+  }
 }
 
 async function showProgress(applicationId) {
@@ -257,6 +323,11 @@ async function loadPermits() {
   fillSelect(document.querySelector("[data-permit-type-filter]"), uniqueValues(permits, "permitType"), "All permit types");
   fillSelect(document.querySelector("[data-application-type-filter]"), uniqueValues(permits, "applicationType"), "All application types");
   renderPermits();
+  const focus = new URLSearchParams(window.location.search).get("focus");
+  if (focus) {
+    const permit = permits.find((item) => item.id === focus || item.permitNumber === focus);
+    if (permit) showPermitDetails(permit.id);
+  }
 }
 
 function filteredDocuments() {
@@ -564,6 +635,11 @@ document.addEventListener("click", async (event) => {
   }
   const permitButton = target?.closest("[data-view-permit]");
   if (permitButton) showPermitDetails(permitButton.dataset.viewPermit || "");
+  const renewalButton = target?.closest("[data-renew-permit]");
+  if (renewalButton) {
+    await startPermitRenewal(renewalButton.dataset.renewPermit || "", renewalButton);
+    return;
+  }
   const progressButton = target?.closest("[data-progress]");
   if (progressButton) {
     try {

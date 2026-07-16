@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 from .config import BASE_DIR, STATIC_DIR, ENV_FILE, HOST, PORT, PAGE_ROUTES
+from .renewal_service import renewal_window
 from .utils import (
     dashboard_path_for_role,
     department_key_from_name,
@@ -95,13 +96,18 @@ class ApplicantRoutesMixin:
             or (f"APP-{str(application.get('id') or '')[:8].upper()}" if application.get("id") else "")
         )
 
-    def format_applicant_owned_permit(self, application, business_permit=None):
+    def format_applicant_owned_permit(self, application, business_permit=None, renewal_application=None, renewal_assessment=None, renewal_window_data=None):
         business_permit = business_permit or {}
         info = application.get("business_info") or {}
         snapshot = application.get("permit_snapshot") or {}
         app_status = self.normalize_applicant_record_status(application.get("status"))
         permit_status = self.normalize_applicant_record_status(business_permit.get("status"), app_status)
         expiration_date = business_permit.get("expiration_date") or business_permit.get("expires_at") or ""
+        issued_date = business_permit.get("issued_date") or business_permit.get("issue_date") or ""
+        permit_year = business_permit.get("permit_year") or (issued_date[:4] if issued_date else None)
+        renewal_year = business_permit.get("renewal_year") or (int(permit_year) + 1 if permit_year else None)
+        window = renewal_window_data or {}
+        renewal_status = business_permit.get("renewal_status") or "not_open"
         is_released = permit_status == "Released"
         is_ready = permit_status == "Ready for Release"
         return {
@@ -118,6 +124,22 @@ class ApplicantRoutesMixin:
             "dateApproved": application.get("approved_at") or application.get("finalized_at") or business_permit.get("issue_date") or "",
             "validityStartDate": business_permit.get("issue_date") or business_permit.get("validity_start_date") or "",
             "expirationDate": expiration_date,
+            "issuedDate": issued_date,
+            "permitYear": permit_year,
+            "validUntil": business_permit.get("valid_until") or expiration_date,
+            "renewalYear": renewal_year,
+            "renewalStatus": renewal_status,
+            "renewalStartDate": str(window.get("start_date") or ""),
+            "renewalDueDate": str(window.get("effective_due_date") or ""),
+            "originalRenewalDueDate": str(window.get("original_due_date") or ""),
+            "renewalApplicationId": (renewal_application or {}).get("id"),
+            "renewalFiledAt": (renewal_application or {}).get("filed_at") or "",
+            "renewalIsLate": bool((renewal_application or {}).get("is_late")),
+            "officialPayableTotal": (
+                (renewal_assessment or {}).get("total_amount")
+                if (renewal_assessment or {}).get("status") in {"finalized", "paid"}
+                else None
+            ),
             "applicationStatus": app_status,
             "permitStatus": "Expired" if self.is_date_in_past(expiration_date) and permit_status == "Released" else permit_status,
             "releaseStatus": "Released" if is_released else ("Ready for Pickup" if is_ready else "Not Ready"),
@@ -127,7 +149,7 @@ class ApplicantRoutesMixin:
             "lastUpdatedDate": application.get("updated_at") or business_permit.get("updated_at") or "",
             "canPrint": False,
             "canDownload": False,
-            "renewalEligible": self.is_renewal_eligible(expiration_date, permit_status),
+            "renewalEligible": self.is_renewal_eligible(expiration_date, permit_status, renewal_status),
         }
 
     def is_date_in_past(self, value):
@@ -141,9 +163,11 @@ class ApplicantRoutesMixin:
             except ValueError:
                 return False
 
-    def is_renewal_eligible(self, expiration_date, status):
+    def is_renewal_eligible(self, expiration_date, status, renewal_status=None):
         if status not in {"Released", "Expired"}:
             return False
+        if renewal_status:
+            return renewal_status not in {"not_open", "renewed", "closed"}
         if not expiration_date:
             return status == "Expired"
         try:
@@ -153,7 +177,7 @@ class ApplicantRoutesMixin:
                 expiry = datetime.strptime(expiration_date[:10], "%Y-%m-%d").date()
             except ValueError:
                 return False
-        days_until_expiry = (expiry - datetime.now(timezone.utc).date()).days
+        days_until_expiry = (expiry - datetime.now().astimezone().date()).days
         return days_until_expiry <= 60
 
     def require_applicant_role_for_self_service(self, supabase_url, service_key, user):
@@ -181,7 +205,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 "applications",
                 {
-                    "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,submitted_at,finalized_at,created_at,updated_at",
+                    "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,submitted_at,finalized_at,created_at,updated_at,application_type,permit_year,source_permit_id,renewal_due_date,filed_at,payment_completed_at,is_late",
                     "applicant_id": f"eq.{user.get('id')}",
                     "order": "created_at.desc",
                     "limit": 1000,
@@ -206,10 +230,50 @@ class ApplicantRoutesMixin:
                 except HTTPError:
                     permits_by_application = {}
 
-            records = [
-                self.format_applicant_owned_permit(application, permits_by_application.get(application.get("id")))
-                for application in applications
-            ]
+            renewal_apps = {
+                row.get("source_permit_id"): row
+                for row in applications
+                if row.get("application_type") == "renewal" and row.get("source_permit_id")
+            }
+            renewal_app_ids = [row.get("id") for row in renewal_apps.values() if row.get("id")]
+            assessments_by_application = {}
+            if renewal_app_ids:
+                assessment_rows = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "renewal_fee_assessments",
+                    {
+                        "select": "application_id,total_amount,status",
+                        "application_id": f"in.({','.join(renewal_app_ids)})",
+                        "status": "neq.voided",
+                    },
+                ) or []
+                assessments_by_application = {row.get("application_id"): row for row in assessment_rows}
+            settings_rows = self.supabase_rest_request(
+                supabase_url, supabase_service_key, "renewal_settings",
+                {"select": "*", "order": "updated_at.desc", "limit": 1},
+            ) or []
+            settings = settings_rows[0] if settings_rows else {}
+            extension_rows = self.supabase_rest_request(
+                supabase_url, supabase_service_key, "renewal_deadline_extensions",
+                {"select": "*", "is_active": "eq.true", "limit": 100},
+            ) or []
+            extensions_by_year = {int(row.get("renewal_year")): row for row in extension_rows if row.get("renewal_year")}
+            records = []
+            for application in applications:
+                business_permit = permits_by_application.get(application.get("id"))
+                renewal_application = renewal_apps.get((business_permit or {}).get("id"))
+                renewal_year = (business_permit or {}).get("renewal_year")
+                window = None
+                if renewal_year:
+                    window = renewal_window(int(renewal_year), settings, extensions_by_year.get(int(renewal_year)))
+                records.append(self.format_applicant_owned_permit(
+                    application,
+                    business_permit,
+                    renewal_application,
+                    assessments_by_application.get((renewal_application or {}).get("id")),
+                    window,
+                ))
             self.send_json({"permits": records, "total": len(records)})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to load your permits.")}, status=error.code)
@@ -974,7 +1038,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 "notifications",
                 {
-                    "select": "id,user_id,application_id,title,message,type,source_role,is_read,created_at,read_at",
+                    "select": "id,user_id,application_id,title,message,type,source_role,is_read,created_at,read_at,related_permit_id,action_url",
                     "user_id": f"eq.{user.get('id')}",
                     "order": "created_at.desc",
                     "limit": 20,
@@ -1726,7 +1790,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 "applications",
                 {
-                    "select": "id,permit_id,applicant_id,status",
+                    "select": "id,permit_id,applicant_id,status,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date",
                     "id": f"eq.{application_id}",
                     "applicant_id": f"eq.{user.get('id')}",
                     "limit": 1,
@@ -1771,6 +1835,10 @@ class ApplicantRoutesMixin:
                 return
 
             submitted_at = utc_now_iso()
+            renewal_fields = self.renewal_submission_fields(
+                {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+                application,
+            )
             updated_rows = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
@@ -1783,6 +1851,7 @@ class ApplicantRoutesMixin:
                     "status": "Submitted",
                     "progress": "Submitted",
                     "submitted_at": submitted_at,
+                    **renewal_fields,
                 },
                 prefer="return=representation",
             )
@@ -1871,8 +1940,36 @@ class ApplicantRoutesMixin:
                 details={
                     "businessName": business_info.get("business_name"),
                     "assignedDepartments": [item.get("department_key") for item in created_assignments],
+                    "applicationType": application.get("application_type") or "new",
+                    "filedAt": renewal_fields.get("filed_at"),
+                    "isLate": renewal_fields.get("is_late"),
+                    "originalDueDate": renewal_fields.get("original_renewal_due_date"),
+                    "effectiveDueDate": renewal_fields.get("effective_renewal_due_date"),
                 },
             )
+            if application.get("application_type") == "renewal" and application.get("source_permit_id"):
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "business_permits",
+                    {"id": f"eq.{application.get('source_permit_id')}"},
+                    method="PATCH",
+                    payload={"renewal_status": "submitted", "updated_at": submitted_at},
+                    prefer="return=minimal",
+                )
+                self.create_service_audit_log(
+                    supabase_url,
+                    supabase_service_key,
+                    "renewal_filing_recorded",
+                    actor=user,
+                    entity_type="application",
+                    entity_id=application_id,
+                    details={
+                        "filedAt": renewal_fields.get("filed_at"),
+                        "isLate": renewal_fields.get("is_late"),
+                        "timezone": "Asia/Manila",
+                    },
+                )
             self.create_notification(
                 supabase_url,
                 supabase_service_key,

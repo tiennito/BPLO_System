@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BPLO Staff Administrator - Re-Newal Application</title>
-    <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <title>BPLO Staff Administrator - Renewal Monitoring</title>
+    <link rel="stylesheet" href="/styles/admin.css?v=12" />
+    <script defer src="/config.js?v=8"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_renewals.js?v=1"></script>
   </head>
   <body>
     <main class="staff-admin-shell">
@@ -19,6 +22,7 @@
           <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
           <a href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
           <a class="is-active" href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/business-classifications"><i data-lucide="list-tree" aria-hidden="true"></i><span>Business Lines</span></a>
           <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
           <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
         </nav>
@@ -27,70 +31,98 @@
 
       <section class="staff-main">
         <header class="staff-topbar">
-          <h1>Re-Newal Application</h1>
+          <h1>Renewal Monitoring</h1>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
             <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
           </section>
         </header>
 
-        <section class="staff-renewal-page">
-          <section class="staff-panel staff-renewal-search" aria-labelledby="find-permit-title">
-            <header class="staff-panel-header"><h2 id="find-permit-title">Find Existing Permit</h2></header>
+        <section class="staff-renewal-page" aria-label="Annual business permit renewals">
+          <section class="renewal-summary-grid" data-renewal-summary>
+            <button type="button" data-summary-filter="upcoming"><span>Upcoming</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="open"><span>Open</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="submitted"><span>Submitted</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="late"><span>Late</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="for_payment"><span>For Payment</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="renewed"><span>Renewed</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="unrenewed"><span>Unrenewed</span><strong>0</strong></button>
+            <button type="button" data-run-renewal-job><span>Daily Check</span><strong><i data-lucide="refresh-cw" aria-hidden="true"></i></strong></button>
+          </section>
+
+          <section class="staff-panel staff-renewal-search" aria-labelledby="renewal-filter-title">
+            <header class="staff-panel-header">
+              <h2 id="renewal-filter-title">Renewal Records</h2>
+              <p data-renewal-status>Loading renewal records...</p>
+            </header>
             <div class="staff-renewal-search-grid">
-              <label><span>Business Permit No.</span><input type="text" placeholder="Enter permit number" /></label>
-              <label><span>Business Name</span><input type="text" placeholder="Enter business name" /></label>
-              <label><span>Owner Name</span><input type="text" placeholder="Enter owner name" /></label>
-              <button type="button"><i data-lucide="search" aria-hidden="true"></i>Search Record</button>
+              <label><span>Permit No.</span><input type="search" data-filter="permitNumber" placeholder="Permit number" /></label>
+              <label><span>Business Name</span><input type="search" data-filter="businessName" placeholder="Business name" /></label>
+              <label><span>Renewal Status</span><select data-filter="renewalStatus"><option value="">All statuses</option></select></label>
+              <label><span>Timing</span><select data-filter="timing"><option value="">All</option><option value="on_time">On time</option><option value="late">Late</option></select></label>
+              <label><span>Renewal Year</span><input type="number" min="2024" max="2100" data-filter="renewalYear" /></label>
+              <button type="button" data-refresh-renewals><i data-lucide="search" aria-hidden="true"></i>Refresh</button>
             </div>
-            <p><i data-lucide="info" aria-hidden="true"></i> Search results will appear after a matching permit record is found.</p>
-          </section>
-
-          <section class="staff-panel staff-renewal-process" aria-labelledby="renewal-process-title">
-            <header class="staff-panel-header"><h2 id="renewal-process-title">Renewal Process</h2></header>
-            <div class="staff-process-steps">
-              <article><span><i data-lucide="shield-check" aria-hidden="true"></i></span><strong>1</strong><h3>Verify Previous Permit</h3><p>Confirm existing permit details.</p></article>
-              <article><span><i data-lucide="file-search" aria-hidden="true"></i></span><strong>2</strong><h3>Review Required Documents</h3><p>Check renewal requirements.</p></article>
-              <article><span><i data-lucide="cloud-upload" aria-hidden="true"></i></span><strong>3</strong><h3>Upload Updated Documents</h3><p>Attach updated documents.</p></article>
-              <article><span><i data-lucide="send" aria-hidden="true"></i></span><strong>4</strong><h3>Submit for Review</h3><p>Send the renewal for evaluation.</p></article>
-            </div>
-          </section>
-
-          <section class="staff-panel staff-permit-info" aria-labelledby="previous-permit-title">
-            <header class="staff-panel-header"><h2 id="previous-permit-title">Previous Permit Information</h2></header>
-            <div class="staff-empty-state">
-              <i data-lucide="inbox" aria-hidden="true"></i>
-              <strong>No permit selected</strong>
-              <span>Previous permit details will appear after a successful search.</span>
-            </div>
-          </section>
-
-          <section class="staff-panel staff-required-documents" aria-labelledby="required-documents-title">
-            <header class="staff-panel-header"><h2 id="required-documents-title">Required Documents to Pass Again</h2></header>
-            <div class="staff-empty-state">
-              <i data-lucide="file-question" aria-hidden="true"></i>
-              <strong>No requirements loaded</strong>
-              <span>Renewal requirements will appear here when configured.</span>
-            </div>
-          </section>
-
-          <section class="staff-panel staff-upload-requirements" aria-labelledby="upload-requirements-title">
-            <header class="staff-panel-header"><h2 id="upload-requirements-title">Upload Updated Requirements</h2></header>
             <div class="staff-table-wrap">
-              <table class="staff-table staff-renewal-doc-table">
-                <thead><tr><th>Document</th><th>Requirement</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
-                <tbody><tr><td colspan="5" class="staff-empty-cell">No renewal documents available.</td></tr></tbody>
+              <table class="staff-table">
+                <thead>
+                  <tr>
+                    <th>Permit No.</th>
+                    <th>Business</th>
+                    <th>Owner</th>
+                    <th>Years</th>
+                    <th>Deadline</th>
+                    <th>Status</th>
+                    <th>Assessment</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody data-renewals-body>
+                  <tr><td colspan="8" class="staff-empty-cell">Loading renewals...</td></tr>
+                </tbody>
               </table>
             </div>
+            <footer class="staff-table-footer">
+              <span data-renewal-footer>Showing 0 to 0 of 0 entries</span>
+              <nav class="renewal-pagination">
+                <button type="button" data-renewal-prev>Previous</button>
+                <button type="button" data-renewal-next>Next</button>
+              </nav>
+            </footer>
           </section>
 
-          <aside class="staff-renewal-alert"><i data-lucide="triangle-alert" aria-hidden="true"></i> Renewal records will appear here once connected data is available.</aside>
+          <section class="renewal-admin-grid">
+            <form class="staff-panel renewal-settings-form" data-renewal-settings-form>
+              <header class="staff-panel-header"><h2>Policy Settings</h2></header>
+              <div class="renewal-form-grid">
+                <label><span>Start Month</span><input name="renewalStartMonth" type="number" min="1" max="12" /></label>
+                <label><span>Start Day</span><input name="renewalStartDay" type="number" min="1" max="31" /></label>
+                <label><span>Due Month</span><input name="renewalDueMonth" type="number" min="1" max="12" /></label>
+                <label><span>Due Day</span><input name="renewalDueDay" type="number" min="1" max="31" /></label>
+                <label><span>Surcharge Rate</span><input name="surchargeRate" type="number" step="0.00001" min="0" /></label>
+                <label><span>Monthly Interest</span><input name="monthlyInterestRate" type="number" step="0.00001" min="0" /></label>
+                <label><span>Interest Months Cap</span><input name="maximumInterestMonths" type="number" min="0" max="120" /></label>
+                <label><span>Month Rule</span><select name="interestMonthRule"><option value="anniversary_cycle">Anniversary cycle</option><option value="calendar_month">Calendar month</option><option value="completed_month">Completed month</option><option value="manual_treasury_confirmation">Treasury confirms</option></select></label>
+                <label class="renewal-checkbox"><input name="penaltiesEnabled" type="checkbox" /> <span>Apply late penalties</span></label>
+                <label class="wide"><span>Reason</span><input name="reason" placeholder="Required for audit history" /></label>
+              </div>
+              <button class="permit-button permit-button--primary" type="submit">Save Settings</button>
+            </form>
+
+            <form class="staff-panel renewal-extension-form" data-renewal-extension-form>
+              <header class="staff-panel-header"><h2>Deadline Extension</h2></header>
+              <div class="renewal-form-grid">
+                <label><span>Renewal Year</span><input name="renewalYear" type="number" min="2024" max="2100" required /></label>
+                <label><span>Extended Due Date</span><input name="extendedDueDate" type="date" required /></label>
+                <label class="wide"><span>Reason</span><input name="reason" required /></label>
+                <label class="wide"><span>Authorization Reference</span><input name="authorizationReference" required /></label>
+                <label class="renewal-checkbox"><input name="surchargeSuspended" type="checkbox" /> <span>Suspend surcharge</span></label>
+                <label class="renewal-checkbox"><input name="interestSuspended" type="checkbox" /> <span>Suspend interest</span></label>
+              </div>
+              <button class="permit-button permit-button--primary" type="submit">Record Extension</button>
+            </form>
+          </section>
         </section>
       </section>
     </main>
-    <script>
-      window.addEventListener("DOMContentLoaded", () => {
-        window.lucide?.createIcons();
-      });
-    </script>
   </body>
 </html>
