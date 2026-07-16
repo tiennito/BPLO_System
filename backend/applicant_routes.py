@@ -774,7 +774,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 user.get("id"),
                 application_id,
-                select="id,permit_id,status,progress,business_info,permit_snapshot,created_at,updated_at,submitted_at",
+                select="id,permit_id,status,progress,business_info,permit_snapshot,created_at,updated_at,submitted_at,application_type,permit_year,source_permit_id,previous_permit_id,previous_application_id,renewal_application_number,renewal_due_date,original_renewal_due_date,effective_renewal_due_date,renewal_baseline",
             )
             if not application:
                 self.send_json({"error": "Draft application not found."}, status=404)
@@ -793,12 +793,34 @@ class ApplicantRoutesMixin:
                     "order": "created_at.asc",
                 },
             ) or []
+            renewal_changes = []
+            if application.get("application_type") == "renewal":
+                renewal_changes = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "renewal_change_logs",
+                    {
+                        "select": "*",
+                        "renewal_application_id": f"eq.{application_id}",
+                        "order": "changed_at.desc",
+                    },
+                ) or []
 
             self.send_json(
                 {
                     "draft": self.format_applicant_application_summary(application),
                     "businessInfo": application.get("business_info") or {},
                     "documents": [self.format_applicant_document_summary(document) for document in documents],
+                    "renewal": {
+                        "isRenewal": application.get("application_type") == "renewal",
+                        "renewalYear": application.get("permit_year"),
+                        "renewalApplicationNumber": application.get("renewal_application_number"),
+                        "previousPermitId": application.get("source_permit_id") or application.get("previous_permit_id"),
+                        "previousApplicationId": application.get("previous_application_id"),
+                        "dueDate": application.get("effective_renewal_due_date") or application.get("renewal_due_date"),
+                        "baseline": application.get("renewal_baseline") or {},
+                        "changes": renewal_changes,
+                    },
                 }
             )
         except HTTPError as error:
@@ -825,7 +847,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 user.get("id"),
                 application_id,
-                select="id,status,business_info",
+                select="id,status,business_info,application_type,renewal_baseline",
             )
             if not application:
                 self.send_json({"error": "Draft application not found."}, status=404)
@@ -837,6 +859,12 @@ class ApplicantRoutesMixin:
             merged_info = dict(application.get("business_info") or {})
             merged_info.update(business_info)
             merged_info["_current_step"] = current_step
+            renewal_changes = self.track_renewal_change_logs(
+                {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+                application,
+                merged_info,
+                user,
+            )
             updated = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
@@ -854,6 +882,7 @@ class ApplicantRoutesMixin:
                 {
                     "message": "Draft auto-saved.",
                     "savedAt": utc_now_iso(),
+                    "renewalChanges": renewal_changes,
                     "draft": self.format_applicant_application_summary(updated[0] if updated else {"id": application_id, "business_info": merged_info}),
                 }
             )
@@ -1253,6 +1282,11 @@ class ApplicantRoutesMixin:
             file_name = (payload.get("fileName") or "").strip()
             file_url = (payload.get("fileUrl") or "").strip()
             upload_status = (payload.get("uploadStatus") or ("Uploaded" if file_name else "Removed")).strip()
+            issue_date = (payload.get("issueDate") or "").strip() or None
+            expiration_date = (payload.get("expirationDate") or "").strip() or None
+            document_year = payload.get("documentYear") or None
+            mime_type = (payload.get("mimeType") or "").strip() or None
+            file_size = payload.get("fileSize") or None
 
             if upload_status not in {"Pending", "Uploaded", "Removed"}:
                 self.send_json({"error": "Invalid upload status."}, status=400)
@@ -1322,7 +1356,15 @@ class ApplicantRoutesMixin:
                 method="PATCH",
                 payload={
                     "file_name": file_name or None,
+                    "original_filename": file_name or None,
+                    "stored_filename": file_url.rsplit("/", 1)[-1] if file_url else None,
                     "file_url": file_url or None,
+                    "mime_type": mime_type,
+                    "file_size": file_size,
+                    "document_year": document_year,
+                    "issue_date": issue_date,
+                    "expiration_date": expiration_date,
+                    "removed_at": utc_now_iso() if upload_status == "Removed" else None,
                     "upload_status": upload_status,
                     "uploaded_at": utc_now_iso() if upload_status == "Uploaded" else None,
                 },
@@ -1790,7 +1832,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 "applications",
                 {
-                    "select": "id,permit_id,applicant_id,status,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date",
+                    "select": "id,permit_id,applicant_id,status,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date,renewal_baseline",
                     "id": f"eq.{application_id}",
                     "applicant_id": f"eq.{user.get('id')}",
                     "limit": 1,
@@ -1834,6 +1876,22 @@ class ApplicantRoutesMixin:
                 self.send_json({"error": "Please wait for OCR to finish before submitting."}, status=400)
                 return
 
+            renewal_change_confirmed = bool(payload.get("renewalChangeConfirmed") or payload.get("renewal_change_confirmed"))
+            renewal_changes = []
+            if application.get("application_type") == "renewal":
+                renewal_changes = self.track_renewal_change_logs(
+                    {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
+                    application,
+                    business_info,
+                    user,
+                )
+                if renewal_changes and not renewal_change_confirmed:
+                    self.send_json({
+                        "error": "Please confirm the listed changes before submitting your renewal.",
+                        "renewalChanges": renewal_changes,
+                    }, status=400)
+                    return
+
             submitted_at = utc_now_iso()
             renewal_fields = self.renewal_submission_fields(
                 {"supabase_url": supabase_url, "supabase_service_key": supabase_service_key},
@@ -1851,6 +1909,7 @@ class ApplicantRoutesMixin:
                     "status": "Submitted",
                     "progress": "Submitted",
                     "submitted_at": submitted_at,
+                    "renewal_change_confirmed_at": submitted_at if renewal_changes else None,
                     **renewal_fields,
                 },
                 prefer="return=representation",
@@ -1948,6 +2007,16 @@ class ApplicantRoutesMixin:
                 },
             )
             if application.get("application_type") == "renewal" and application.get("source_permit_id"):
+                if renewal_changes:
+                    self.supabase_rest_request(
+                        supabase_url,
+                        supabase_service_key,
+                        "renewal_change_logs",
+                        {"renewal_application_id": f"eq.{application_id}"},
+                        method="PATCH",
+                        payload={"confirmed_at": submitted_at},
+                        prefer="return=minimal",
+                    )
                 self.supabase_rest_request(
                     supabase_url,
                     supabase_service_key,

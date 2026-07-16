@@ -1461,6 +1461,7 @@ select:focus-visible {
   color: #111111;
   font-size: 11px;
   font-weight: 700;
+  cursor: pointer;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background-color 160ms ease;
 }
 
@@ -1469,6 +1470,12 @@ select:focus-visible {
   box-shadow: 0 8px 12px rgba(0, 150, 60, 0.14);
   transform: translateY(-1px);
   background: #f7fff9;
+}
+
+.type-action-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
 }
 
 .permit-summary-card {
@@ -2081,6 +2088,35 @@ body.application-success-modal-open {
   overflow: hidden;
 }
 
+.applicant-message-modal__card {
+  width: min(390px, 100%);
+}
+
+.applicant-message-modal[data-tone="error"] .application-success-modal__badge {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.applicant-message-modal[data-tone="error"] .application-success-modal__action {
+  background: #b42318;
+}
+
+.applicant-message-modal[data-tone="error"] .application-success-modal__action:hover,
+.applicant-message-modal[data-tone="error"] .application-success-modal__action:focus-visible {
+  background: #912018;
+  outline-color: rgba(180, 35, 24, 0.18);
+}
+
+.applicant-message-modal[data-tone="success"] .application-success-modal__badge {
+  background: #e7f7ed;
+  color: var(--green);
+}
+
+.applicant-message-modal[data-tone="info"] .application-success-modal__badge {
+  background: #eaf2ff;
+  color: #175cd3;
+}
+
 .permits-table-wrap {
   overflow-x: auto;
   border-left: 2px solid var(--green);
@@ -2418,6 +2454,138 @@ th {
 .renewal-action:not(:disabled) {
   background: var(--green);
   color: #ffffff;
+}
+
+.renewal-form-context {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.renewal-form-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.renewal-form-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.renewal-form-card header span,
+.renewal-context-grid dt {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.renewal-form-card h2 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.renewal-form-card header > strong {
+  border-radius: 999px;
+  background: #e2f6e9;
+  color: var(--green-dark);
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.renewal-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.renewal-context-grid div,
+.renewal-requirement-row,
+.renewal-change-table article {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbf9;
+}
+
+.renewal-context-grid dd,
+.renewal-context-grid dt {
+  margin: 0;
+}
+
+.renewal-context-grid dd {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.renewal-reference-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.renewal-reference-list li,
+.renewal-requirement-row {
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.renewal-reference-list span,
+.renewal-requirement-row span,
+.renewal-requirement-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.renewal-change-table {
+  display: grid;
+  gap: 8px;
+}
+
+.renewal-change-table article {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.renewal-change-table span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.renewal-change-table del {
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.renewal-change-table strong {
+  color: var(--green-dark);
+  font-size: 12px;
+}
+
+.renewal-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text);
+  font-size: 13px;
 }
 
 .permits-table-wrap td small {

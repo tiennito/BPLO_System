@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Business Information</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=19" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=21" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=21"></script>
+    <script defer src="/features/applicant.js?v=22"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -92,6 +92,43 @@
         </nav>
 
         <section class="business-form-shell" aria-label="Business permit form" data-business-form-shell>
+          <section class="renewal-form-context" data-renewal-context hidden>
+            <article class="renewal-form-card">
+              <header>
+                <div>
+                  <span>Business Permit Renewal</span>
+                  <h2 data-renewal-title>Renewal Application</h2>
+                </div>
+                <strong data-renewal-status-badge>Draft</strong>
+              </header>
+              <dl class="renewal-context-grid" data-renewal-context-grid></dl>
+            </article>
+
+            <article class="renewal-form-card">
+              <header>
+                <div>
+                  <span>Previous Year - For Reference Only</span>
+                  <h2>Previous Permit Records</h2>
+                </div>
+              </header>
+              <div class="renewal-reference-list" data-renewal-previous-records>
+                <p class="empty-state">Previous permit records will load with your renewal draft.</p>
+              </div>
+            </article>
+
+            <article class="renewal-form-card">
+              <header>
+                <div>
+                  <span>Current Renewal Requirements</span>
+                  <h2>Upload Checklist</h2>
+                </div>
+              </header>
+              <div class="renewal-reference-list" data-renewal-requirements>
+                <p class="empty-state">Current-year requirements will load with your renewal draft.</p>
+              </div>
+            </article>
+          </section>
+
           <section class="business-step-panel" data-business-step-panel="form">
             <section class="business-section business-section--tight">
               <h2>I. BASIC INFORMATION</h2>
@@ -490,6 +527,16 @@
                   </dl>
                 </section>
               </div>
+            </article>
+
+            <article class="review-card review-card--full" data-renewal-change-review hidden>
+              <h3>Renewal Changes for Confirmation</h3>
+              <p class="section-note">These copied fields changed from the previous permit record. Confirm them before submitting.</p>
+              <div class="renewal-change-table" data-renewal-change-list></div>
+              <label class="renewal-confirmation">
+                <input type="checkbox" data-renewal-change-confirm />
+                <span>I confirm these renewal changes are accurate and should be reviewed by BPLO.</span>
+              </label>
             </article>
 
             <div class="review-note review-note--final">

@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Applicant Dashboard</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=19" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=21" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=21"></script>
+    <script defer src="/features/applicant.js?v=22"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -88,6 +88,10 @@
               <i data-lucide="files" aria-hidden="true"></i>
               <span>My Documents</span>
             </a>
+            <button class="action-button" type="button" data-start-latest-renewal>
+              <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              <span>Start Renewal</span>
+            </button>
             <a class="action-button" href="/applicant/profile">
               <i data-lucide="user-pen" aria-hidden="true"></i>
               <span>Edit profile</span>

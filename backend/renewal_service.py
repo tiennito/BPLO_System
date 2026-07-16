@@ -37,6 +37,21 @@ DEFAULT_RENEWAL_SETTINGS = {
     "interest_month_rule": "anniversary_cycle",
     "penalties_enabled": True,
 }
+RENEWAL_IMPORTANT_FIELDS = {
+    "business_name": "Business name",
+    "owner_name": "Owner name",
+    "ownership_type": "Ownership type",
+    "business_address": "Business address",
+    "business_classification": "Business classification",
+    "nature_of_business": "Nature of business",
+    "line_of_business": "Line of business",
+    "business_line": "Line of business",
+    "business_area": "Business area",
+    "employees_total": "Number of employees",
+    "number_of_employees": "Number of employees",
+    "capitalization": "Capitalization",
+    "capital_investment": "Capitalization",
+}
 
 
 def manila_now(clock=None):
@@ -307,7 +322,11 @@ class RenewalServiceMixin:
             "business_barangay", "businessBarangay", "business_municipality", "businessMunicipality",
             "contact_number", "contactNumber", "email", "business_classification_id",
             "business_classification", "business_classification_parent_category", "line_of_business",
-            "business_line", "business_type", "ownership_type",
+            "business_line", "business_type", "ownership_type", "type_of_business",
+            "registration_number", "tin", "business_area", "employees_total", "employees_lgu",
+            "business_activity", "nature_of_business", "capitalization", "capital_investment",
+            "goods_value", "gross_sales", "business_email", "business_mobile", "business_telephone",
+            "owner_contact_number", "home_address", "business_premise", "location_detail",
         }
         copied = {key: value for key, value in (business_info or {}).items() if key in allowed}
         copied.update({
@@ -316,6 +335,83 @@ class RenewalServiceMixin:
             "previous_permit_year": source_permit.get("permit_year"),
         })
         return copied
+
+    def renewal_baseline(self, business_info, source_permit, source_application):
+        reusable = self.reusable_business_information(business_info, source_permit)
+        return {
+            "businessInfo": reusable,
+            "previousPermit": {
+                "id": source_permit.get("id"),
+                "permitNumber": source_permit.get("permit_number"),
+                "permitYear": source_permit.get("permit_year"),
+                "issuedDate": source_permit.get("issued_date") or source_permit.get("issue_date"),
+                "expirationDate": source_permit.get("valid_until") or source_permit.get("expiration_date"),
+                "status": source_permit.get("status"),
+            },
+            "previousApplication": {
+                "id": source_application.get("id"),
+                "referenceNumber": (source_application.get("id") or "")[:8],
+                "status": source_application.get("status"),
+                "submittedAt": source_application.get("submitted_at"),
+            },
+        }
+
+    def track_renewal_change_logs(self, config, application, merged_info, actor):
+        if (application.get("application_type") or "") != "renewal":
+            return []
+        baseline = application.get("renewal_baseline") or {}
+        baseline_info = baseline.get("businessInfo") or {}
+        existing_rows = self.service_rest_request(
+            config,
+            "renewal_change_logs",
+            query=urlencode({"select": "*", "renewal_application_id": f"eq.{application.get('id')}"}),
+        ) or []
+        existing_by_field = {row.get("field_name"): row for row in existing_rows}
+        changed = []
+        now = utc_now_iso()
+        for field, label in RENEWAL_IMPORTANT_FIELDS.items():
+            old_value = baseline_info.get(field)
+            new_value = merged_info.get(field)
+            if str(old_value or "").strip() == str(new_value or "").strip():
+                existing = existing_by_field.get(field)
+                if existing:
+                    self.service_rest_request(
+                        config,
+                        "renewal_change_logs",
+                        method="DELETE",
+                        query=urlencode({"id": f"eq.{existing.get('id')}"}),
+                        prefer="return=minimal",
+                    )
+                continue
+            payload = {
+                "renewal_application_id": application.get("id"),
+                "field_name": field,
+                "field_label": label,
+                "previous_value": "" if old_value is None else str(old_value),
+                "new_value": "" if new_value is None else str(new_value),
+                "changed_by": actor.get("id"),
+                "changed_at": now,
+            }
+            existing = existing_by_field.get(field)
+            if existing:
+                rows = self.service_rest_request(
+                    config,
+                    "renewal_change_logs",
+                    method="PATCH",
+                    payload=payload,
+                    query=urlencode({"id": f"eq.{existing.get('id')}"}),
+                    prefer="return=representation",
+                ) or []
+            else:
+                rows = self.service_rest_request(
+                    config,
+                    "renewal_change_logs",
+                    method="POST",
+                    payload=payload,
+                    prefer="return=representation",
+                ) or []
+            changed.extend(rows or [payload])
+        return changed
 
     def find_existing_renewal(self, config, source_permit_id, permit_year):
         rows = self.service_rest_request(
@@ -367,7 +463,19 @@ class RenewalServiceMixin:
             document = requirement.get("permit_documents") or {}
             document_id = requirement.get("permit_document_id") or document.get("id")
             source = source_by_requirement.get(document_id) or {}
-            snapshot = {**document, "renewalReusePolicy": policy, "sourceDocumentId": source.get("id")}
+            snapshot = {
+                **document,
+                "requirementName": requirement.get("requirement_name") or document.get("document_name"),
+                "description": requirement.get("description") or document.get("short_description") or "",
+                "uploadRequired": requirement.get("is_required", document.get("upload_required", True)),
+                "acceptedFileTypes": requirement.get("allowed_file_types") or document.get("accepted_file_types") or [],
+                "maxFileSize": requirement.get("max_file_size") or document.get("max_file_size"),
+                "numberOfCopies": requirement.get("number_of_copies") or 1,
+                "validityRequired": bool(requirement.get("validity_required")),
+                "renewalReusePolicy": policy,
+                "sourceDocumentId": source.get("id"),
+                "referenceLabel": "Current Renewal Requirement",
+            }
             expiry_raw = (source.get("document_snapshot") or {}).get("expirationDate") or (source.get("document_snapshot") or {}).get("expiration_date")
             source_valid = bool(source.get("file_url"))
             if expiry_raw:
@@ -406,8 +514,54 @@ class RenewalServiceMixin:
                 )
         return created
 
-    def create_or_continue_applicant_renewal(self, permit_id):
-        auth = self.ensure_applicant_request("annual permit renewal")
+    def latest_approved_permit_for_applicant(self, config, applicant_id):
+        applications = self.service_rest_request(
+            config,
+            "applications",
+            query=urlencode({
+                "select": "id,permit_id,applicant_id,status,submitted_at,created_at",
+                "applicant_id": f"eq.{applicant_id}",
+                "order": "created_at.desc",
+                "limit": 100,
+            }),
+        ) or []
+        application_ids = [row.get("id") for row in applications if row.get("id")]
+        if not application_ids:
+            return None
+        permits = self.service_rest_request(
+            config,
+            "business_permits",
+            query=urlencode({
+                "select": "*",
+                "application_id": f"in.({','.join(application_ids)})",
+                "status": "in.(Released,Expired)",
+                "order": "released_at.desc.nullslast,issued_date.desc.nullslast,issue_date.desc.nullslast",
+                "limit": 1,
+            }),
+        ) or []
+        return permits[0] if permits else None
+
+    def start_latest_applicant_renewal(self):
+        auth = self.ensure_applicant_request("business permit renewal")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        if not self.require_applicant_role_for_self_service(supabase_url, service_key, user):
+            return
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key}
+        try:
+            permit = self.latest_approved_permit_for_applicant(config, user.get("id"))
+            if not permit:
+                self.send_json({"error": "No approved business permit was found."}, status=404)
+                return
+            self.create_or_continue_applicant_renewal(permit.get("id"), auth_config=auth)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to start permit renewal.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError, ValueError) as error:
+            self.send_json({"error": str(error) or "Unable to start permit renewal."}, status=500)
+
+    def create_or_continue_applicant_renewal(self, permit_id, auth_config=None):
+        auth = auth_config or self.ensure_applicant_request("annual permit renewal")
         if not auth:
             return
         supabase_url, service_key, user = auth
@@ -464,12 +618,16 @@ class RenewalServiceMixin:
                 "application_type": "renewal",
                 "permit_year": renewal_year,
                 "source_permit_id": permit_id,
+                "previous_permit_id": permit_id,
+                "previous_application_id": source_app.get("id"),
+                "renewal_application_number": self.generate_workflow_number("REN"),
                 "renewal_due_date": window["effective_due_date"].isoformat(),
                 "original_renewal_due_date": window["original_due_date"].isoformat(),
                 "effective_renewal_due_date": window["effective_due_date"].isoformat(),
                 "status": "Draft",
                 "progress": "Draft",
                 "business_info": self.reusable_business_information(source_app.get("business_info") or {}, permit),
+                "renewal_baseline": self.renewal_baseline(source_app.get("business_info") or {}, permit, source_app),
                 "business_classification_id": source_app.get("business_classification_id"),
                 "permit_snapshot": {
                     **(source_app.get("permit_snapshot") or {}),
@@ -513,8 +671,23 @@ class RenewalServiceMixin:
                         "deadlineExtensionId": (extension or {}).get("id"),
                     },
                 )
+                self.create_service_audit_log(
+                    supabase_url, service_key, "previous_renewal_data_copied", actor=user,
+                    entity_type="application", entity_id=application.get("id"),
+                    details={"previousApplicationId": source_app.get("id"), "previousPermitId": permit_id},
+                )
+                self.create_notification(
+                    supabase_url, service_key, user.get("id"),
+                    "Renewal Draft Created",
+                    f"Your renewal draft for permit {permit.get('permit_number') or ''} has been created.",
+                    notification_type="renewal",
+                    source_role="System",
+                    application_id=application.get("id"),
+                    related_permit_id=permit_id,
+                    action_url=f"/applicant/business-information?applicationId={application.get('id')}",
+                )
             self.send_json({
-                "message": "Renewal application draft created." if rows else f"You already have a renewal application for permit year {renewal_year}. Continue your existing application.",
+                "message": "Renewal application draft created." if rows else "Your renewal draft has been restored.",
                 "application": application,
                 "reusedDraft": not bool(rows),
                 "nextUrl": f"/applicant/business-information?applicationId={application.get('id')}",
@@ -537,6 +710,126 @@ class RenewalServiceMixin:
             "effective_renewal_due_date": window["effective_due_date"].isoformat(),
             "deadline_extension_id": (extension or {}).get("id"),
         }
+
+    def load_owned_renewal_application(self, config, application_id, applicant_id=None):
+        query = {
+            "select": "*",
+            "id": f"eq.{application_id}",
+            "application_type": "eq.renewal",
+            "limit": 1,
+        }
+        if applicant_id:
+            query["applicant_id"] = f"eq.{applicant_id}"
+        rows = self.service_rest_request(config, "applications", query=urlencode(query)) or []
+        return rows[0] if rows else None
+
+    def get_applicant_renewal_previous_records(self, application_id):
+        auth = self.ensure_applicant_request("renewal previous records")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key}
+        try:
+            application = self.load_owned_renewal_application(config, application_id, user.get("id"))
+            if not application:
+                self.send_json({"error": "Renewal application not found."}, status=404)
+                return
+            source_permit_id = application.get("source_permit_id") or application.get("previous_permit_id")
+            previous_application_id = application.get("previous_application_id")
+            permits = self.service_rest_request(
+                config, "business_permits",
+                query=urlencode({"select": "*", "id": f"eq.{source_permit_id}", "limit": 1}),
+            ) or []
+            documents = []
+            payments = []
+            receipts = []
+            if previous_application_id:
+                documents = self.service_rest_request(
+                    config, "application_documents",
+                    query=urlencode({"select": "*", "application_id": f"eq.{previous_application_id}", "order": "created_at.asc"}),
+                ) or []
+                payments = self.service_rest_request(
+                    config, "payments",
+                    query=urlencode({"select": "*", "application_id": f"eq.{previous_application_id}", "order": "paid_at.desc,created_at.desc"}),
+                ) or []
+                receipts = self.service_rest_request(
+                    config, "official_receipts",
+                    query=urlencode({"select": "*", "application_id": f"eq.{previous_application_id}", "order": "issued_at.desc"}),
+                ) or []
+            self.send_json({
+                "previousPermit": permits[0] if permits else None,
+                "previousApplicationId": previous_application_id,
+                "previousApplicationReference": (previous_application_id or "")[:8],
+                "documents": [
+                    {
+                        "id": row.get("id"),
+                        "name": (row.get("document_snapshot") or {}).get("documentName") or (row.get("document_snapshot") or {}).get("document_name") or row.get("file_name") or "Previous document",
+                        "fileName": row.get("file_name") or "",
+                        "uploadedAt": row.get("uploaded_at") or row.get("created_at") or "",
+                        "status": row.get("upload_status") or "",
+                        "referenceOnly": True,
+                    }
+                    for row in documents
+                ],
+                "payments": payments,
+                "receipts": receipts,
+                "label": "Previous Year - For Reference Only",
+            })
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load previous renewal records.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load previous renewal records."}, status=500)
+
+    def get_applicant_renewal_requirements(self, application_id):
+        auth = self.ensure_applicant_request("renewal requirements")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key}
+        try:
+            application = self.load_owned_renewal_application(config, application_id, user.get("id"))
+            if not application:
+                self.send_json({"error": "Renewal application not found."}, status=404)
+                return
+            documents = self.service_rest_request(
+                config,
+                "application_documents",
+                query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "order": "created_at.asc"}),
+            ) or []
+            self.send_json({
+                "requirements": [
+                    {
+                        "id": row.get("id"),
+                        "permitDocumentId": row.get("permit_document_id"),
+                        "name": (row.get("document_snapshot") or {}).get("requirementName")
+                            or (row.get("document_snapshot") or {}).get("documentName")
+                            or (row.get("document_snapshot") or {}).get("document_name")
+                            or "Renewal requirement",
+                        "description": (row.get("document_snapshot") or {}).get("description")
+                            or (row.get("document_snapshot") or {}).get("shortDescription")
+                            or (row.get("document_snapshot") or {}).get("short_description")
+                            or "",
+                        "required": (row.get("document_snapshot") or {}).get("uploadRequired", True),
+                        "acceptedFileTypes": (row.get("document_snapshot") or {}).get("acceptedFileTypes")
+                            or (row.get("document_snapshot") or {}).get("accepted_file_types")
+                            or [],
+                        "maxFileSize": (row.get("document_snapshot") or {}).get("maxFileSize")
+                            or (row.get("document_snapshot") or {}).get("max_file_size"),
+                        "status": row.get("upload_status") or "Pending",
+                        "fileName": row.get("file_name") or "",
+                        "issueDate": row.get("issue_date") or "",
+                        "expirationDate": row.get("expiration_date") or "",
+                        "documentYear": row.get("document_year") or application.get("permit_year"),
+                        "reusePolicy": row.get("renewal_reuse_policy") or "",
+                        "sourceDocumentId": row.get("source_document_id") or "",
+                    }
+                    for row in documents
+                ]
+            })
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load renewal requirements.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to load renewal requirements."}, status=500)
 
     def reminder_schedule(self, renewal_year, window):
         previous_year = int(renewal_year) - 1
@@ -822,28 +1115,66 @@ class RenewalServiceMixin:
         )
         self.send_json({"message": "Renewal deadline extension recorded.", "extension": extension}, status=201)
 
-    def upsert_renewal_requirement(self):
+    def list_admin_renewal_requirements(self):
+        config = self.ensure_renewal_role({"super_admin", "bplo_admin"}, "renewal requirement listing")
+        if not config:
+            return
+        rows = self.service_rest_request(
+            config,
+            "renewal_requirements",
+            query=urlencode({
+                "select": "*,permits(permit_name,permit_code),permit_documents(document_name,short_description,accepted_file_types,max_file_size,upload_required),departments(name),business_classifications(name)",
+                "deleted_at": "is.null",
+                "order": "display_order.asc,updated_at.desc",
+                "limit": 1000,
+            }),
+        ) or []
+        self.send_json({"requirements": rows, "total": len(rows)})
+
+    def upsert_renewal_requirement(self, requirement_id=None):
         config = self.ensure_renewal_role({"super_admin", "bplo_admin"}, "renewal requirement update")
         if not config:
             return
         payload = self.read_json_body()
         permit_id = str(payload.get("permitId") or "").strip()
         document_id = str(payload.get("permitDocumentId") or "").strip()
-        policy = str(payload.get("reusePolicy") or "").strip()
+        policy = str(payload.get("reusePolicy") or "reupload_every_year").strip()
         reason = str(payload.get("reason") or "").strip()
-        if not permit_id or not document_id or policy not in REUSE_POLICIES or not reason:
+        if (not requirement_id and (not permit_id or not document_id)) or policy not in REUSE_POLICIES or not reason:
             self.send_json({"error": "Permit, document, supported reuse policy, and reason are required."}, status=400)
             return
-        existing = self.service_rest_request(
-            config, "renewal_requirements",
-            query=urlencode({"select": "*", "permit_id": f"eq.{permit_id}", "permit_document_id": f"eq.{document_id}", "limit": 1}),
-        ) or []
+        if requirement_id:
+            existing = self.service_rest_request(
+                config, "renewal_requirements",
+                query=urlencode({"select": "*", "id": f"eq.{requirement_id}", "deleted_at": "is.null", "limit": 1}),
+            ) or []
+        else:
+            existing = self.service_rest_request(
+                config, "renewal_requirements",
+                query=urlencode({"select": "*", "permit_id": f"eq.{permit_id}", "permit_document_id": f"eq.{document_id}", "deleted_at": "is.null", "limit": 1}),
+            ) or []
         row_payload = {
-            "permit_id": permit_id, "permit_document_id": document_id, "reuse_policy": policy,
-            "required_department_id": payload.get("requiredDepartmentId") or None,
+            "reuse_policy": policy,
+            "requirement_name": payload.get("requirementName") or payload.get("name") or None,
+            "description": payload.get("description") or None,
+            "business_classification_id": payload.get("businessClassificationId") or None,
+            "responsible_department_id": payload.get("responsibleDepartmentId") or payload.get("requiredDepartmentId") or None,
+            "required_department_id": payload.get("requiredDepartmentId") or payload.get("responsibleDepartmentId") or None,
+            "is_required": bool(payload.get("isRequired", payload.get("required", True))),
+            "allowed_file_types": payload.get("allowedFileTypes") or ["pdf", "png", "jpg", "jpeg"],
+            "max_file_size": int(payload.get("maxFileSize") or 5242880),
+            "number_of_copies": int(payload.get("numberOfCopies") or 1),
+            "validity_required": bool(payload.get("validityRequired")),
+            "previous_document_may_be_reused": policy in {"remains_valid", "reupload_when_expired"},
+            "new_upload_required": policy not in {"remains_valid"},
+            "display_order": int(payload.get("displayOrder") or 100),
             "is_active": bool(payload.get("isActive", True)),
             "updated_by": config["actor"].get("id"), "updated_at": utc_now_iso(),
         }
+        if permit_id:
+            row_payload["permit_id"] = permit_id
+        if document_id:
+            row_payload["permit_document_id"] = document_id
         if existing:
             rows = self.service_rest_request(
                 config, "renewal_requirements", method="PATCH", payload=row_payload,
@@ -858,6 +1189,40 @@ class RenewalServiceMixin:
             details={"previous": existing[0] if existing else None, "new": record, "reason": reason},
         )
         self.send_json({"message": "Renewal requirement saved.", "requirement": record})
+
+    def delete_admin_renewal_requirement(self, requirement_id):
+        config = self.ensure_renewal_role({"super_admin", "bplo_admin"}, "renewal requirement deletion")
+        if not config:
+            return
+        payload = self.read_json_body()
+        reason = str(payload.get("reason") or "Requirement deactivated.").strip()
+        existing = self.service_rest_request(
+            config,
+            "renewal_requirements",
+            query=urlencode({"select": "*", "id": f"eq.{requirement_id}", "limit": 1}),
+        ) or []
+        if not existing:
+            self.send_json({"error": "Renewal requirement not found."}, status=404)
+            return
+        linked = self.service_rest_request(
+            config,
+            "application_documents",
+            query=urlencode({"select": "id", "permit_document_id": f"eq.{existing[0].get('permit_document_id')}", "limit": 1}),
+        ) or []
+        rows = self.service_rest_request(
+            config,
+            "renewal_requirements",
+            method="PATCH",
+            payload={"is_active": False, "deleted_at": utc_now_iso(), "updated_by": config["actor"].get("id"), "updated_at": utc_now_iso()},
+            query=urlencode({"id": f"eq.{requirement_id}"}),
+            prefer="return=representation",
+        ) or []
+        self.create_service_audit_log(
+            config["supabase_url"], config["supabase_service_key"], "renewal_requirement_deactivated",
+            actor=config["actor"], entity_type="renewal_requirement", entity_id=requirement_id,
+            details={"reason": reason, "linkedDocumentsFound": bool(linked)},
+        )
+        self.send_json({"message": "Renewal requirement deactivated.", "requirement": rows[0] if rows else {}})
 
     def calculate_renewal_assessment(self, application_id, finalize=False):
         allowed = {"treasury"} if finalize else {"super_admin", "bplo_admin"}

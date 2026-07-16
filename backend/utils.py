@@ -231,6 +231,10 @@ class CoreHandlerMixin:
             self.get_renewal_settings()
             return
 
+        if request_path == "/admin/api/renewal/requirements":
+            self.list_admin_renewal_requirements()
+            return
+
         if request_path.startswith("/admin/api/applications/"):
             parts = request_path.strip("/").split("/")
             if len(parts) == 4:
@@ -274,6 +278,16 @@ class CoreHandlerMixin:
 
         if request_path == "/applicant/api/my-permits":
             self.list_applicant_owned_permits()
+            return
+
+        applicant_previous_records_match = re.fullmatch(r"/applicant/api/renewals/([^/]+)/previous-records", request_path)
+        if applicant_previous_records_match:
+            self.get_applicant_renewal_previous_records(applicant_previous_records_match.group(1))
+            return
+
+        applicant_renewal_requirements_match = re.fullmatch(r"/applicant/api/renewals/([^/]+)/requirements", request_path)
+        if applicant_renewal_requirements_match:
+            self.get_applicant_renewal_requirements(applicant_renewal_requirements_match.group(1))
             return
 
         if request_path == "/applicant/api/my-documents":
@@ -489,6 +503,10 @@ class CoreHandlerMixin:
             self.start_applicant_application()
             return
 
+        if request_path == "/applicant/api/renewals/start":
+            self.start_latest_applicant_renewal()
+            return
+
         applicant_renew_match = re.fullmatch(r"/applicant/api/permits/([^/]+)/renew", request_path)
         if applicant_renew_match:
             self.create_or_continue_applicant_renewal(applicant_renew_match.group(1))
@@ -554,6 +572,11 @@ class CoreHandlerMixin:
             self.update_renewal_settings()
             return
 
+        admin_renewal_requirement_match = re.fullmatch(r"/admin/api/renewal/requirements/([^/]+)", request_path)
+        if admin_renewal_requirement_match:
+            self.upsert_renewal_requirement(admin_renewal_requirement_match.group(1))
+            return
+
         if request_path.startswith("/treasury/api/records/"):
             record_id = request_path.rsplit("/", 1)[-1]
             self.update_treasury_record(record_id)
@@ -611,6 +634,11 @@ class CoreHandlerMixin:
 
     def do_DELETE(self):
         request_path = urlsplit(self.path).path
+
+        admin_renewal_requirement_match = re.fullmatch(r"/admin/api/renewal/requirements/([^/]+)", request_path)
+        if admin_renewal_requirement_match:
+            self.delete_admin_renewal_requirement(admin_renewal_requirement_match.group(1))
+            return
 
         if request_path.startswith("/department/api/requirements/"):
             record_id = request_path.rsplit("/", 1)[-1]

@@ -428,6 +428,14 @@ function render() {
       <span><small>Assessment Status</small><strong class="review-status-text review-status-text--${statusTone(assessment.status || app.assessmentStatus || "Draft")}">${escapeHtml(assessment.status || app.assessmentStatus || "Draft")}</strong></span>
     </article>
   `;
+  if (app.renewal?.isRenewal) {
+    reviewHeader.insertAdjacentHTML("beforeend", `
+      <article class="review-kpi review-kpi--renewal">
+        <span class="review-kpi-icon"><i data-lucide="refresh-cw" aria-hidden="true"></i></span>
+        <span><small>Renewal</small><strong>${escapeHtml(app.renewal.renewalNumber || `Year ${app.renewal.renewalYear || "-"}`)}</strong></span>
+      </article>
+    `);
+  }
   renderWorkflow(app, assessment, permit);
 
   applicantInfo.innerHTML = enhancedDl([
@@ -454,6 +462,25 @@ function render() {
     ["Signboard area", app.business?.signboardArea],
     ["Storage area", app.business?.storageArea],
   ]);
+  document.querySelector(".review-renewal-compare")?.remove();
+  if (app.renewal?.isRenewal) {
+    const changes = app.renewal.changes || [];
+    businessInfo.insertAdjacentHTML("afterend", `
+      <article class="review-renewal-compare">
+        <header>
+          <strong>Renewal Comparison</strong>
+          <span>Previous permit ${escapeHtml(app.renewal.previousPermit?.permit_number || "-")}</span>
+        </header>
+        ${changes.length ? changes.map((change) => `
+          <div>
+            <span>${escapeHtml(change.field_label || change.field_name || "Field")}</span>
+            <del>${escapeHtml(change.previous_value || "-")}</del>
+            <strong>${escapeHtml(change.new_value || "-")}</strong>
+          </div>
+        `).join("") : '<p>No important copied fields changed.</p>'}
+      </article>
+    `);
+  }
 
   documentsBody.innerHTML = (app.documents || []).length
     ? app.documents

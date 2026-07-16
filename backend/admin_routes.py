@@ -1508,6 +1508,31 @@ class AdminRoutesMixin:
             "business_permits",
             {"select": "*", "application_id": f"eq.{application_id}", "limit": 1},
         ) or []
+        renewal_change_rows = []
+        previous_permit_rows = []
+        previous_receipt_rows = []
+        if application.get("application_type") == "renewal":
+            renewal_change_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "renewal_change_logs",
+                {"select": "*", "renewal_application_id": f"eq.{application_id}", "order": "changed_at.desc"},
+            ) or []
+            previous_permit_id = application.get("source_permit_id") or application.get("previous_permit_id")
+            if previous_permit_id:
+                previous_permit_rows = self.supabase_rest_request(
+                    supabase_url,
+                    service_key,
+                    "business_permits",
+                    {"select": "*", "id": f"eq.{previous_permit_id}", "limit": 1},
+                ) or []
+            if application.get("previous_application_id"):
+                previous_receipt_rows = self.supabase_rest_request(
+                    supabase_url,
+                    service_key,
+                    "official_receipts",
+                    {"select": "*", "application_id": f"eq.{application.get('previous_application_id')}", "order": "issued_at.desc"},
+                ) or []
         try:
             evidence_rows = self.supabase_rest_request(
                 supabase_url,
@@ -1563,6 +1588,9 @@ class AdminRoutesMixin:
             "payments": payment_rows,
             "receipts": receipt_rows,
             "businessPermit": permit_rows[0] if permit_rows else None,
+            "renewalChanges": renewal_change_rows,
+            "previousPermit": previous_permit_rows[0] if previous_permit_rows else None,
+            "previousReceipts": previous_receipt_rows,
             "departmentEvidence": evidence_rows,
             "ocrResults": structured_ocr_rows,
         }
@@ -1606,7 +1634,18 @@ class AdminRoutesMixin:
         return {
             "id": app.get("id"),
             "controlNumber": (app.get("id") or "")[:8],
-            "applicationType": info.get("application_type") or info.get("applicationType") or "New Application",
+            "applicationType": "Renewal" if app.get("application_type") == "renewal" else (info.get("application_type") or info.get("applicationType") or "New Application"),
+            "renewal": {
+                "isRenewal": app.get("application_type") == "renewal",
+                "renewalYear": app.get("permit_year"),
+                "renewalNumber": app.get("renewal_application_number"),
+                "previousApplicationId": app.get("previous_application_id"),
+                "previousApplicationReference": (app.get("previous_application_id") or "")[:8],
+                "previousPermit": bundle.get("previousPermit"),
+                "previousReceipts": bundle.get("previousReceipts") or [],
+                "changes": bundle.get("renewalChanges") or [],
+                "baseline": app.get("renewal_baseline") or {},
+            },
             "permitType": permit.get("permitName") or permit.get("permit_name") or "Business Permit",
             "status": app.get("status") or "Draft",
             "progress": app.get("progress") or "",

@@ -4202,6 +4202,66 @@ body.modal-open {
   cursor: default;
 }
 
+.review-kpi--renewal {
+  border-color: #007f34;
+  background: #f0fbf4;
+}
+
+.review-renewal-compare {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #d8e0db;
+  border-left: 3px solid #007f34;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.review-renewal-compare header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-renewal-compare header strong {
+  color: #263129;
+  font-size: 13px;
+}
+
+.review-renewal-compare header span,
+.review-renewal-compare p {
+  color: #68736c;
+  font-size: 11px;
+}
+
+.review-renewal-compare div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid #edf1ee;
+  border-radius: 6px;
+  background: #f8fbf9;
+}
+
+.review-renewal-compare div span {
+  color: #68736c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.review-renewal-compare del {
+  color: #9a3412;
+  font-size: 11px;
+}
+
+.review-renewal-compare div strong {
+  color: #007f34;
+  font-size: 11px;
+}
+
 .staff-renewal-search-grid button,
 .staff-upload-requirements button,
 .staff-primary-action,

@@ -18,6 +18,7 @@ try:
 except Exception:
     MANILA = timezone(timedelta(hours=8), name="Asia/Manila")
 MIGRATION = Path(__file__).resolve().parents[1] / "database" / "17. annual_business_permit_renewals.sql"
+FLOW_MIGRATION = Path(__file__).resolve().parents[1] / "database" / "18. business_permit_renewal_flow.sql"
 
 
 class AnnualRenewalRuleTests(unittest.TestCase):
@@ -71,6 +72,30 @@ class AnnualRenewalMigrationTests(unittest.TestCase):
         self.assertIn("with (security_invoker = true)", self.sql)
         self.assertIn("revoke all on public.renewal_monitoring from anon, authenticated", self.sql)
         self.assertIn("grant select on public.renewal_monitoring to service_role", self.sql)
+
+
+class BusinessPermitRenewalFlowMigrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.sql = FLOW_MIGRATION.read_text(encoding="utf-8").lower()
+
+    def test_previous_records_and_renewal_number_are_tracked(self):
+        self.assertIn("previous_application_id", self.sql)
+        self.assertIn("previous_permit_id", self.sql)
+        self.assertIn("renewal_application_number", self.sql)
+        self.assertIn("applications_renewal_number_idx", self.sql)
+
+    def test_change_log_table_has_unique_field_per_renewal(self):
+        self.assertIn("create table if not exists public.renewal_change_logs", self.sql)
+        self.assertIn("unique (renewal_application_id, field_name)", self.sql)
+        self.assertIn("confirmed_at", self.sql)
+
+    def test_document_metadata_and_requirement_configuration_exist(self):
+        self.assertIn("document_year", self.sql)
+        self.assertIn("expiration_date", self.sql)
+        self.assertIn("requirement_name", self.sql)
+        self.assertIn("display_order", self.sql)
+        self.assertIn("deleted_at", self.sql)
 
 
 if __name__ == "__main__":
