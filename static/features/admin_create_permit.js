@@ -1,9 +1,13 @@
 const permitForm = document.querySelector("[data-permit-form]");
 const permitStatus = document.querySelector("[data-permit-status]");
+const autoSaveState = document.querySelector("[data-autosave-state]");
+const autoSaveTime = document.querySelector("[data-autosave-time]");
+const retryAutoSaveButton = document.querySelector("[data-autosave-retry]");
+const createNewPermitButton = document.querySelector("[data-create-new-permit]");
+const archiveDraftButton = document.querySelector("[data-archive-draft]");
 const documentDialog = document.querySelector("[data-document-dialog]");
 const documentForm = document.querySelector("[data-document-form]");
 const documentDialogTitle = document.querySelector("[data-document-dialog-title]");
-const draftButton = document.querySelector("[data-save-draft]");
 const permitSuccessModal = document.querySelector("[data-permit-success-modal]");
 const permitSuccessTitle = document.querySelector("[data-permit-success-title]");
 const permitSuccessMessage = document.querySelector("[data-permit-success-message]");
@@ -13,67 +17,21 @@ const requiredOfficesContainer = document.querySelector("[data-required-offices]
 const SUPABASE_URL = window.APP_CONFIG?.supabaseUrl || "";
 const SUPABASE_ANON_KEY =
   window.APP_CONFIG?.supabaseAnonKey || window.APP_CONFIG?.supabasePublishableKey || "";
+const AUTOSAVE_DELAY_MS = 750;
+const BACKUP_KEY_PREFIX = "admin-permit-draft-backup:";
+
 let supabaseClient = null;
-let existingPermits = [];
-let documents = [
-  {
-    id: crypto.randomUUID(),
-    name: "DTI/SEC Registration",
-    description: "Business registration certificate",
-    fileTypes: "PDF",
-    maxSize: "10 MB",
-    uploadRequired: true,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Barangay Clearance",
-    description: "Clearance from barangay",
-    fileTypes: "PDF",
-    maxSize: "5 MB",
-    uploadRequired: true,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Valid ID",
-    description: "Government-issued ID",
-    fileTypes: "PDF, JPG, PNG",
-    maxSize: "5 MB",
-    uploadRequired: true,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Lease Contract",
-    description: "Proof of business address",
-    fileTypes: "PDF",
-    maxSize: "10 MB",
-    uploadRequired: true,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Authorization Letter",
-    description: "Authorization from owner if applicable",
-    fileTypes: "PDF",
-    maxSize: "5 MB",
-    uploadRequired: false,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Previous Permit",
-    description: "Copy of previous business permit",
-    fileTypes: "PDF",
-    maxSize: "10 MB",
-    uploadRequired: false,
-  },
-  {
-    id: crypto.randomUUID(),
-    name: "Supporting Document",
-    description: "Other supporting documents",
-    fileTypes: "PDF, JPG, PNG",
-    maxSize: "10 MB",
-    uploadRequired: false,
-  },
-];
+let currentDraftId = "";
+let currentPermitStatus = "Draft";
+let documents = [];
 let offices = [];
+let selectedOfficeIds = new Set();
+let autoSaveTimer = null;
+let saveInFlight = false;
+let pendingSave = false;
+let hasUnsavedChanges = false;
+let initializing = true;
+let lastSavedAt = "";
 
 function initSupabase() {
   if (!window.supabase?.createClient || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -96,6 +54,30 @@ function setPermitStatus(message, isError = false) {
   permitStatus.style.color = isError ? "#b42318" : "#078d36";
 }
 
+function setAutoSaveStatus(state, message, savedAt = "") {
+  if (autoSaveState) {
+    autoSaveState.textContent = message;
+    autoSaveState.dataset.state = state;
+  }
+  if (autoSaveTime) {
+    autoSaveTime.textContent = savedAt ? `Last saved at ${formatLocalTime(savedAt)}` : "";
+  }
+  if (retryAutoSaveButton) {
+    retryAutoSaveButton.hidden = state !== "failed";
+  }
+}
+
+function formatLocalTime(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function showPermitSuccessModal({ title, message }) {
   if (!permitSuccessModal) {
     return;
@@ -104,7 +86,6 @@ function showPermitSuccessModal({ title, message }) {
   if (permitSuccessTitle) {
     permitSuccessTitle.textContent = title;
   }
-
   if (permitSuccessMessage) {
     permitSuccessMessage.textContent = message;
   }
@@ -130,6 +111,17 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function normalizeDocumentFromApi(doc) {
+  return {
+    id: doc.id || crypto.randomUUID(),
+    name: doc.documentName || doc.name || "",
+    description: doc.shortDescription || doc.description || "",
+    fileTypes: doc.acceptedFileTypes || doc.fileTypes || "",
+    maxSize: doc.maxFileSize || doc.maxSize || "",
+    uploadRequired: doc.uploadRequired ?? true,
+  };
 }
 
 function renderDocuments() {
@@ -176,10 +168,6 @@ function renderDocuments() {
   window.lucide?.createIcons();
 }
 
-function renderAllDocuments() {
-  renderDocuments();
-}
-
 function renderOffices() {
   if (!requiredOfficesContainer) {
     return;
@@ -194,7 +182,7 @@ function renderOffices() {
     .map(
       (office) => `
         <label class="required-office-option">
-          <input type="checkbox" name="requiredOfficeIds" value="${escapeHtml(office.id)}" />
+          <input type="checkbox" name="requiredOfficeIds" value="${escapeHtml(office.id)}" ${selectedOfficeIds.has(office.id) ? "checked" : ""} />
           <span>
             <strong>${escapeHtml(office.name)}</strong>
             <small>${escapeHtml(office.description || "Required processing office")}</small>
@@ -203,6 +191,65 @@ function renderOffices() {
       `
     )
     .join("");
+}
+
+function setFormValues(permit) {
+  if (!permitForm) {
+    return;
+  }
+
+  permitForm.elements.permitName.value = permit.permitName || "";
+  permitForm.elements.permitCode.value = permit.permitCode || "";
+  permitForm.elements.category.value = permit.category || "Business Permits";
+  permitForm.elements.description.value = permit.description || "";
+  permitForm.elements.processingFee.value = permit.processingFee ?? "";
+  permitForm.elements.applicantNotes.value = permit.applicantNotes || "";
+  currentPermitStatus = permit.status || "Draft";
+  documents = (permit.documents || []).map(normalizeDocumentFromApi);
+  selectedOfficeIds = new Set((permit.requiredOffices || []).map((office) => office.id).filter(Boolean));
+  lastSavedAt = permit.lastSavedAt || permit.updatedAt || "";
+  renderDocuments();
+  renderOffices();
+  setAutoSaveStatus("saved", "Saved automatically", lastSavedAt);
+}
+
+function applyBackupIfPresent() {
+  if (!currentDraftId) {
+    return;
+  }
+  const rawBackup = window.localStorage.getItem(`${BACKUP_KEY_PREFIX}${currentDraftId}`);
+  if (!rawBackup) {
+    return;
+  }
+  try {
+    const backup = JSON.parse(rawBackup);
+    permitForm.elements.permitName.value = backup.permitName || "";
+    permitForm.elements.permitCode.value = backup.permitCode || "";
+    permitForm.elements.category.value = backup.category || "Business Permits";
+    permitForm.elements.description.value = backup.description || "";
+    permitForm.elements.processingFee.value = backup.processingFee || "";
+    permitForm.elements.applicantNotes.value = backup.applicantNotes || "";
+    selectedOfficeIds = new Set(backup.requiredOfficeIds || []);
+    documents = (backup.documents || []).map((doc) => ({
+      id: doc.id || crypto.randomUUID(),
+      name: doc.name || doc.documentName || "",
+      description: doc.description || doc.shortDescription || "",
+      fileTypes: doc.fileTypes || doc.acceptedFileTypes || "",
+      maxSize: doc.maxSize || doc.maxFileSize || "",
+      uploadRequired: doc.uploadRequired ?? true,
+    }));
+    renderOffices();
+    renderDocuments();
+    hasUnsavedChanges = true;
+    pendingSave = true;
+    setAutoSaveStatus("dirty", "Unsaved changes", lastSavedAt);
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = window.setTimeout(() => {
+      void autoSaveDraft();
+    }, AUTOSAVE_DELAY_MS);
+  } catch (_error) {
+    clearBackup();
+  }
 }
 
 function openDocumentDialog(doc = null) {
@@ -229,10 +276,67 @@ async function getAccessToken() {
 
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) {
-    throw new Error("Please sign in as admin before saving a permit.");
+    throw new Error("Please sign in as admin before editing a permit.");
   }
 
   return data.session.access_token;
+}
+
+async function adminApi(path, options = {}) {
+  const accessToken = await getAccessToken();
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "The request failed.");
+  }
+  return payload;
+}
+
+function getDraftIdFromUrl() {
+  return new URLSearchParams(window.location.search).get("draftId") || "";
+}
+
+function setDraftIdInUrl(draftId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("draftId", draftId);
+  window.history.replaceState({}, "", url);
+}
+
+async function createBlankDraft() {
+  const payload = await adminApi("/admin/api/permits", {
+    method: "POST",
+    body: JSON.stringify({ createBlank: true, status: "Draft" }),
+  });
+  currentDraftId = payload.permit?.id || "";
+  if (!currentDraftId) {
+    throw new Error("Unable to create a draft permit.");
+  }
+  setDraftIdInUrl(currentDraftId);
+  setFormValues(payload.permit);
+  setPermitStatus("New blank draft created.");
+}
+
+async function loadDraft(draftId) {
+  const payload = await adminApi(`/admin/api/permits/${encodeURIComponent(draftId)}`);
+  currentDraftId = payload.permit?.id || draftId;
+  setDraftIdInUrl(currentDraftId);
+  setFormValues(payload.permit);
+  applyBackupIfPresent();
+  if (currentPermitStatus !== "Draft") {
+    setPermitStatus("This permit is already published or archived and cannot be edited here.", true);
+    permitForm?.querySelectorAll("input, select, textarea, button").forEach((field) => {
+      if (!field.matches("[data-create-new-permit]")) {
+        field.disabled = true;
+      }
+    });
+  }
 }
 
 async function loadOffices() {
@@ -241,14 +345,7 @@ async function loadOffices() {
   }
 
   try {
-    const accessToken = await getAccessToken();
-    const response = await fetch("/admin/api/departments", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || "Unable to load offices.");
-    }
+    const payload = await adminApi("/admin/api/departments");
     offices = (payload.departments || []).filter((office) => office.status !== "Inactive");
     renderOffices();
   } catch (error) {
@@ -256,113 +353,176 @@ async function loadOffices() {
   }
 }
 
-function getPermitCodeInput() {
-  return permitForm?.querySelector('input[name="permitCode"]') || null;
-}
-
-function getNextPermitCode() {
-  const usedNumbers = existingPermits
-    .map((permit) => permit.permitCode || "")
-    .map((code) => /^BP-(\d+)$/i.exec(code.trim()))
-    .filter(Boolean)
-    .map((match) => Number(match[1]))
-    .filter((value) => Number.isFinite(value));
-  const nextNumber = usedNumbers.length ? Math.max(...usedNumbers) + 1 : 1;
-  return `BP-${String(nextNumber).padStart(3, "0")}`;
-}
-
-async function loadExistingPermits() {
-  try {
-    const accessToken = await getAccessToken();
-    const response = await fetch("/admin/api/permits", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || "Unable to load permits.");
-    }
-
-    existingPermits = payload.permits || [];
-    const codeInput = getPermitCodeInput();
-    if (codeInput && (!codeInput.value.trim() || codeInput.value.trim() === "BP-001")) {
-      const nextCode = getNextPermitCode();
-      codeInput.value = nextCode;
-      if (nextCode !== "BP-001") {
-        setPermitStatus(`Permit code ${nextCode} is ready for the next permit.`);
-      }
-    }
-  } catch (_error) {
-    existingPermits = [];
-  }
-}
-
-async function ensureUniquePermitCodeBeforeCreate(payload) {
-  await loadExistingPermits();
-  const currentCode = payload.permitCode.trim().toLowerCase();
-  const isDuplicate = existingPermits.some(
-    (permit) => (permit.permitCode || "").trim().toLowerCase() === currentCode
-  );
-
-  if (!isDuplicate) {
-    return payload;
-  }
-
-  const nextCode = getNextPermitCode();
-  const codeInput = getPermitCodeInput();
-  if (codeInput) {
-    codeInput.value = nextCode;
-  }
-
-  return { ...payload, permitCode: nextCode };
-}
-
-function buildPermitPayload(status) {
+function buildPermitPayload(status = "Draft") {
   if (!permitForm) {
     return null;
   }
 
   const formData = new FormData(permitForm);
-  const selectedOfficeIds = [...permitForm.querySelectorAll('input[name="requiredOfficeIds"]:checked')].map(
-    (input) => input.value
-  );
-
   return {
     status,
-    permitName: formData.get("permitName").toString().trim(),
-    permitCode: formData.get("permitCode").toString().trim(),
-    category: formData.get("category").toString(),
-    description: formData.get("description").toString().trim(),
-    processingFee: formData.get("processingFee").toString().trim(),
-    applicantNotes: formData.get("applicantNotes").toString().trim(),
-    requiredOfficeIds: selectedOfficeIds,
+    permitName: (formData.get("permitName") || "").toString().trim(),
+    permitCode: (formData.get("permitCode") || "").toString().trim(),
+    category: (formData.get("category") || "Business Permits").toString(),
+    description: (formData.get("description") || "").toString().trim(),
+    processingFee: (formData.get("processingFee") || "").toString().trim(),
+    applicantNotes: (formData.get("applicantNotes") || "").toString().trim(),
+    requiredOfficeIds: [...selectedOfficeIds],
     documents: documents.map((doc) => ({
       ...doc,
+      documentName: doc.name,
+      shortDescription: doc.description,
+      acceptedFileTypes: doc.fileTypes,
+      maxFileSize: doc.maxSize,
       requirementType: doc.uploadRequired ? "Required" : "Optional",
     })),
   };
 }
 
-async function savePermitRecord(status) {
-  let payload = buildPermitPayload(status);
-  if (!payload) {
-    return null;
+function validateDocumentInput(doc, existingId = "") {
+  if (!doc.name) {
+    throw new Error("Document name is required.");
+  }
+  const duplicate = documents.some(
+    (item) => item.id !== existingId && item.name.trim().toLowerCase() === doc.name.trim().toLowerCase()
+  );
+  if (duplicate) {
+    throw new Error("A document requirement with this name already exists.");
+  }
+  const fileTypes = doc.fileTypes
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!fileTypes.length || fileTypes.some((item) => !/^[a-z0-9]+$/i.test(item.replace(/^\./, "")))) {
+    throw new Error("Accepted file types must be comma-separated values like PDF, JPG, PNG.");
+  }
+  if (doc.maxSize && !/^\d+(?:\.\d+)?\s*(KB|MB|GB)$/i.test(doc.maxSize)) {
+    throw new Error("Max file size must look like 5 MB, 500 KB, or 1 GB.");
+  }
+}
+
+function saveBackup() {
+  if (!currentDraftId) {
+    return;
+  }
+  window.localStorage.setItem(`${BACKUP_KEY_PREFIX}${currentDraftId}`, JSON.stringify(buildPermitPayload("Draft")));
+}
+
+function clearBackup() {
+  if (currentDraftId) {
+    window.localStorage.removeItem(`${BACKUP_KEY_PREFIX}${currentDraftId}`);
+  }
+}
+
+function markDirty() {
+  if (initializing || currentPermitStatus !== "Draft") {
+    return;
+  }
+  hasUnsavedChanges = true;
+  pendingSave = true;
+  saveBackup();
+  setAutoSaveStatus("dirty", "Unsaved changes", lastSavedAt);
+  window.clearTimeout(autoSaveTimer);
+  autoSaveTimer = window.setTimeout(() => {
+    void autoSaveDraft();
+  }, AUTOSAVE_DELAY_MS);
+}
+
+async function autoSaveDraft() {
+  if (!currentDraftId || currentPermitStatus !== "Draft") {
+    return;
+  }
+  if (saveInFlight) {
+    pendingSave = true;
+    return;
   }
 
-  payload = await ensureUniquePermitCodeBeforeCreate(payload);
-  const accessToken = await getAccessToken();
-  const response = await fetch("/admin/api/permits", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  const responsePayload = await response.json();
-  if (!response.ok) {
-    throw new Error(responsePayload.error || "Unable to save permit.");
+  saveInFlight = true;
+  pendingSave = false;
+  setAutoSaveStatus("saving", "Saving...", lastSavedAt);
+  try {
+    const payload = buildPermitPayload("Draft");
+    const responsePayload = await adminApi(`/admin/api/permits/${encodeURIComponent(currentDraftId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    lastSavedAt = responsePayload.permit?.lastSavedAt || responsePayload.permit?.updatedAt || new Date().toISOString();
+    hasUnsavedChanges = false;
+    clearBackup();
+    setAutoSaveStatus("saved", "Saved automatically", lastSavedAt);
+    setPermitStatus("");
+  } catch (error) {
+    hasUnsavedChanges = true;
+    saveBackup();
+    setAutoSaveStatus("failed", "Auto-save failed — Retry", lastSavedAt);
+    setPermitStatus(error.message || "Auto-save failed. Your changes are still on this page.", true);
+  } finally {
+    saveInFlight = false;
+    if (pendingSave) {
+      window.clearTimeout(autoSaveTimer);
+      autoSaveTimer = window.setTimeout(() => {
+        void autoSaveDraft();
+      }, AUTOSAVE_DELAY_MS);
+    }
   }
-  return responsePayload.permit;
+}
+
+async function publishPermit() {
+  if (!currentDraftId) {
+    return;
+  }
+
+  if (hasUnsavedChanges || pendingSave) {
+    await autoSaveDraft();
+    if (hasUnsavedChanges) {
+      return;
+    }
+  }
+
+  const submitButton = permitForm?.querySelector('button[type="submit"]');
+  try {
+    submitButton.disabled = true;
+    const responsePayload = await adminApi(`/admin/api/permits/${encodeURIComponent(currentDraftId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ ...buildPermitPayload("Published"), publish: true }),
+    });
+    currentPermitStatus = "Published";
+    hasUnsavedChanges = false;
+    pendingSave = false;
+    setAutoSaveStatus("saved", "Saved automatically", responsePayload.permit?.lastSavedAt || responsePayload.permit?.updatedAt || "");
+    showPermitSuccessModal({
+      title: "Permit Published Successfully",
+      message: "The permit has been published and is ready for applicant use.",
+    });
+  } catch (error) {
+    setAutoSaveStatus("failed", "Auto-save failed — Retry", lastSavedAt);
+    setPermitStatus(error.message || "Unable to publish permit.", true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function archiveOrDeleteDraft() {
+  if (!currentDraftId) {
+    return;
+  }
+  const confirmed = window.confirm("Archive or remove this draft permit?");
+  if (!confirmed) {
+    return;
+  }
+  try {
+    await adminApi(`/admin/api/permits/${encodeURIComponent(currentDraftId)}`, { method: "DELETE" });
+    hasUnsavedChanges = false;
+    pendingSave = false;
+    clearBackup();
+    await createBlankDraft();
+    showPermitSuccessModal({
+      title: "Draft Archived Successfully",
+      message: "The draft permit has been archived or removed. A new blank draft is ready.",
+    });
+  } catch (error) {
+    setPermitStatus(error.message || "Unable to archive this draft.", true);
+  }
 }
 
 document.querySelectorAll("[data-add-document]").forEach((button) => {
@@ -388,7 +548,8 @@ document.addEventListener("click", (event) => {
   if (deleteButton instanceof HTMLElement) {
     documents = documents.filter((item) => item.id !== deleteButton.dataset.deleteDocument);
     renderDocuments();
-    setPermitStatus("Document removed.");
+    markDirty();
+    setPermitStatus("Document requirement removed.");
   }
 });
 
@@ -398,78 +559,81 @@ document.querySelectorAll("[data-close-document-dialog]").forEach((button) => {
 
 documentForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  const formData = new FormData(documentForm);
-  const id = formData.get("id").toString() || crypto.randomUUID();
-  const doc = {
-    id,
-    name: formData.get("name").toString().trim(),
-    description: formData.get("description").toString().trim(),
-    fileTypes: formData.get("fileTypes").toString().trim(),
-    maxSize: formData.get("maxSize").toString().trim(),
-    uploadRequired: formData.get("uploadRequired") === "yes",
-  };
-
-  const existingIndex = documents.findIndex((item) => item.id === id);
-  if (existingIndex >= 0) {
-    documents[existingIndex] = doc;
-  } else {
-    documents.push(doc);
-  }
-
-  renderDocuments();
-  documentDialog?.close();
-  setPermitStatus("Document requirement saved.");
-});
-
-draftButton?.addEventListener("click", async () => {
   try {
-    draftButton.disabled = true;
-    const permit = await savePermitRecord("Draft");
-    const permitCode = permit?.permitCode ? ` with code ${permit.permitCode}` : "";
-    setPermitStatus(`Permit saved as draft${permitCode}.`);
-    showPermitSuccessModal({
-      title: "Permit Draft Saved",
-      message: `The permit draft has been saved${permitCode}. You can activate it later when ready.`,
-    });
+    const formData = new FormData(documentForm);
+    const id = (formData.get("id") || "").toString() || crypto.randomUUID();
+    const doc = {
+      id,
+      name: (formData.get("name") || "").toString().trim(),
+      description: (formData.get("description") || "").toString().trim(),
+      fileTypes: (formData.get("fileTypes") || "").toString().trim(),
+      maxSize: (formData.get("maxSize") || "").toString().trim(),
+      uploadRequired: formData.get("uploadRequired") === "yes",
+    };
+
+    validateDocumentInput(doc, id);
+    const existingIndex = documents.findIndex((item) => item.id === id);
+    if (existingIndex >= 0) {
+      documents[existingIndex] = doc;
+    } else {
+      documents.push(doc);
+    }
+
+    renderDocuments();
+    documentDialog?.close();
+    markDirty();
+    setPermitStatus("Document requirement updated.");
   } catch (error) {
-    setPermitStatus(error.message || "Unable to save permit draft.", true);
-  } finally {
-    draftButton.disabled = false;
+    setPermitStatus(error.message || "Unable to save document requirement.", true);
   }
 });
 
-permitForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!documents.some((doc) => doc.uploadRequired)) {
-    setPermitStatus("Mark at least one document as applicant upload required before creating a permit.", true);
+permitForm?.addEventListener("input", (event) => {
+  if (event.target instanceof HTMLElement && event.target.closest("[data-document-form]")) {
     return;
   }
-
-  const submitButton = permitForm.querySelector('button[type="submit"]');
-  try {
-    submitButton.disabled = true;
-    const formData = new FormData(permitForm);
-    const status = formData.get("status") ? "Active" : "Inactive";
-    const permit = await savePermitRecord(status);
-    const permitCode = permit?.permitCode ? ` with code ${permit.permitCode}` : "";
-    setPermitStatus(`Permit created successfully${permitCode}.`);
-    showPermitSuccessModal({
-      title: "Permit Created Successfully",
-      message: `The permit has been created${permitCode} and is ready for applicant use.`,
-    });
-  } catch (error) {
-    setPermitStatus(error.message || "Unable to create permit.", true);
-  } finally {
-    submitButton.disabled = false;
-  }
+  markDirty();
 });
 
-closePermitSuccessButton?.addEventListener("click", () => {
+permitForm?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.name === "requiredOfficeIds") {
+    if (target.checked) {
+      selectedOfficeIds.add(target.value);
+    } else {
+      selectedOfficeIds.delete(target.value);
+    }
+  }
+  markDirty();
+});
+
+permitForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void publishPermit();
+});
+
+retryAutoSaveButton?.addEventListener("click", () => {
+  pendingSave = true;
+  void autoSaveDraft();
+});
+
+createNewPermitButton?.addEventListener("click", async () => {
+  if (hasUnsavedChanges) {
+    await autoSaveDraft();
+    if (hasUnsavedChanges) {
+      return;
+    }
+  }
+  await createBlankDraft();
+});
+
+archiveDraftButton?.addEventListener("click", () => {
+  void archiveOrDeleteDraft();
+});
+
+closePermitSuccessButton?.addEventListener("click", async () => {
   hidePermitSuccessModal();
-  permitForm?.reset();
-  documents = [];
-  renderAllDocuments();
-  setPermitStatus("");
+  await createBlankDraft();
 });
 
 permitSuccessModal?.addEventListener("click", (event) => {
@@ -480,9 +644,28 @@ permitSuccessModal?.addEventListener("click", (event) => {
   }
 });
 
-window.addEventListener("DOMContentLoaded", () => {
-  renderAllDocuments();
-  void loadOffices();
-  void loadExistingPermits();
-  window.lucide?.createIcons();
+window.addEventListener("beforeunload", (event) => {
+  if (hasUnsavedChanges || saveInFlight || pendingSave) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
+
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    setAutoSaveStatus("saving", "Loading draft...");
+    await loadOffices();
+    const draftId = getDraftIdFromUrl();
+    if (draftId) {
+      await loadDraft(draftId);
+    } else {
+      await createBlankDraft();
+    }
+  } catch (error) {
+    setAutoSaveStatus("failed", "Auto-save failed — Retry");
+    setPermitStatus(error.message || "Unable to prepare the permit draft.", true);
+  } finally {
+    initializing = false;
+    window.lucide?.createIcons();
+  }
 });

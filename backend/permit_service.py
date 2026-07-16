@@ -24,6 +24,9 @@ from .utils import (
 
 
 class PermitServiceMixin:
+    PUBLISHED_PERMIT_STATUSES = {"Published", "Active"}
+    EDITABLE_PERMIT_STATUSES = {"Draft"}
+
     def format_permit_document(self, document):
         requirement_type = document.get("requirement_type") or "Required"
         return {
@@ -41,38 +44,77 @@ class PermitServiceMixin:
         }
 
     def format_permit(self, permit, documents=None, offices=None):
+        permit_code = permit.get("permit_code") or ""
+        if (permit.get("status") or "") == "Draft" and permit_code.startswith("DRAFT-"):
+            permit_code = ""
+        status = self.normalize_status_value(permit.get("status") or "Draft")
+
         return {
             "id": permit.get("id"),
             "permitName": permit.get("permit_name") or "",
-            "permitCode": permit.get("permit_code") or "",
+            "permitCode": permit_code,
             "category": permit.get("category") or "",
             "description": permit.get("description") or "",
-            "status": permit.get("status") or "Draft",
+            "status": status,
             "processingFee": permit.get("processing_fee"),
             "applicantNotes": permit.get("applicant_notes") or "",
             "createdAt": permit.get("created_at") or "",
             "updatedAt": permit.get("updated_at") or "",
+            "lastSavedAt": permit.get("last_saved_at") or permit.get("updated_at") or "",
             "documents": documents if documents is not None else [],
             "requiredOffices": offices if offices is not None else [],
         }
 
-    def normalize_permit_payload(self, payload):
+    def normalize_status_value(self, status):
+        status = (status or "Draft").strip()
+        aliases = {
+            "Active": "Published",
+            "Inactive": "Archived",
+        }
+        return aliases.get(status, status)
+
+    def database_status_value(self, status):
+        status = self.normalize_status_value(status)
+        legacy_aliases = {
+            "Published": "Active",
+            "Archived": "Inactive",
+        }
+        return legacy_aliases.get(status, status)
+
+    def validate_permit_document_values(self, document_name, accepted_file_types, max_file_size):
+        if not document_name:
+            raise ValueError("Every document requirement needs a document name.")
+        if not accepted_file_types:
+            raise ValueError(f"Accepted file types are required for {document_name}.")
+
+        file_types = [item.strip().lower().lstrip(".") for item in accepted_file_types.split(",") if item.strip()]
+        if not file_types:
+            raise ValueError(f"Accepted file types are required for {document_name}.")
+        invalid_types = [item for item in file_types if not re.fullmatch(r"[a-z0-9]+", item)]
+        if invalid_types:
+            raise ValueError(f"Accepted file types for {document_name} must be comma-separated values like PDF, JPG, PNG.")
+
+        if max_file_size and not re.fullmatch(r"\d+(?:\.\d+)?\s*(?:KB|MB|GB)", max_file_size.strip(), re.IGNORECASE):
+            raise ValueError(f"Max file size for {document_name} must look like 5 MB, 500 KB, or 1 GB.")
+
+    def normalize_permit_payload(self, payload, publish=False, allow_blank_draft=False):
         permit_name = (payload.get("permitName") or "").strip()
         permit_code = (payload.get("permitCode") or "").strip()
         category = (payload.get("category") or "").strip()
         description = (payload.get("description") or "").strip()
-        status = (payload.get("status") or "Draft").strip()
+        status = self.normalize_status_value(payload.get("status") or ("Published" if publish else "Draft"))
         applicant_notes = (payload.get("applicantNotes") or "").strip()
         processing_fee_raw = payload.get("processingFee")
 
-        if not permit_name:
+        if publish and not permit_name:
             raise ValueError("Permit name is required.")
-        if not permit_code:
-            raise ValueError("Permit code is required.")
-        if not category:
+        if publish and not category:
             raise ValueError("Permit category is required.")
-        if status not in {"Active", "Inactive", "Draft"}:
-            raise ValueError("Permit status must be Active, Inactive, or Draft.")
+        if status not in {"Draft", "Published", "Archived"}:
+            raise ValueError("Permit status must be Draft, Published, or Archived.")
+
+        if not permit_code:
+            permit_code = f"DRAFT-{uuid.uuid4().hex[:12].upper()}"
 
         processing_fee = None
         if processing_fee_raw not in (None, ""):
@@ -82,47 +124,63 @@ class PermitServiceMixin:
 
         documents = payload.get("documents") or []
         normalized_documents = []
+        seen_document_names = set()
         for document in documents:
             document_name = (document.get("documentName") or document.get("name") or "").strip()
-            requirement_type = (document.get("requirementType") or "Required").strip().title()
+            upload_required = bool(document.get("uploadRequired", document.get("upload_required", True)))
+            requirement_type = "Required" if upload_required else "Optional"
             accepted_file_types = (
                 document.get("acceptedFileTypes") or document.get("fileTypes") or ""
             ).strip()
-            if not document_name:
-                raise ValueError("Every document requirement needs a document name.")
-            if requirement_type not in {"Required", "Optional"}:
-                raise ValueError("Document requirement type must be Required or Optional.")
-            if not accepted_file_types:
-                raise ValueError(f"Accepted file types are required for {document_name}.")
+            max_file_size = (document.get("maxFileSize") or document.get("maxSize") or "").strip()
+            self.validate_permit_document_values(document_name, accepted_file_types, max_file_size)
 
-            normalized_documents.append(
-                {
-                    "document_name": document_name,
-                    "short_description": (document.get("shortDescription") or document.get("description") or "").strip(),
-                    "requirement_type": requirement_type,
-                    "accepted_file_types": accepted_file_types,
-                    "max_file_size": (document.get("maxFileSize") or document.get("maxSize") or "").strip(),
-                    "upload_required": bool(document.get("uploadRequired", requirement_type == "Required")),
-                    "notes": (document.get("notes") or "").strip(),
-                }
-            )
+            document_key = document_name.lower()
+            if document_key in seen_document_names:
+                raise ValueError(f"Duplicate document requirement: {document_name}.")
+            seen_document_names.add(document_key)
 
-        if status == "Active" and not any(doc["upload_required"] for doc in normalized_documents):
-            raise ValueError("Mark at least one document as applicant upload required before activating a permit.")
+            document_id = (document.get("id") or "").strip()
+            if document_id:
+                try:
+                    uuid.UUID(document_id)
+                except ValueError:
+                    document_id = ""
+
+            normalized_document = {
+                "document_name": document_name,
+                "short_description": (document.get("shortDescription") or document.get("description") or "").strip(),
+                "requirement_type": requirement_type,
+                "accepted_file_types": accepted_file_types,
+                "max_file_size": max_file_size,
+                "upload_required": upload_required,
+                "notes": (document.get("notes") or "").strip(),
+            }
+            if document_id:
+                normalized_document["id"] = document_id
+
+            normalized_documents.append(normalized_document)
+
+        if publish and not normalized_documents:
+            raise ValueError("Add at least one document requirement before publishing a permit.")
+        if publish and not any(doc["upload_required"] for doc in normalized_documents):
+            raise ValueError("Mark at least one document as applicant upload required before publishing a permit.")
 
         required_office_ids = []
         for office_id in payload.get("requiredOfficeIds") or []:
             office_id = str(office_id).strip()
             if office_id and office_id not in required_office_ids:
                 required_office_ids.append(office_id)
+        if publish and not required_office_ids:
+            raise ValueError("Select at least one required office before publishing a permit.")
 
         return {
             "permit": {
                 "permit_name": permit_name,
                 "permit_code": permit_code,
-                "category": category,
+                "category": category or "Business Permits",
                 "description": description,
-                "status": status,
+                "status": self.database_status_value(status),
                 "processing_fee": processing_fee,
                 "applicant_notes": applicant_notes,
             },
@@ -137,7 +195,7 @@ class PermitServiceMixin:
             "limit": 1,
         }
         if active_only:
-            permit_query["status"] = "eq.Active"
+            permit_query["status"] = "in.(Published,Active)"
 
         permits = self.supabase_rest_request(supabase_url, service_key, "permits", permit_query)
         if not permits:
@@ -233,7 +291,24 @@ class PermitServiceMixin:
 
         supabase_url, supabase_service_key = config
         try:
-            normalized = self.normalize_permit_payload(self.read_json_body())
+            payload = self.read_json_body()
+            actor = self.get_request_actor(supabase_url)
+            if payload.get("createBlank") or not payload:
+                normalized = {
+                    "permit": {
+                        "permit_name": "",
+                        "permit_code": f"DRAFT-{uuid.uuid4().hex[:12].upper()}",
+                        "category": "Business Permits",
+                        "description": "",
+                        "status": "Draft",
+                        "processing_fee": None,
+                        "applicant_notes": "",
+                    },
+                    "documents": [],
+                    "requiredOfficeIds": [],
+                }
+            else:
+                normalized = self.normalize_permit_payload(payload, allow_blank_draft=True)
             created = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
@@ -265,11 +340,10 @@ class PermitServiceMixin:
                     prefer="return=minimal",
                 )
 
-            actor = self.get_request_actor(supabase_url)
             self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
-                "permit_created",
+                "permit_draft_created" if permit.get("status") == "Draft" else "permit_created",
                 actor=actor,
                 entity_type="permit",
                 entity_id=permit_id,
@@ -293,7 +367,24 @@ class PermitServiceMixin:
 
         supabase_url, supabase_service_key = config
         try:
-            normalized = self.normalize_permit_payload(self.read_json_body())
+            payload = self.read_json_body()
+            publish = bool(payload.get("publish")) or self.normalize_status_value(payload.get("status")) == "Published"
+            normalized = self.normalize_permit_payload(payload, publish=publish, allow_blank_draft=not publish)
+            existing = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {"select": "id,status,permit_name", "id": f"eq.{permit_id}", "limit": 1},
+            )
+            if not existing:
+                self.send_json({"error": "Permit not found."}, status=404)
+                return
+            existing_status = existing[0].get("status") or "Draft"
+            if existing_status in self.PUBLISHED_PERMIT_STATUSES and not publish:
+                self.send_json({"error": "Published permits cannot be edited from the Create Permit page."}, status=409)
+                return
+            actor = self.get_request_actor(supabase_url)
+
             updated = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
@@ -343,17 +434,16 @@ class PermitServiceMixin:
                     prefer="return=minimal",
                 )
 
-            actor = self.get_request_actor(supabase_url)
             self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
-                "permit_updated",
+                "permit_published" if publish else "permit_autosaved",
                 actor=actor,
                 entity_type="permit",
                 entity_id=permit_id,
                 details={"permitName": updated[0].get("permit_name"), "status": updated[0].get("status")},
             )
-            self.send_json({"message": "Permit updated successfully.", "permit": self.get_permit_bundle(supabase_url, supabase_service_key, permit_id)})
+            self.send_json({"message": "Permit published successfully." if publish else "Permit saved automatically.", "permit": self.get_permit_bundle(supabase_url, supabase_service_key, permit_id)})
         except ValueError as error:
             self.send_json({"error": str(error)}, status=400)
         except HTTPError as error:
@@ -368,6 +458,41 @@ class PermitServiceMixin:
 
         supabase_url, supabase_service_key = config
         try:
+            existing = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "permits",
+                {"select": "id,status,permit_name", "id": f"eq.{permit_id}", "limit": 1},
+            )
+            if not existing:
+                self.send_json({"error": "Permit not found."}, status=404)
+                return
+            existing_permit = existing[0]
+            if (existing_permit.get("status") or "Draft") != "Draft":
+                actor = self.get_request_actor(supabase_url)
+                archive_payload = {"status": self.database_status_value("Archived")}
+                archived = self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "permits",
+                    {"id": f"eq.{permit_id}"},
+                    method="PATCH",
+                    payload=archive_payload,
+                    prefer="return=representation",
+                )
+                archived_permit = archived[0] if archived else existing_permit
+                self.create_service_audit_log(
+                    supabase_url,
+                    supabase_service_key,
+                    "permit_archived",
+                    actor=actor,
+                    entity_type="permit",
+                    entity_id=permit_id,
+                    details={"permitName": archived_permit.get("permit_name")},
+                )
+                self.send_json({"message": "Permit archived successfully.", "permit": self.format_permit(archived_permit)})
+                return
+
             deleted = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
@@ -406,7 +531,7 @@ class PermitServiceMixin:
                 "permits",
                 {
                     "select": "id,permit_name,permit_code,category,description,status,processing_fee,applicant_notes,created_at,updated_at",
-                    "status": "eq.Active",
+                    "status": "in.(Published,Active)",
                     "order": "created_at.desc",
                 },
             )

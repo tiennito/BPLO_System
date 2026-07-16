@@ -6,12 +6,38 @@ create table if not exists public.permits (
   permit_code text not null unique,
   category text not null,
   description text,
-  status text not null default 'Draft' check (status in ('Active', 'Inactive', 'Draft')),
+  status text not null default 'Draft' check (status in ('Draft', 'Published', 'Archived', 'Active', 'Inactive')),
   processing_fee numeric(12, 2),
   applicant_notes text,
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  last_saved_at timestamptz default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.permits
+  add column if not exists created_by uuid,
+  add column if not exists updated_by uuid,
+  add column if not exists last_saved_at timestamptz;
+
+alter table public.permits
+  alter column last_saved_at set default now();
+
+alter table public.permits
+  drop constraint if exists permits_created_by_fkey,
+  drop constraint if exists permits_updated_by_fkey;
+
+alter table public.permits
+  add constraint permits_created_by_fkey foreign key (created_by) references auth.users(id) on delete set null,
+  add constraint permits_updated_by_fkey foreign key (updated_by) references auth.users(id) on delete set null;
+
+alter table public.permits
+  drop constraint if exists permits_status_check;
+
+alter table public.permits
+  add constraint permits_status_check
+  check (status in ('Draft', 'Published', 'Archived', 'Active', 'Inactive'));
 
 create table if not exists public.permit_documents (
   id uuid primary key default gen_random_uuid(),
@@ -106,7 +132,7 @@ drop policy if exists "Applicants can view active permits" on public.permits;
 create policy "Applicants can view active permits"
 on public.permits for select
 to authenticated
-using (status = 'Active');
+using (status in ('Published', 'Active'));
 
 drop policy if exists "Applicants can view active permit documents" on public.permit_documents;
 create policy "Applicants can view active permit documents"
@@ -116,7 +142,7 @@ using (
   exists (
     select 1 from public.permits
     where permits.id = permit_documents.permit_id
-      and permits.status = 'Active'
+      and permits.status in ('Published', 'Active')
   )
 );
 
@@ -128,7 +154,7 @@ using (
   exists (
     select 1 from public.permits
     where permits.id = permit_required_offices.permit_id
-      and permits.status = 'Active'
+      and permits.status in ('Published', 'Active')
   )
 );
 

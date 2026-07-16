@@ -10,7 +10,7 @@
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
     <script defer src="/features/audit_logger.js?v=2"></script>
-    <script defer src="/features/admin_create_permit.js?v=3"></script>
+    <script defer src="/features/admin_create_permit.js?v=4"></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -70,31 +70,36 @@
 
         <section class="create-permit-page" aria-labelledby="create-permit-title">
           <header class="permit-page-heading">
-            <h2 id="create-permit-title">Create Permit</h2>
-            <p>Create a permit type and configure applicant document requirements.</p>
+            <div>
+              <h2 id="create-permit-title">Create Permit</h2>
+              <p>Create a permit type and configure applicant document requirements.</p>
+            </div>
+            <button class="permit-button permit-button--outline" type="button" data-create-new-permit>
+              <i data-lucide="plus" aria-hidden="true"></i>
+              Create New Permit
+            </button>
           </header>
 
           <form class="permit-builder" data-permit-form>
+            <section class="autosave-card" aria-live="polite">
+              <div>
+                <strong data-autosave-state data-state="saving">Loading draft...</strong>
+                <span data-autosave-time></span>
+              </div>
+              <button class="permit-button permit-button--plain" type="button" data-autosave-retry hidden>Retry</button>
+            </section>
+
             <section class="permit-section permit-details-card">
               <h3>Permit Details</h3>
               <div class="permit-details-grid">
                 <label class="field">
                   <span>Permit Name <em>*</em></span>
-                  <input name="permitName" value="Business Permit" required />
+                  <input name="permitName" />
                 </label>
                 <label class="field">
-                  <span>Permit Code <em>*</em></span>
-                  <input name="permitCode" value="BP-001" required />
+                  <span>Permit Code <small>(Optional)</small></span>
+                  <input name="permitCode" placeholder="Example: BP-001" />
                 </label>
-                <fieldset class="permit-status">
-                  <legend>Status <em>*</em></legend>
-                  <label class="toggle-control">
-                    <input name="status" type="checkbox" checked />
-                    <span></span>
-                    <strong>Active</strong>
-                    <small>Inactive</small>
-                  </label>
-                </fieldset>
                 <label class="field">
                   <span>Category / Permit Type <em>*</em></span>
                   <select name="category" required>
@@ -105,11 +110,11 @@
                 </label>
                 <label class="field">
                   <span>Description</span>
-                  <textarea name="description">Permit for operating a business within the municipality.</textarea>
+                  <textarea name="description"></textarea>
                 </label>
                 <label class="field">
                   <span>Processing Fee <small>(Optional)</small></span>
-                  <input name="processingFee" type="number" min="0" step="0.01" value="500.00" />
+                  <input name="processingFee" type="number" min="0" step="0.01" />
                   <small>Leave blank if no processing fee.</small>
                 </label>
               </div>
@@ -174,8 +179,8 @@
 
             <footer class="permit-actions">
               <a class="permit-button permit-button--plain" href="/admin">Cancel</a>
-              <button class="permit-button permit-button--outline" type="button" data-save-draft>Save as Draft</button>
-              <button class="permit-button permit-button--primary" type="submit">Create Permit</button>
+              <button class="permit-button permit-button--outline" type="button" data-archive-draft>Archive Draft</button>
+              <button class="permit-button permit-button--primary" type="submit">Publish Permit</button>
             </footer>
           </form>
         </section>
