@@ -243,6 +243,20 @@ class CoreHandlerMixin:
             if len(parts) == 5 and parts[-1] == "assessment":
                 self.get_admin_application_assessment(parts[-2])
                 return
+            if len(parts) == 5 and parts[-1] == "permit-eligibility":
+                self.get_admin_permit_eligibility(parts[-2])
+                return
+            if len(parts) == 5 and parts[-1] == "permit-preview":
+                self.get_admin_business_permit_preview(parts[-2])
+                return
+            if len(parts) == 5 and parts[-1] == "permit-pdf":
+                self.download_admin_business_permit_pdf(parts[-2])
+                return
+
+        verify_permit_api_match = re.fullmatch(r"/verify/api/permit/([^/]+)", request_path)
+        if verify_permit_api_match:
+            self.verify_public_business_permit(verify_permit_api_match.group(1))
+            return
 
         if request_path.startswith("/admin/application-documents/") and request_path.endswith("/preview"):
             parts = request_path.strip("/").split("/")
@@ -280,6 +294,15 @@ class CoreHandlerMixin:
             self.list_applicant_owned_permits()
             return
 
+        if request_path == "/applicant/api/renewals/dashboard":
+            self.get_applicant_renewal_dashboard_summary()
+            return
+
+        applicant_renewal_details_match = re.fullmatch(r"/applicant/api/renewals/([^/]+)/details", request_path)
+        if applicant_renewal_details_match:
+            self.get_applicant_renewal_details(applicant_renewal_details_match.group(1))
+            return
+
         applicant_previous_records_match = re.fullmatch(r"/applicant/api/renewals/([^/]+)/previous-records", request_path)
         if applicant_previous_records_match:
             self.get_applicant_renewal_previous_records(applicant_previous_records_match.group(1))
@@ -311,6 +334,11 @@ class CoreHandlerMixin:
             self.get_applicant_draft(draft_match.group(1))
             return
 
+        print_application_match = re.fullmatch(r"/api/applications/([^/]+)/print", request_path)
+        if print_application_match:
+            self.get_application_print_data(print_application_match.group(1))
+            return
+
         progress_match = re.fullmatch(r"/applicant/api/applications/([^/]+)/progress", request_path)
         if progress_match:
             self.get_applicant_application_progress(progress_match.group(1))
@@ -340,10 +368,14 @@ class CoreHandlerMixin:
             supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
             supabase_publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
             admin_email = os.getenv("ADMIN_EMAIL", "")
+            lgu_name = os.getenv("LGU_NAME", "Municipality of Victoria")
+            lgu_province = os.getenv("LGU_PROVINCE", "Province of Laguna")
+            licensing_office = os.getenv("LICENSING_OFFICE_NAME", "Business Permits and Licensing Office")
             payload = (
                 "window.APP_CONFIG = "
                 f"{{supabaseUrl: {supabase_url!r}, supabaseAnonKey: {supabase_anon_key!r}, "
-                f"supabasePublishableKey: {supabase_publishable_key!r}, adminEmail: {admin_email!r}}};"
+                f"supabasePublishableKey: {supabase_publishable_key!r}, adminEmail: {admin_email!r}, "
+                f"lguName: {lgu_name!r}, lguProvince: {lgu_province!r}, licensingOffice: {licensing_office!r}}};"
             )
             self.send_response(200)
             self.send_header("Content-Type", "application/javascript; charset=utf-8")
@@ -352,8 +384,12 @@ class CoreHandlerMixin:
             self.wfile.write(payload.encode("utf-8"))
             return
 
-        if re.fullmatch(r"/admin/staff-administrator/applications/[^/]+/?", request_path):
+        if re.fullmatch(r"/admin/staff-administrator/applications/[^/]+/permit-preview/?", request_path):
+            self.path = "/templates/staff_administrator/permit_preview.html"
+        elif re.fullmatch(r"/admin/staff-administrator/applications/[^/]+/?", request_path):
             self.path = "/templates/staff_administrator/application_review.html"
+        elif re.fullmatch(r"/verify/permit/[^/]+/?", request_path):
+            self.path = "/templates/permit_verification.html"
         else:
             self.path = PAGE_ROUTES.get(request_path, request_path)
         super().do_GET()
@@ -486,6 +522,15 @@ class CoreHandlerMixin:
             if len(parts) == 5 and parts[-1] == "release-permit":
                 self.release_admin_business_permit(parts[-2])
                 return
+            if len(parts) == 5 and parts[-1] == "permit-print":
+                self.record_admin_business_permit_print(parts[-2])
+                return
+            if len(parts) == 5 and parts[-1] == "reissue-permit":
+                self.reissue_admin_business_permit(parts[-2])
+                return
+            if len(parts) == 5 and parts[-1] == "revoke-permit":
+                self.revoke_admin_business_permit(parts[-2])
+                return
 
         if request_path == "/admin/api/document-reviews":
             self.create_admin_document_review()
@@ -505,6 +550,11 @@ class CoreHandlerMixin:
 
         if request_path == "/applicant/api/renewals/start":
             self.start_latest_applicant_renewal()
+            return
+
+        applicant_renewal_continue_match = re.fullmatch(r"/applicant/api/renewals/([^/]+)/continue", request_path)
+        if applicant_renewal_continue_match:
+            self.continue_applicant_renewal(applicant_renewal_continue_match.group(1))
             return
 
         applicant_renew_match = re.fullmatch(r"/applicant/api/permits/([^/]+)/renew", request_path)

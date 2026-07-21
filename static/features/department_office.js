@@ -63,6 +63,20 @@ function statusPill(value) {
   return `<span class="status-pill ${statusClass(value)}">${escapeHtml(value || "-")}</span>`;
 }
 
+function emptyStateMarkup(icon, title, copy) {
+  return `
+    <div class="department-empty-state">
+      <span><i data-lucide="${escapeHtml(icon)}"></i></span>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(copy)}</p>
+    </div>
+  `;
+}
+
+function tableEmptyState(colspan, icon, title, copy) {
+  return `<tr><td colspan="${colspan}" class="empty-state-cell">${emptyStateMarkup(icon, title, copy)}</td></tr>`;
+}
+
 async function apiFetch(path, options = {}) {
   if (!session?.access_token) {
     throw new Error("Please log in as a department office user.");
@@ -244,7 +258,13 @@ function renderApplications(applications) {
   }
   if (!applications.length) {
     const colspan = page === "applications" ? 5 : 4;
-    table.innerHTML = `<tr><td colspan="${colspan}" class="empty-state">No applications assigned to this department.</td></tr>`;
+    table.innerHTML = tableEmptyState(
+      colspan,
+      "clipboard-list",
+      "No applications assigned to this department.",
+      "Once applications are submitted, they will appear here."
+    );
+    window.lucide?.createIcons();
     return;
   }
 
@@ -1072,7 +1092,7 @@ async function loadRequirements() {
           </div></td>
         </tr>
       `).join("")
-    : '<tr><td colspan="4" class="empty-state">No checklist records yet.</td></tr>';
+    : tableEmptyState(4, "clipboard-check", "No checklist records yet.", "Add your first requirement for this permit type.");
     table.dataset.records = JSON.stringify(requirements);
   }
   if (list) {
@@ -1090,12 +1110,13 @@ async function loadRequirements() {
             </div>
           </article>
         `).join("")
-      : '<div class="selected-permit-empty">No requirements yet. Add the first document requirement for this permit type.</div>';
+      : emptyStateMarkup("clipboard-check", "No requirements yet", "Add the first document requirement for this permit type.");
     list.dataset.records = JSON.stringify(requirements);
   }
   document.querySelectorAll("[data-requirement-count]").forEach((node) => {
     node.textContent = requirements.length;
   });
+  window.lucide?.createIcons();
   setStatus("Requirements loaded.");
 }
 
@@ -1175,12 +1196,13 @@ function renderInspectionSchedule(inspections) {
   }
 
   if (!inspections.length) {
-    table.innerHTML = '<tr><td colspan="9" class="empty-state">No inspections scheduled yet.</td></tr>';
+    table.innerHTML = tableEmptyState(9, "clipboard-search", "No inspections found", "There are no scheduled site inspections at the moment.");
     table.dataset.records = "[]";
     const countNode = document.querySelector("[data-inspection-entry-count]");
     if (countNode) {
       countNode.textContent = "Showing 0 entries";
     }
+    window.lucide?.createIcons();
     return;
   }
 
@@ -1318,9 +1340,10 @@ function renderReports(reports) {
   renderReportWidgets(reports);
 
   if (!reports.length) {
-    table.innerHTML = '<tr><td colspan="7" class="empty-state">No reports yet.</td></tr>';
+    table.innerHTML = tableEmptyState(7, "archive", "No reports found", "Try adjusting your filters or create a new report.");
     table.dataset.records = "[]";
     document.querySelector("[data-report-entry-count]").textContent = "Showing 0 reports";
+    window.lucide?.createIcons();
     return;
   }
 

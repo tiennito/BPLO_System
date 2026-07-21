@@ -5,41 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Applicant - My Documents</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=20" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=24" />
+    <link rel="stylesheet" href="/styles/applicant_dashboard.css?v=1" />
+    <link rel="stylesheet" href="/styles/applicant_self_service.css?v=1" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant_self_service.js?v=1"></script>
+    <script defer src="/features/applicant_self_service.js?v=5"></script>
   </head>
-  <body data-applicant-page="documents">
-    <main class="app-shell">
+  <body class="applicant-dashboard-page applicant-self-service-page" data-applicant-page="documents">
+    <main class="app-shell dashboard-shell">
       <header class="topbar">
-        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home"><img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" /></a>
+        <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home"><img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" /><span class="brand-copy"><strong>BPLO Permit System</strong><small>Victoria, Laguna</small></span></a>
         <nav class="topnav" aria-label="Applicant navigation">
-          <a href="/applicant">Home</a>
-          <a href="/applicant/permits">My Application</a>
+          <a href="/applicant"><i data-lucide="house" aria-hidden="true"></i>Home</a>
+          <a class="is-active" href="/applicant/permits"><i data-lucide="file-text" aria-hidden="true"></i>My Application</a>
           <div class="profile-menu">
-            <button class="profile-button" type="button" data-profile-toggle>Profile<i data-lucide="chevron-down" aria-hidden="true"></i></button>
+            <button class="profile-button" type="button" data-profile-toggle><i data-lucide="circle-user-round" aria-hidden="true"></i>Profile<i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="profile-dropdown" data-profile-dropdown"><strong data-profile-name>Applicant</strong><button type="button" data-logout>Log out</button></div>
           </div>
-          <span class="avatar" aria-hidden="true"></span>
+          <button class="icon-button notification-button" type="button" aria-label="Notifications"><i data-lucide="bell" aria-hidden="true"></i></button>
+          <span class="avatar" data-applicant-initials aria-label="Applicant initials">A</span>
         </nav>
       </header>
 
       <section class="dashboard applicant-records-page">
-        <section class="permits-section" aria-labelledby="documents-title">
+        <section class="permits-section records-card" aria-labelledby="documents-title">
           <header class="records-header">
-            <div>
-              <h2 id="documents-title">MY DOCUMENTS</h2>
-              <p data-record-status>Loading your documents...</p>
+            <div class="records-title-group">
+              <span class="records-heading-icon" aria-hidden="true"><i data-lucide="files"></i></span>
+              <div><h2 id="documents-title">My Documents</h2><p data-record-status>Loading your documents...</p></div>
             </div>
+            <button class="records-outline-button" type="button" data-document-guidelines><i data-lucide="file-check-2" aria-hidden="true"></i>Document Guidelines</button>
           </header>
-          <div class="records-toolbar">
-            <input type="search" placeholder="Search filename or document type" data-document-search />
-            <select data-document-application-filter><option value="">All applications</option></select>
-            <select data-document-category-filter><option value="">All categories</option></select>
-            <select data-document-status-filter><option value="">All statuses</option></select>
-            <input type="date" aria-label="Upload date" data-document-date-filter />
+          <div class="records-toolbar records-toolbar--documents">
+            <label class="records-control records-control--search"><i data-lucide="search" aria-hidden="true"></i><span class="sr-only">Search documents</span><input type="search" placeholder="Search filename or document type" data-document-search /></label>
+            <label class="records-control"><span class="sr-only">Filter by application</span><select data-document-application-filter><option value="">All applications</option></select></label>
+            <label class="records-control"><span class="sr-only">Filter by category</span><select data-document-category-filter><option value="">All categories</option></select></label>
+            <label class="records-control"><span class="sr-only">Filter by status</span><select data-document-status-filter><option value="">All statuses</option></select></label>
+            <label class="records-control"><span class="sr-only">Filter by upload date</span><input type="date" aria-label="Upload date" data-document-date-filter /></label>
+            <div class="records-filter-actions"><button class="records-outline-button" type="button" data-clear-document-filters><i data-lucide="rotate-ccw" aria-hidden="true"></i>Clear</button><button class="records-primary-button" type="button" data-apply-document-filters><i data-lucide="filter" aria-hidden="true"></i>Apply Filters</button></div>
           </div>
           <div class="permits-table-wrap">
             <table>
@@ -70,9 +75,17 @@
         </article>
       </section>
 
+      <section class="record-modal" data-guidelines-modal hidden>
+        <div class="record-modal__backdrop" data-close-modal></div>
+        <article class="record-modal__card guidelines-card" role="dialog" aria-modal="true" aria-labelledby="document-guidelines-title">
+          <header><h2 id="document-guidelines-title">Document Guidelines</h2><button type="button" data-close-modal aria-label="Close guidelines"><i data-lucide="x" aria-hidden="true"></i></button></header>
+          <ul><li>Upload clear and readable PDF, PNG, or JPG files.</li><li>Check the required document type before replacing a file.</li><li>Rejected files should be corrected and uploaded again for review.</li></ul>
+        </article>
+      </section>
+
       <footer class="site-footer">
-        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
-        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+        <span class="footer-shield" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+        <div><p>&copy; 2024 BPLO Permit System. All rights reserved.</p><p>For assistance, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a> &nbsp;|&nbsp; (049) 123-4567</p></div>
       </footer>
     </main>
   </body>

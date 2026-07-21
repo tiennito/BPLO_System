@@ -1,0 +1,566 @@
+.applicant-dashboard-page {
+  --dashboard-green: #078c48;
+  --dashboard-green-dark: #005b3d;
+  --dashboard-green-deep: #004c35;
+  --dashboard-soft: #eaf8ef;
+  --dashboard-border: #dce6e1;
+  --dashboard-ink: #18352b;
+  --dashboard-muted: #687a74;
+  background: #f5f7f6;
+  color: var(--dashboard-ink);
+}
+
+.applicant-dashboard-page .dashboard-shell {
+  background: radial-gradient(circle at 85% 0, rgba(19, 145, 84, .04), transparent 32%), #f7f8f8;
+}
+
+.applicant-dashboard-page .topbar {
+  position: relative;
+  min-height: 60px;
+  padding: 0 28px;
+  overflow: visible;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, .05), transparent 32%),
+    linear-gradient(100deg, #078c55, #006441 58%, #00563b);
+  box-shadow: 0 2px 8px rgba(0, 57, 38, .2);
+}
+
+.applicant-dashboard-page .topbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .08;
+  background:
+    radial-gradient(ellipse at 25% 130%, #fff 0 16%, transparent 17%),
+    radial-gradient(ellipse at 65% 145%, #fff 0 22%, transparent 23%);
+}
+
+.applicant-dashboard-page .brand-mark {
+  position: relative;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.applicant-dashboard-page .brand-mark img {
+  width: 42px;
+  height: 42px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .2));
+}
+
+.applicant-dashboard-page .brand-copy {
+  display: grid;
+  gap: 3px;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.applicant-dashboard-page .brand-copy strong { font-size: 14px; }
+.applicant-dashboard-page .brand-copy small { font-size: 10px; font-weight: 500; }
+
+.applicant-dashboard-page .topnav {
+  position: relative;
+  z-index: 2;
+  align-self: stretch;
+  gap: 28px;
+  font-size: 11px;
+}
+
+.applicant-dashboard-page .topnav > a,
+.applicant-dashboard-page .profile-button,
+.applicant-dashboard-page .icon-button {
+  position: relative;
+  min-height: 60px;
+  gap: 7px;
+}
+
+.applicant-dashboard-page .topnav > a.is-active {
+  font-weight: 800;
+}
+
+.applicant-dashboard-page .topnav > a.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 7px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #65e99f;
+}
+
+.applicant-dashboard-page .profile-button {
+  width: 42px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.applicant-dashboard-page .profile-button:hover,
+.applicant-dashboard-page .profile-button[aria-expanded="true"] {
+  background: rgba(255, 255, 255, .1);
+}
+
+.applicant-dashboard-page .notification-menu::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  right: -15px;
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, .24);
+}
+
+.applicant-dashboard-page .notification-button { width: 38px; }
+
+.applicant-dashboard-page .notification-badge {
+  top: 50%;
+  right: -1px;
+  transform: translateY(-115%);
+}
+
+.applicant-dashboard-page .profile-dropdown,
+.applicant-dashboard-page .notification-dropdown {
+  top: calc(100% - 1px);
+  border: 1px solid #dfe8e3;
+  border-radius: 8px;
+  box-shadow: 0 16px 35px rgba(13, 52, 38, .18);
+}
+
+.applicant-dashboard-page .profile-dropdown {
+  right: 0;
+  width: 240px;
+  max-width: calc(100vw - 28px);
+  gap: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.applicant-dashboard-page .profile-dropdown.is-open { gap: 0; }
+
+.applicant-dashboard-page .profile-dropdown-identity {
+  display: grid;
+  gap: 4px;
+  padding: 7px 9px 11px;
+  border-bottom: 1px solid #e6ece9;
+}
+
+.applicant-dashboard-page .profile-dropdown-identity small {
+  color: #71827b;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.applicant-dashboard-page .profile-dropdown strong {
+  overflow: visible;
+  color: #18352b;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.applicant-dashboard-page .profile-dropdown .profile-dropdown-action {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 9px;
+  border-radius: 5px;
+  color: #294139;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.applicant-dashboard-page .profile-dropdown .profile-dropdown-action:first-of-type { margin-top: 6px; }
+
+.applicant-dashboard-page .profile-dropdown .profile-dropdown-action:hover,
+.applicant-dashboard-page .profile-dropdown .profile-dropdown-action:focus-visible {
+  background: #eef9f3;
+  color: var(--dashboard-green);
+}
+
+.applicant-dashboard-page .profile-dropdown .profile-dropdown-action svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.applicant-dashboard-page .notification-dropdown { right: -60px; }
+
+.applicant-dashboard-page .avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, .8);
+  background: #eff8f2;
+  color: #26453a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.applicant-dashboard-page .profile-button .avatar { flex: 0 0 auto; }
+
+.applicant-dashboard-page .dashboard {
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 16px 28px 22px;
+}
+
+.applicant-dashboard-page .info-card,
+.applicant-dashboard-page .permits-section {
+  border: 1px solid #e2e8e5;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 5px 14px rgba(30, 61, 49, .10);
+}
+
+.applicant-dashboard-page .info-card {
+  padding: 14px 17px 15px;
+  border-left: 1px solid #e2e8e5;
+}
+
+.applicant-dashboard-page .dashboard-card-heading,
+.applicant-dashboard-page .permits-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.applicant-dashboard-page .dashboard-heading-copy,
+.applicant-dashboard-page .section-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.applicant-dashboard-page .dashboard-heading-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dashboard-soft);
+  color: var(--dashboard-green);
+}
+
+.applicant-dashboard-page .dashboard-heading-icon svg { width: 21px; height: 21px; }
+
+.applicant-dashboard-page .dashboard-card-heading h1,
+.applicant-dashboard-page .section-heading-row h2,
+.applicant-dashboard-page .permits-section h2 {
+  margin: 0;
+  padding: 0;
+  color: #185038;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.applicant-dashboard-page .dashboard-card-heading h1::before,
+.applicant-dashboard-page .quick-actions h2::before,
+.applicant-dashboard-page .permits-section h2::before { display: none; }
+
+.applicant-dashboard-page .dashboard-card-heading p,
+.applicant-dashboard-page .section-heading-row p {
+  margin: 4px 0 0;
+  color: var(--dashboard-muted);
+  font-size: 9px;
+}
+
+.applicant-dashboard-page .outline-dashboard-action {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid #2eb979;
+  border-radius: 5px;
+  background: #fff;
+  color: #087844;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: background-color .18s ease, color .18s ease, transform .18s ease;
+}
+
+.applicant-dashboard-page .outline-dashboard-action:hover {
+  transform: translateY(-1px);
+  background: #ecfaf2;
+}
+
+.applicant-dashboard-page .outline-dashboard-action svg { width: 12px; height: 12px; }
+
+.applicant-dashboard-page .info-grid {
+  min-height: 54px;
+  grid-template-columns: 1.05fr 1fr 1fr 1.05fr;
+  gap: 0;
+  margin-top: 11px;
+  padding: 0;
+  border-color: var(--dashboard-border);
+  border-radius: 5px;
+}
+
+.applicant-dashboard-page .info-field {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-right: 1px solid #dfe6e2;
+}
+
+.applicant-dashboard-page .info-field:last-child { border-right: 0; }
+.applicant-dashboard-page .info-field > svg { width: 15px; height: 15px; color: #13945a; }
+.applicant-dashboard-page .info-field > span { min-width: 0; display: grid; gap: 2px; }
+.applicant-dashboard-page .info-field strong { font-size: 8px; color: #31463e; }
+
+.applicant-dashboard-page .info-grid .info-field input {
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #596b65;
+  font-size: 8.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.applicant-dashboard-page .renewal-notice {
+  margin-top: 14px;
+  border-color: #bee6cf;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(14, 96, 54, .08);
+}
+
+.applicant-dashboard-page .quick-actions { margin-top: 14px; }
+.applicant-dashboard-page .section-heading-icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--dashboard-green);
+}
+.applicant-dashboard-page .section-heading-icon svg { width: 17px; height: 17px; }
+
+.applicant-dashboard-page .action-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 9px;
+}
+
+.applicant-dashboard-page .action-button {
+  min-width: 0;
+  min-height: 55px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 15px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid #e0e8e4;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--dashboard-ink);
+  box-shadow: 0 4px 10px rgba(28, 61, 48, .08);
+  text-align: left;
+}
+
+.applicant-dashboard-page .action-button--renewal {
+  border-color: #2ab975;
+  background: linear-gradient(135deg, #fff, #f1fbf5);
+}
+
+.applicant-dashboard-page .action-button:hover {
+  border-color: #5ac993;
+  box-shadow: 0 8px 18px rgba(16, 122, 71, .13);
+}
+
+.applicant-dashboard-page .action-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--dashboard-soft);
+  color: var(--dashboard-green);
+}
+
+.applicant-dashboard-page .action-button > .action-icon svg { width: 20px; height: 20px; color: currentColor; }
+.applicant-dashboard-page .action-copy { min-width: 0; display: grid; gap: 4px; }
+.applicant-dashboard-page .action-copy strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.applicant-dashboard-page .action-copy small { overflow: hidden; color: #71827b; font-size: 7.5px; text-overflow: ellipsis; white-space: nowrap; }
+.applicant-dashboard-page .action-button > .action-arrow { width: 14px; height: 14px; color: #14935a; }
+
+.applicant-dashboard-page .applicant-progress-panel { margin-top: 14px; }
+
+.applicant-dashboard-page .permits-section {
+  margin-top: 12px;
+  padding: 12px 16px 13px;
+}
+
+.applicant-dashboard-page .permits-section-heading { margin-bottom: 8px; }
+.applicant-dashboard-page .permits-table-wrap {
+  border: 1px solid #dce5e0;
+  border-left: 1px solid #dce5e0;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.applicant-dashboard-page .permits-table-wrap table {
+  min-width: 800px;
+  color: #294139;
+  font-size: 8.5px;
+}
+
+.applicant-dashboard-page .permits-table-wrap th,
+.applicant-dashboard-page .permits-table-wrap td {
+  height: 31px;
+  padding: 4px 10px;
+  border-bottom-color: #dfe5e2;
+}
+
+.applicant-dashboard-page .permits-table-wrap th {
+  background: #e9f5ef;
+  color: #28483d;
+  font-size: 7.5px;
+  font-weight: 800;
+}
+
+.applicant-dashboard-page .permit-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 17px;
+  padding: 1px 6px;
+  border: 1px solid #b9d7fb;
+  border-radius: 4px;
+  background: #eaf3ff;
+  color: #1769c2;
+  font-size: 7.5px;
+  font-weight: 700;
+}
+
+.applicant-dashboard-page .permit-status--approved,
+.applicant-dashboard-page .permit-status--released,
+.applicant-dashboard-page .permit-status--for-pickup,
+.applicant-dashboard-page .permit-status--permit-ready-for-release {
+  border-color: #a6e0bd;
+  background: #eaf8ef;
+  color: #08773d;
+}
+
+.applicant-dashboard-page .permit-status--rejected,
+.applicant-dashboard-page .permit-status--cancelled {
+  border-color: #f2b8b5;
+  background: #fff0ef;
+  color: #b42318;
+}
+
+.applicant-dashboard-page .permit-progress-cell { min-width: 130px; display: grid; grid-template-columns: 1fr; gap: 4px; }
+.applicant-dashboard-page .permit-progress-label { display: flex; align-items: center; gap: 5px; }
+.applicant-dashboard-page .permit-progress-label::before { content: ""; width: 6px; height: 6px; border: 1.5px solid #15925b; border-radius: 50%; }
+.applicant-dashboard-page .permit-progress-track { width: 122px; height: 3px; overflow: hidden; border-radius: 999px; background: #dfe5e2; }
+.applicant-dashboard-page .permit-progress-track span { display: block; width: var(--permit-progress, 20%); height: 100%; border-radius: inherit; background: #31a4ff; }
+.applicant-dashboard-page .permit-row-actions { display: flex; align-items: center; gap: 5px; }
+.applicant-dashboard-page .permit-claim-note { color: #087544; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.applicant-dashboard-page .permit-reference,
+.applicant-dashboard-page .submitted-reference { font-weight: 700; }
+
+.applicant-dashboard-page .table-link-button {
+  min-height: 22px;
+  padding: 0 9px;
+  border: 1px solid #2fb977;
+  border-radius: 4px;
+  background: #fff;
+  color: #087544;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.applicant-dashboard-page .table-link-button::after { content: " ›"; font-size: 12px; line-height: 0; }
+
+.applicant-dashboard-page .site-footer {
+  position: relative;
+  min-height: 54px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
+  padding: 9px 28px;
+  background: linear-gradient(105deg, #006a47, #004f38);
+  color: #fff;
+  text-align: left;
+  font-size: 8px;
+}
+
+.applicant-dashboard-page .site-footer::after {
+  content: "";
+  position: absolute;
+  right: 45px;
+  bottom: -48px;
+  width: 155px;
+  height: 155px;
+  background: url("/assets/Victoria.png") center / contain no-repeat;
+  opacity: .08;
+  filter: grayscale(1) brightness(3);
+}
+
+.applicant-dashboard-page .footer-shield {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #07955b;
+  color: #b8f4cf;
+}
+.applicant-dashboard-page .footer-shield svg { width: 15px; height: 15px; }
+.applicant-dashboard-page .site-footer div { position: relative; z-index: 1; display: grid; gap: 4px; }
+.applicant-dashboard-page .site-footer a { color: #fff; text-decoration: none; }
+
+@media (max-width: 980px) {
+  .applicant-dashboard-page .topbar { align-items: center; flex-direction: row; padding: 0 18px; }
+  .applicant-dashboard-page .topnav { width: auto; flex-wrap: nowrap; gap: 15px; }
+  .applicant-dashboard-page .dashboard { padding: 16px 18px 24px; }
+  .applicant-dashboard-page .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .applicant-dashboard-page .info-field:nth-child(2) { border-right: 0; }
+  .applicant-dashboard-page .info-field:nth-child(-n + 2) { border-bottom: 1px solid #dfe6e2; }
+  .applicant-dashboard-page .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .applicant-dashboard-page .topbar { min-height: auto; align-items: flex-start; flex-direction: column; gap: 5px; padding: 10px 14px 7px; }
+  .applicant-dashboard-page .brand-mark img { width: 36px; height: 36px; }
+  .applicant-dashboard-page .brand-copy strong { font-size: 12px; }
+  .applicant-dashboard-page .topnav { width: 100%; justify-content: space-between; gap: 8px; }
+  .applicant-dashboard-page .topnav > a, .applicant-dashboard-page .profile-button, .applicant-dashboard-page .icon-button { min-height: 38px; }
+  .applicant-dashboard-page .topnav > a:nth-of-type(2) { display: none; }
+  .applicant-dashboard-page .notification-menu::after { display: none; }
+  .applicant-dashboard-page .profile-dropdown, .applicant-dashboard-page .notification-dropdown { top: 100%; }
+  .applicant-dashboard-page .dashboard { padding: 12px 10px 18px; }
+  .applicant-dashboard-page .dashboard-card-heading { align-items: flex-start; }
+  .applicant-dashboard-page .dashboard-heading-icon { width: 34px; height: 34px; }
+  .applicant-dashboard-page .info-grid { grid-template-columns: 1fr; }
+  .applicant-dashboard-page .info-field { border-right: 0; border-bottom: 1px solid #dfe6e2; }
+  .applicant-dashboard-page .info-field:last-child { border-bottom: 0; }
+  .applicant-dashboard-page .action-grid { grid-template-columns: 1fr; }
+  .applicant-dashboard-page .action-button { min-height: 62px; }
+  .applicant-dashboard-page .permits-section { padding: 12px 10px; }
+  .applicant-dashboard-page .site-footer { padding: 10px 14px; }
+}

@@ -52,6 +52,57 @@ RENEWAL_IMPORTANT_FIELDS = {
     "capitalization": "Capitalization",
     "capital_investment": "Capitalization",
 }
+RENEWAL_EDITABLE_APPLICATION_STATUSES = {"Draft", "For Revision"}
+
+
+def renewal_display_status(value):
+    normalized = str(value or "Draft").strip().lower().replace("_", " ").replace("-", " ")
+    aliases = {
+        "draft": "Draft",
+        "for renewal": "For Renewal",
+        "submitted": "Submitted",
+        "under review": "Under Review",
+        "under office evaluation": "Under Review",
+        "under department evaluation": "Under Review",
+        "for revision": "For Revision",
+        "assessment finalized": "For Payment",
+        "for payment": "For Payment",
+        "payment verified": "Approved",
+        "paid": "Approved",
+        "finalized": "Approved",
+        "approved": "Approved",
+        "permit ready for release": "Ready for Release",
+        "ready for pickup": "Ready for Release",
+        "ready for release": "Ready for Release",
+        "permit released": "Completed",
+        "released": "Completed",
+        "completed": "Completed",
+    }
+    return aliases.get(normalized, str(value or "Draft").strip().title())
+
+
+def renewal_status_message(status):
+    return {
+        "Draft": "Your renewal application has not yet been completed.",
+        "For Renewal": "Your permit is eligible for renewal for the upcoming calendar year.",
+        "Submitted": "Your renewal application has been submitted and is waiting for review.",
+        "Under Review": "Your renewal application is currently being evaluated.",
+        "For Revision": "Your renewal application needs changes before it can proceed.",
+        "For Payment": "Your renewal assessment is ready for payment.",
+        "Approved": "Your renewal application has received final approval.",
+        "Ready for Release": "Your renewed permit is ready for release.",
+        "Completed": "Your business permit renewal has been completed.",
+    }.get(status, "Check the latest status of your business permit renewal.")
+
+
+def renewal_action_label(status):
+    return {
+        "Draft": "Continue Renewal",
+        "For Revision": "Continue Renewal",
+        "For Payment": "View Payment Details",
+        "Ready for Release": "View Release Details",
+        "Completed": "View Renewal Record",
+    }.get(status, "View Renewal")
 
 
 def manila_now(clock=None):
@@ -722,6 +773,294 @@ class RenewalServiceMixin:
             query["applicant_id"] = f"eq.{applicant_id}"
         rows = self.service_rest_request(config, "applications", query=urlencode(query)) or []
         return rows[0] if rows else None
+
+    def format_renewal_dashboard_summary(self, application, previous_permit):
+        application = application or {}
+        previous_permit = previous_permit or {}
+        business_info = application.get("business_info") or {}
+        baseline_permit = ((application.get("renewal_baseline") or {}).get("previousPermit") or {})
+        raw_status = application.get("status") or "For Renewal"
+        status = renewal_display_status(raw_status)
+        permit_year = previous_permit.get("permit_year") or baseline_permit.get("permitYear")
+        if not permit_year:
+            issued_at = previous_permit.get("issued_date") or previous_permit.get("issue_date") or baseline_permit.get("issuedDate") or ""
+            permit_year = issued_at[:4] if issued_at else None
+        renewal_year = application.get("permit_year") or previous_permit.get("renewal_year")
+        return {
+            "hasRenewal": bool(application.get("id")),
+            "eligible": True,
+            "renewalId": application.get("id"),
+            "businessId": application.get("business_classification_id"),
+            "sourcePermitId": application.get("source_permit_id") or application.get("previous_permit_id") or previous_permit.get("id"),
+            "businessName": business_info.get("business_name") or business_info.get("businessName") or previous_permit.get("business_name") or "Business Permit",
+            "previousPermitNumber": previous_permit.get("permit_number") or baseline_permit.get("permitNumber") or "",
+            "permitYear": permit_year,
+            "renewalYear": renewal_year,
+            "status": status,
+            "rawStatus": raw_status,
+            "lastUpdatedAt": application.get("updated_at") or previous_permit.get("updated_at") or application.get("created_at") or "",
+            "message": renewal_status_message(status),
+            "actionLabel": "Start Renewal" if not application.get("id") else renewal_action_label(status),
+            "canEdit": status in RENEWAL_EDITABLE_APPLICATION_STATUSES,
+        }
+
+    def get_applicant_renewal_dashboard_summary(self):
+        auth = self.ensure_applicant_request("renewal dashboard summary")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        if not self.require_applicant_role_for_self_service(supabase_url, service_key, user):
+            return
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key}
+        try:
+            rows = self.service_rest_request(
+                config,
+                "applications",
+                query=urlencode({
+                    "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,business_classification_id,permit_snapshot,permit_year,source_permit_id,previous_permit_id,previous_application_id,renewal_application_number,renewal_due_date,filed_at,submitted_at,finalized_at,created_at,updated_at,renewal_baseline,application_type",
+                    "applicant_id": f"eq.{user.get('id')}",
+                    "application_type": "eq.renewal",
+                    "order": "permit_year.desc.nullslast,updated_at.desc.nullslast,created_at.desc",
+                    "limit": 1,
+                }),
+            ) or []
+            application = rows[0] if rows else None
+            permit = None
+            if application:
+                source_permit_id = application.get("source_permit_id") or application.get("previous_permit_id")
+                permits = self.service_rest_request(
+                    config,
+                    "business_permits",
+                    query=urlencode({"select": "*", "id": f"eq.{source_permit_id}", "limit": 1}),
+                ) or []
+                permit = permits[0] if permits else None
+            else:
+                permit = self.latest_approved_permit_for_applicant(config, user.get("id"))
+                if permit:
+                    expiration = permit.get("expiration_date") or permit.get("valid_until") or ""
+                    if not self.is_renewal_eligible(expiration, permit.get("status") or "", permit.get("renewal_status")):
+                        permit = None
+
+            if not application and not permit:
+                self.send_json({"hasRenewal": False, "eligible": False})
+                return
+            self.send_json(self.format_renewal_dashboard_summary(application, permit))
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load renewal information.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError, ValueError) as error:
+            self.send_json({"error": str(error) or "Unable to load renewal information."}, status=500)
+
+    def renewal_requirement_status(self, document, review):
+        document = document or {}
+        review = review or {}
+        upload_status = str(document.get("upload_status") or "Pending")
+        if not document.get("file_url") or upload_status in {"Pending", "Removed"}:
+            upload_label = "Not Uploaded"
+        elif upload_status == "Rejected":
+            upload_label = "Rejected"
+        else:
+            upload_label = "Uploaded"
+        review_status = str(review.get("status") or "")
+        verification_label = {
+            "Verified": "Approved",
+            "Rejected": "Rejected",
+            "For Revision": "Requires Replacement",
+            "Under Review": "Under Review",
+            "Resubmitted": "Under Review",
+            "Pending": "Pending",
+        }.get(review_status, "Not Reviewed" if upload_label == "Uploaded" else "Not Available")
+        return upload_label, verification_label
+
+    def build_applicant_renewal_details(self, config, application):
+        application_id = application.get("id")
+        source_permit_id = application.get("source_permit_id") or application.get("previous_permit_id")
+        permits = self.service_rest_request(
+            config,
+            "business_permits",
+            query=urlencode({"select": "*", "id": f"eq.{source_permit_id}", "limit": 1}),
+        ) or []
+        previous_permit = permits[0] if permits else {}
+        documents = self.service_rest_request(
+            config,
+            "application_documents",
+            query=urlencode({"select": "*", "application_id": f"eq.{application_id}", "order": "created_at.asc"}),
+        ) or []
+        reviews = self.service_rest_request(
+            config,
+            "application_document_reviews",
+            query=urlencode({
+                "select": "id,document_id,status,remarks,reviewed_at,created_at",
+                "application_id": f"eq.{application_id}",
+                "is_deleted": "eq.false",
+                "order": "created_at.desc",
+            }),
+        ) or []
+        latest_review_by_document = {}
+        for review in reviews:
+            latest_review_by_document.setdefault(review.get("document_id"), review)
+        document_by_requirement = {row.get("permit_document_id"): row for row in documents}
+
+        requirement_query = {
+            "select": "*,permit_documents(*)",
+            "permit_id": f"eq.{application.get('permit_id')}",
+            "is_active": "eq.true",
+            "deleted_at": "is.null",
+            "order": "display_order.asc,updated_at.desc",
+        }
+        configured = self.service_rest_request(
+            config, "renewal_requirements", query=urlencode(requirement_query),
+        ) or []
+        classification_id = application.get("business_classification_id")
+        configured = [
+            item for item in configured
+            if not item.get("business_classification_id") or item.get("business_classification_id") == classification_id
+        ]
+        if not configured:
+            configured = [
+                {
+                    "permit_document_id": row.get("permit_document_id"),
+                    "permit_documents": row.get("document_snapshot") or {},
+                    "requirement_name": (row.get("document_snapshot") or {}).get("requirementName"),
+                    "description": (row.get("document_snapshot") or {}).get("description"),
+                    "is_required": (row.get("document_snapshot") or {}).get("uploadRequired", True),
+                }
+                for row in documents
+            ]
+
+        requirements = []
+        for requirement in configured:
+            permit_document = requirement.get("permit_documents") or {}
+            permit_document_id = requirement.get("permit_document_id") or permit_document.get("id")
+            document = document_by_requirement.get(permit_document_id) or {}
+            review = latest_review_by_document.get(document.get("id")) or {}
+            upload_status, verification_status = self.renewal_requirement_status(document, review)
+            requirements.append({
+                "id": requirement.get("id") or document.get("id"),
+                "permitDocumentId": permit_document_id,
+                "name": requirement.get("requirement_name") or permit_document.get("document_name") or permit_document.get("documentName") or "Renewal requirement",
+                "description": requirement.get("description") or permit_document.get("short_description") or permit_document.get("shortDescription") or "",
+                "required": requirement.get("is_required", permit_document.get("upload_required", True)),
+                "uploadStatus": upload_status,
+                "verificationStatus": verification_status,
+                "adminRemarks": review.get("remarks") or document.get("reviewer_remarks") or document.get("remarks") or "",
+                "fileName": document.get("file_name") or "",
+            })
+
+        revision_rows = self.service_rest_request(
+            config,
+            "application_status_history",
+            query=urlencode({
+                "select": "status,remarks,created_at",
+                "application_id": f"eq.{application_id}",
+                "status": "eq.For Revision",
+                "order": "created_at.desc",
+                "limit": 1,
+            }),
+        ) or []
+        progress = self.build_applicant_progress(config, application)
+        departments = progress.get("departments") or []
+        in_progress_departments = [item.get("departmentName") for item in departments if item.get("state") in {"In Progress", "Pending", "For Revision"}]
+        status = renewal_display_status(application.get("status"))
+        responsible_office = ", ".join(filter(None, in_progress_departments))
+        if not responsible_office:
+            responsible_office = {
+                "Draft": "Applicant",
+                "Submitted": "BPLO",
+                "Under Review": "BPLO / Assigned Department",
+                "For Revision": "Applicant",
+                "For Payment": "Municipal Treasury",
+                "Approved": "BPLO",
+                "Ready for Release": "BPLO Releasing",
+                "Completed": "Completed",
+            }.get(status, "BPLO")
+
+        business_info = application.get("business_info") or {}
+        previous_issue = previous_permit.get("issued_date") or previous_permit.get("issue_date") or ""
+        previous_expiry = previous_permit.get("expiration_date") or previous_permit.get("valid_until") or ""
+        return {
+            **self.format_renewal_dashboard_summary(application, previous_permit),
+            "previousPermit": {
+                "id": previous_permit.get("id"),
+                "permitNumber": previous_permit.get("permit_number") or "",
+                "businessName": previous_permit.get("business_name") or business_info.get("business_name") or "",
+                "ownerName": previous_permit.get("owner_name") or self.app_owner_name(business_info),
+                "businessAddress": previous_permit.get("business_address") or business_info.get("business_address") or "",
+                "permitType": previous_permit.get("permit_type") or ((application.get("permit_snapshot") or {}).get("permitName")) or "Business Permit",
+                "dateIssued": previous_issue,
+                "expirationDate": previous_expiry,
+                "status": previous_permit.get("status") or "",
+                "canView": False,
+                "canDownload": False,
+            },
+            "requirements": requirements,
+            "progress": {
+                **progress,
+                "startedAt": application.get("created_at") or "",
+                "lastUpdatedAt": application.get("updated_at") or "",
+                "submittedAt": application.get("submitted_at") or "",
+                "responsibleOffice": responsible_office,
+                "revisionRemarks": (revision_rows[0] if revision_rows else {}).get("remarks") or "",
+                "paymentStatus": application.get("payment_status") or "Unpaid",
+                "releaseStatus": "Completed" if status == "Completed" else ("Ready for Release" if status == "Ready for Release" else "Not Ready"),
+            },
+        }
+
+    def get_applicant_renewal_details(self, application_id):
+        auth = self.ensure_applicant_request("renewal detail viewing")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        if not self.require_applicant_role_for_self_service(supabase_url, service_key, user):
+            return
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key, "actor": user}
+        try:
+            application = self.load_owned_renewal_application(config, application_id, user.get("id"))
+            if not application:
+                self.send_json({"error": "Renewal application not found."}, status=404)
+                return
+            details = self.build_applicant_renewal_details(config, application)
+            self.create_service_audit_log(
+                supabase_url, service_key, "renewal_details_opened", actor=user,
+                entity_type="application", entity_id=application_id,
+                details={"previousStatus": application.get("status"), "newStatus": application.get("status")},
+            )
+            self.send_json(details)
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to load your renewal details.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError, ValueError) as error:
+            self.send_json({"error": str(error) or "Unable to load your renewal details. Please refresh the page or try again."}, status=500)
+
+    def continue_applicant_renewal(self, application_id):
+        auth = self.ensure_applicant_request("renewal continuation")
+        if not auth:
+            return
+        supabase_url, service_key, user = auth
+        if not self.require_applicant_role_for_self_service(supabase_url, service_key, user):
+            return
+        config = {"supabase_url": supabase_url, "supabase_service_key": service_key}
+        try:
+            application = self.load_owned_renewal_application(config, application_id, user.get("id"))
+            if not application:
+                self.send_json({"error": "Renewal application not found."}, status=404)
+                return
+            status = renewal_display_status(application.get("status"))
+            can_edit = status in RENEWAL_EDITABLE_APPLICATION_STATUSES
+            self.create_service_audit_log(
+                supabase_url, service_key,
+                "renewal_draft_continued" if can_edit else "renewal_record_viewed",
+                actor=user, entity_type="application", entity_id=application_id,
+                details={"previousStatus": application.get("status"), "newStatus": application.get("status")},
+            )
+            self.send_json({
+                "renewalId": application_id,
+                "canEdit": can_edit,
+                "actionLabel": renewal_action_label(status),
+                "nextUrl": f"/applicant/business-information?applicationId={application_id}",
+            })
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "Unable to continue your renewal.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "Unable to continue your renewal."}, status=500)
 
     def get_applicant_renewal_previous_records(self, application_id):
         auth = self.ensure_applicant_request("renewal previous records")

@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Department Applications</title>
     <script defer src="/config.js?v=3"></script>
-    <link rel="stylesheet" href="/styles/department_office.css?v=2" />
+    <link rel="stylesheet" href="/styles/department_office.css?v=10" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/department_shell.js?v=1"></script>
     <script defer src="/features/department_office.js?v=4"></script>
   </head>
-  <body data-page="applications">
+  <body class="department-console-body" data-page="applications">
     <main class="department-shell">
       <aside class="department-sidebar" aria-label="Department navigation">
         <a class="department-brand" href="/department/dashboard">
@@ -31,31 +32,39 @@
 
       <section class="department-content">
         <header class="department-header">
-          <div>
+          <button class="department-menu-button" type="button" data-department-menu aria-label="Open navigation" aria-expanded="false">
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="department-title-block">
             <h1>Applications</h1>
-            <p data-department-name>Assigned department applications</p>
+            <p data-department-name>Municipal Engineering Office</p>
           </div>
-          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+          <section class="welcome-card">
+            <span class="welcome-card-icon"><i data-lucide="user-round"></i></span>
+            <span class="welcome-card-copy"><span>Welcome back,</span><strong data-user-name>Staff name</strong></span>
+          </section>
         </header>
 
         <section class="department-page applications-workspace">
           <p class="status-line" data-status>Loading applications...</p>
 
-          <section class="app-review-shell">
+          <section class="app-review-shell department-application-detail-layout">
             <div class="app-filter-row">
               <label>
-                Application
+                Category
                 <select data-application-picker>
-                  <option value="">Select application</option>
+                  <option value="">Business Permit</option>
                 </select>
               </label>
               <label>
                 Reference #
-                <input type="search" data-search placeholder="Search reference or business name" />
+                <input type="search" data-search placeholder="Enter reference # or tracking code" />
               </label>
+              <a class="btn" href="/department/applications"><i data-lucide="clock-3"></i>View Application Timeline</a>
             </div>
 
             <section class="app-card app-table-card">
+              <header class="app-card-heading"><div><h2>Application Details &amp; Reference</h2><p>Review application information and process department assessment.</p></div></header>
               <div class="staff-table-wrap">
                 <table class="staff-app-table">
                   <thead>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Permit Application - Print Preview</title>
+    <script defer src="/config.js?v=9"></script>
+    <link rel="stylesheet" href="/styles/application_print.css?v=1" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/application_print.js?v=1"></script>
+  </head>
+  <body>
+    <div class="print-preview-toolbar no-print" aria-label="Print preview actions">
+      <button class="toolbar-button toolbar-button--secondary" type="button" data-back-to-application>
+        <i data-lucide="arrow-left" aria-hidden="true"></i>
+        Back to Application
+      </button>
+      <div>
+        <span data-print-status>Preparing application form...</span>
+        <button class="toolbar-button toolbar-button--primary" type="button" data-print-application disabled>
+          <i data-lucide="printer" aria-hidden="true"></i>
+          Print
+        </button>
+      </div>
+    </div>
+
+    <main class="print-preview-shell">
+      <section class="print-loading" data-print-loading aria-live="polite">
+        <span class="print-loading__spinner" aria-hidden="true"></span>
+        <h1>Preparing application form...</h1>
+        <p>Retrieving the latest saved application information.</p>
+      </section>
+
+      <section class="print-error" data-print-error hidden role="alert">
+        <i data-lucide="circle-alert" aria-hidden="true"></i>
+        <h1>Application form unavailable</h1>
+        <p data-print-error-message>The application form could not be found.</p>
+        <button type="button" data-retry-print-preview>Try Again</button>
+      </section>
+
+      <article class="application-print-document" data-print-document hidden aria-label="Printable Business Permit Application">
+        <div class="draft-watermark" data-draft-watermark hidden aria-hidden="true">DRAFT</div>
+
+        <header class="application-print-header">
+          <img src="/assets/Victoria.png" alt="Municipal seal" />
+          <div>
+            <p>Republic of the Philippines</p>
+            <h1 data-lgu-name>Municipality</h1>
+            <p data-lgu-province>Province</p>
+            <strong data-lgu-office>Business Permits and Licensing Office</strong>
+          </div>
+          <div class="application-print-code">
+            <span data-permit-code>BPLO 01</span>
+            <small data-application-year>Application Year</small>
+          </div>
+        </header>
+
+        <section class="application-print-title">
+          <h2>Business Permit Application Form</h2>
+          <div>
+            <span>Application Reference No.</span>
+            <strong data-reference-number>Not yet assigned</strong>
+          </div>
+          <span class="application-status" data-application-status>Draft</span>
+        </section>
+
+        <div data-print-sections></div>
+
+        <section class="print-declaration print-section">
+          <h3>F. Declaration and Certification</h3>
+          <p>
+            I declare that the information provided in this application is true and correct to the best of my knowledge.
+            I understand that any false statement or material omission may be grounds for denial, cancellation, or legal action.
+          </p>
+          <div class="signature-grid">
+            <div><span data-applicant-printed-name>N/A</span><small>Applicant's Printed Name</small></div>
+            <div><span></span><small>Applicant's Signature</small></div>
+            <div><span></span><small>Date Signed</small></div>
+          </div>
+          <h4>Authorized Representative, if applicable</h4>
+          <div class="signature-grid signature-grid--representative">
+            <div><span></span><small>Printed Name</small></div>
+            <div><span></span><small>Signature</small></div>
+            <div><span></span><small>Relationship / Position</small></div>
+          </div>
+        </section>
+
+        <footer class="application-print-footer">
+          <span>Official Business Permit Application Form</span>
+          <span data-print-generated-at></span>
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

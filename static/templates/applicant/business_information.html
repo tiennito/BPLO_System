@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Business Information</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=21" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=22" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=22"></script>
+    <script defer src="/features/applicant.js?v=25"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -68,9 +68,15 @@
             <p class="autosave-status" data-autosave-status>Draft auto-save is ready.</p>
           </div>
 
-          <div class="permit-tag">
-            <strong>Business Permit</strong>
-            <span>BPLO 01</span>
+          <div class="permit-header-actions">
+            <div class="permit-tag">
+              <strong>Business Permit</strong>
+              <span>BPLO 01</span>
+            </div>
+            <button class="print-application-button" type="button" data-print-application-form disabled>
+              <i data-lucide="printer" aria-hidden="true"></i>
+              <span>Print Application Form</span>
+            </button>
           </div>
         </div>
 
@@ -92,43 +98,6 @@
         </nav>
 
         <section class="business-form-shell" aria-label="Business permit form" data-business-form-shell>
-          <section class="renewal-form-context" data-renewal-context hidden>
-            <article class="renewal-form-card">
-              <header>
-                <div>
-                  <span>Business Permit Renewal</span>
-                  <h2 data-renewal-title>Renewal Application</h2>
-                </div>
-                <strong data-renewal-status-badge>Draft</strong>
-              </header>
-              <dl class="renewal-context-grid" data-renewal-context-grid></dl>
-            </article>
-
-            <article class="renewal-form-card">
-              <header>
-                <div>
-                  <span>Previous Year - For Reference Only</span>
-                  <h2>Previous Permit Records</h2>
-                </div>
-              </header>
-              <div class="renewal-reference-list" data-renewal-previous-records>
-                <p class="empty-state">Previous permit records will load with your renewal draft.</p>
-              </div>
-            </article>
-
-            <article class="renewal-form-card">
-              <header>
-                <div>
-                  <span>Current Renewal Requirements</span>
-                  <h2>Upload Checklist</h2>
-                </div>
-              </header>
-              <div class="renewal-reference-list" data-renewal-requirements>
-                <p class="empty-state">Current-year requirements will load with your renewal draft.</p>
-              </div>
-            </article>
-          </section>
-
           <section class="business-step-panel" data-business-step-panel="form">
             <section class="business-section business-section--tight">
               <h2>I. BASIC INFORMATION</h2>

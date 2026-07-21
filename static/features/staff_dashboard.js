@@ -8,10 +8,6 @@ const dashboardRefreshButton = document.querySelector("[data-dashboard-refresh]"
 const renewalNote = document.querySelector("[data-renewal-note]");
 const renewalList = document.querySelector("[data-renewal-list]");
 const renewalEmpty = document.querySelector("[data-renewal-empty]");
-const chart = document.querySelector("[data-dashboard-chart]");
-const chartScale = document.querySelector("[data-dashboard-chart-scale]");
-const chartBars = document.querySelector("[data-dashboard-chart-bars]");
-const chartEmpty = document.querySelector("[data-dashboard-chart-empty]");
 
 let staffDashboardClient = null;
 let dashboardApplications = [];
@@ -255,85 +251,10 @@ function renderRenewals() {
     .join("");
 }
 
-function trendBuckets() {
-  const now = new Date();
-  if (dashboardRange === "today") {
-    return Array.from({ length: 7 }, (_, index) => {
-      const hour = index * 4;
-      return { label: `${hour}:00`, startHour: hour, count: 0 };
-    });
-  }
-  if (dashboardRange === "monthly") {
-    return Array.from({ length: 5 }, (_, index) => ({ label: `W${index + 1}`, week: index, count: 0 }));
-  }
-  if (dashboardRange === "yearly") {
-    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((label, month) => ({
-      label,
-      month,
-      count: 0,
-    }));
-  }
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() - (6 - index));
-    return { label: date.toLocaleDateString(undefined, { weekday: "short" }), dateKey: date.toDateString(), count: 0 };
-  });
-}
-
-function renderChart() {
-  if (!chart || !chartBars || !chartScale || !chartEmpty) {
-    return;
-  }
-
-  const buckets = trendBuckets();
-  dashboardApplications.forEach((application) => {
-    if (!applicationMatchesRange(application, dashboardRange)) {
-      return;
-    }
-    const date = new Date(getApplicationDate(application));
-    if (Number.isNaN(date.getTime())) {
-      return;
-    }
-    if (dashboardRange === "today") {
-      const bucket = buckets[Math.min(6, Math.floor(date.getHours() / 4))];
-      bucket.count += 1;
-    } else if (dashboardRange === "monthly") {
-      const bucket = buckets[Math.min(4, Math.floor((date.getDate() - 1) / 7))];
-      bucket.count += 1;
-    } else if (dashboardRange === "yearly") {
-      buckets[date.getMonth()].count += 1;
-    } else {
-      const bucket = buckets.find((item) => item.dateKey === date.toDateString());
-      if (bucket) {
-        bucket.count += 1;
-      }
-    }
-  });
-
-  const max = Math.max(...buckets.map((bucket) => bucket.count), 0);
-  chart.hidden = max === 0;
-  chartEmpty.hidden = max > 0;
-  if (!max) {
-    return;
-  }
-
-  const top = Math.max(max, 1);
-  chartScale.innerHTML = [top, Math.ceil(top * 0.66), Math.ceil(top * 0.33), 0]
-    .map((value) => `<span>${value}</span>`)
-    .join("");
-  chartBars.innerHTML = buckets
-    .map((bucket) => {
-      const height = Math.max(14, Math.round((bucket.count / top) * 130));
-      return `<span style="--bar: ${height}px"><strong>${bucket.count}</strong><em>${escapeHtml(bucket.label)}</em></span>`;
-    })
-    .join("");
-}
-
 function renderDashboard() {
   renderRecentApplications();
   renderRenewals();
   renderMetrics();
-  renderChart();
   window.lucide?.createIcons();
 }
 
@@ -371,7 +292,6 @@ document.querySelectorAll("[data-dashboard-range]").forEach((button) => {
     document.querySelectorAll("[data-dashboard-range]").forEach((item) => item.classList.remove("is-active"));
     button.classList.add("is-active");
     renderMetrics();
-    renderChart();
   });
 });
 

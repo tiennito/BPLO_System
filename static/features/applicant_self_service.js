@@ -14,8 +14,10 @@ let documentPage = 1;
 let pendingProfilePayload = null;
 let profilePhotoUrl = "";
 let originalProfileEmail = "";
+let currentProfileUpdatedAt = "";
 let activePreviewUrl = "";
-let profileSuccessRedirectTimer = null;
+let profileSaveInProgress = false;
+const PROFILE_UPDATE_SIGNAL_KEY = "bplo_applicant_profile_updated";
 
 function initClient() {
   if (!selfClient && window.supabase?.createClient) {
@@ -49,6 +51,17 @@ function money(value) {
 
 function normalize(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function statusClass(value) {
+  return normalize(value).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "pending";
+}
+
+function profileInitials(profile = {}) {
+  return [profile.firstName, profile.lastName]
+    .filter(Boolean)
+    .map((part) => String(part).trim().charAt(0).toUpperCase())
+    .join("") || "A";
 }
 
 function setStatus(message, isError = false) {
@@ -105,8 +118,14 @@ async function requireApplicant() {
     window.location.href = payload.redirectPath || "/login";
     return false;
   }
+  const applicantPayload = await api("/applicant/api/profile");
+  const applicantProfile = applicantPayload.profile || {};
   const nameNode = document.querySelector("[data-profile-name]");
-  if (nameNode) nameNode.textContent = selfProfile.name || "Applicant";
+  if (nameNode) {
+    nameNode.textContent = [applicantProfile.firstName, applicantProfile.lastName].filter(Boolean).join(" ") || "Applicant";
+  }
+  const initialsNode = document.querySelector("[data-applicant-initials]");
+  if (initialsNode) initialsNode.textContent = profileInitials(applicantProfile);
   return true;
 }
 
@@ -214,10 +233,11 @@ function renderPermits() {
         <td>${esc(permit.permitType || "-")}</td>
         <td>${esc(permit.businessName || "-")}</td>
         <td>${esc(permit.applicationType || "New")}</td>
-        <td>${esc(permit.permitStatus || permit.applicationStatus || "-")}</td>
-        <td>
-          <button class="table-link-button" type="button" data-view-permit="${esc(permit.id)}">Details</button>
-          <button class="table-link-button" type="button" data-progress="${esc(permit.applicationId)}">Progress</button>
+        <td><span class="record-status-badge record-status-badge--${esc(statusClass(permit.permitStatus || permit.applicationStatus))}">${esc(permit.permitStatus || permit.applicationStatus || "-")}</span></td>
+        <td><div class="record-actions">
+          <button class="table-link-button" type="button" data-view-permit="${esc(permit.id)}"><i data-lucide="eye" aria-hidden="true"></i>Details</button>
+          <button class="table-link-button" type="button" data-progress="${esc(permit.applicationId)}"><i data-lucide="chart-no-axes-column-increasing" aria-hidden="true"></i>Progress</button>
+        </div>
         </td>
       </tr>
     `).join("");
@@ -262,6 +282,7 @@ function showPermitDetails(id) {
     <p class="release-note">Final permit download or printing is unavailable here. Please follow the release or pickup status shown by BPLO.</p>
     <div class="modal-actions">
       <a class="table-link-button" href="/applicant/business-information?applicationId=${encodeURIComponent(permit.applicationId || "")}">Open Application</a>
+      ${permit.applicationId ? `<button class="table-link-button" type="button" data-print-saved-application="${esc(permit.applicationId)}">Print Application Form</button>` : ""}
       ${(permit.renewalEligible || permit.renewalApplicationId) ? `<button class="table-link-button" type="button" data-renew-permit="${esc(permit.id)}">${esc(renewalActionLabel(permit))}</button>` : ""}
     </div>
   `;
@@ -357,17 +378,17 @@ function renderDocuments() {
   } else {
     body.innerHTML = visible.map((doc) => `
       <tr>
-        <td><strong>${esc(doc.documentType)}</strong><small>${esc(doc.originalFilename || "No file uploaded")}</small></td>
+        <td><div class="document-cell"><i data-lucide="file-text" aria-hidden="true"></i><span><strong>${esc(doc.documentType)}</strong><small>${esc(doc.originalFilename || "No file uploaded")}</small></span></div></td>
         <td>${esc(doc.documentCategory)}</td>
         <td>${esc(doc.applicationReferenceNumber || "-")}</td>
-        <td>${esc(doc.verificationStatus)}</td>
+        <td><span class="record-status-badge record-status-badge--${esc(statusClass(doc.verificationStatus))}">${esc(doc.verificationStatus)}</span></td>
         <td>${formatDate(doc.uploadDate)}</td>
-        <td>
-          <button class="table-link-button" type="button" data-view-document="${esc(doc.id)}" ${doc.fileUrl ? "" : "disabled"}>View</button>
-          <button class="table-link-button" type="button" data-download-document="${esc(doc.id)}" ${doc.downloadUrl ? "" : "disabled"}>Download</button>
+        <td><div class="record-actions">
+          <button class="table-link-button" type="button" data-view-document="${esc(doc.id)}" ${doc.fileUrl ? "" : "disabled"}><i data-lucide="eye" aria-hidden="true"></i>View</button>
+          <button class="table-link-button table-link-button--primary" type="button" data-download-document="${esc(doc.id)}" ${doc.downloadUrl ? "" : "disabled"}><i data-lucide="download" aria-hidden="true"></i>Download</button>
           <input type="file" hidden data-replace-input="${esc(doc.id)}" />
-          <button class="table-link-button" type="button" data-replace-document="${esc(doc.id)}" ${doc.canReplace ? "" : "disabled"}>Replace</button>
-        </td>
+          <button class="table-link-button" type="button" data-replace-document="${esc(doc.id)}" ${doc.canReplace ? "" : "disabled"}><i data-lucide="refresh-cw" aria-hidden="true"></i>Replace</button>
+        </div></td>
       </tr>
       ${doc.rejectionRemarks ? `<tr><td colspan="6" class="document-remarks">Correction needed: ${esc(doc.rejectionRemarks)}</td></tr>` : ""}
     `).join("");
@@ -377,6 +398,7 @@ function renderDocuments() {
     renderDocuments();
   });
   setStatus(rows.length ? `${rows.length} document record(s) loaded.` : "No documents are available.");
+  window.lucide?.createIcons();
 }
 
 async function fetchDocumentBlob(doc, mode = "view") {
@@ -526,23 +548,46 @@ function fillProfile(profile) {
   });
   profilePhotoUrl = profile.profilePhotoUrl || "";
   originalProfileEmail = profile.email || "";
+  currentProfileUpdatedAt = profile.updatedAt || "";
   const preview = document.querySelector("[data-profile-photo-preview]");
   if (preview) {
     preview.style.backgroundImage = profilePhotoUrl ? `url("${profilePhotoUrl}")` : "";
-    preview.textContent = profilePhotoUrl ? "" : "Photo";
+    preview.textContent = profilePhotoUrl ? "" : profileInitials(profile);
   }
   const nameNode = document.querySelector("[data-profile-name]");
   if (nameNode) nameNode.textContent = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || "Applicant";
 }
 
+function clearProfileFieldErrors() {
+  document.querySelectorAll("[data-profile-form] [aria-invalid='true']").forEach((field) => field.removeAttribute("aria-invalid"));
+  document.querySelectorAll("[data-profile-form] .profile-field-error").forEach((node) => node.remove());
+}
+
+function showProfileFieldError(name, message) {
+  const field = document.querySelector(`[data-profile-form] [name="${CSS.escape(name)}"]`);
+  if (!field) return;
+  field.setAttribute("aria-invalid", "true");
+  const errorNode = document.createElement("small");
+  errorNode.className = "profile-field-error";
+  errorNode.textContent = message;
+  field.insertAdjacentElement("afterend", errorNode);
+}
+
 function validateProfile(payload) {
-  if (!payload.firstName || !payload.lastName || !payload.email || !payload.contactNumber) {
-    throw new Error("First name, last name, email, and contact number are required.");
-  }
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email)) throw new Error("Enter a valid email address.");
-  if (!/^(\+639|09)\d{9}$/.test(payload.contactNumber.replace(/[\s()-]+/g, ""))) {
-    throw new Error("Enter a valid Philippine mobile number.");
-  }
+  clearProfileFieldErrors();
+  Object.keys(payload).forEach((key) => {
+    if (typeof payload[key] === "string") payload[key] = payload[key].trim();
+  });
+  const errors = {};
+  if (!payload.firstName) errors.firstName = "First name is required.";
+  if (!payload.lastName) errors.lastName = "Last name is required.";
+  if (!payload.email) errors.email = "Email address is required.";
+  else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email)) errors.email = "Enter a valid email address.";
+  if (!payload.contactNumber) errors.contactNumber = "Contact number is required.";
+  else if (!/^(\+639|09)\d{9}$/.test(payload.contactNumber.replace(/[\s()-]+/g, ""))) errors.contactNumber = "Enter a valid Philippine mobile number.";
+  if (payload.postalCode && !/^\d{4}$/.test(payload.postalCode)) errors.postalCode = "Postal code must contain four digits.";
+  Object.entries(errors).forEach(([name, message]) => showProfileFieldError(name, message));
+  if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
 }
 
 function redirectToApplicantHome() {
@@ -554,41 +599,63 @@ function showProfileSuccessModal(message) {
   const messageNode = document.querySelector("[data-success-message]");
   if (!modal) return;
   if (messageNode) {
-    messageNode.textContent = message || "Your profile changes have been saved successfully.";
+    messageNode.textContent = message || "Your profile information has been updated successfully.";
   }
   modal.hidden = false;
   modal.querySelector("[data-close-modal]")?.focus();
-  if (profileSuccessRedirectTimer) {
-    window.clearTimeout(profileSuccessRedirectTimer);
-  }
-  profileSuccessRedirectTimer = window.setTimeout(redirectToApplicantHome, 1400);
   window.lucide?.createIcons();
 }
 
+function setProfileSaving(busy, confirmButton) {
+  profileSaveInProgress = busy;
+  setBusy(confirmButton, busy);
+  const saveButton = document.querySelector("[data-profile-form] button[type='submit']");
+  setBusy(saveButton, busy);
+  const saveLabel = saveButton?.querySelector("span");
+  if (saveLabel) saveLabel.textContent = busy ? "Saving..." : "Save Changes";
+  document.querySelectorAll("[data-confirm-modal] [data-close-modal]").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
 async function saveProfile(button) {
-  if (!pendingProfilePayload) return;
-  setBusy(button, true);
+  if (!pendingProfilePayload || profileSaveInProgress) return;
+  setProfileSaving(true, button);
+  let saved = false;
   try {
+    const emailChanged = pendingProfilePayload.email && pendingProfilePayload.email !== originalProfileEmail;
+    if (emailChanged) {
+      const { error } = await initClient().auth.updateUser({ email: pendingProfilePayload.email });
+      if (error) throw new Error(error.message || "The authentication email could not be updated.");
+    }
     const payload = await api("/applicant/api/profile", {
       method: "PATCH",
       body: JSON.stringify(pendingProfilePayload),
     });
-    if (payload.emailVerificationRequired && pendingProfilePayload.email && pendingProfilePayload.email !== originalProfileEmail) {
-      const { error } = await initClient().auth.updateUser({ email: pendingProfilePayload.email });
-      if (error) {
-        throw new Error(error.message || "Profile saved, but email verification could not be sent.");
-      }
+    let latestProfile = payload.profile || {};
+    let refreshWarning = "";
+    try {
+      const refreshed = await api("/applicant/api/profile");
+      latestProfile = refreshed.profile || latestProfile;
+    } catch {
+      refreshWarning = "Your information was saved, but the latest profile could not be refreshed. Please reload the page.";
     }
-    fillProfile(payload.profile || {});
+    fillProfile(latestProfile);
     document.querySelector("[data-confirm-modal]").hidden = true;
-    const message = payload.emailVerificationRequired
+    const message = refreshWarning || (payload.emailVerificationRequired
       ? "Profile saved. Please verify your updated email address."
-      : "Your profile changes have been saved successfully.";
-    setStatus(payload.emailVerificationRequired ? message : "Profile updated successfully.");
+      : "Your profile information has been updated successfully.");
+    setStatus(message, Boolean(refreshWarning));
+    window.localStorage.setItem(PROFILE_UPDATE_SIGNAL_KEY, String(Date.now()));
+    window.localStorage.removeItem(PROFILE_UPDATE_SIGNAL_KEY);
     showProfileSuccessModal(message);
-  } finally {
-    setBusy(button, false);
     pendingProfilePayload = null;
+    saved = true;
+  } finally {
+    setProfileSaving(false, button);
+    if (!saved) {
+      document.querySelector("[data-confirm-modal]")?.querySelector("[data-confirm-save]")?.focus();
+    }
   }
 }
 
@@ -618,11 +685,9 @@ async function uploadProfilePhoto(file) {
 document.addEventListener("click", async (event) => {
   const target = event.target instanceof HTMLElement ? event.target : null;
   if (target?.closest("[data-close-modal]")) {
+    if (profileSaveInProgress && target.closest("[data-confirm-modal]")) return;
     const successModal = target.closest("[data-success-modal]");
     if (successModal) {
-      if (profileSuccessRedirectTimer) {
-        window.clearTimeout(profileSuccessRedirectTimer);
-      }
       redirectToApplicantHome();
       return;
     }
@@ -633,11 +698,39 @@ document.addEventListener("click", async (event) => {
     }
     return;
   }
+  if (target?.closest("[data-document-guidelines]")) {
+    const modal = document.querySelector("[data-guidelines-modal]");
+    if (modal) modal.hidden = false;
+    return;
+  }
+  if (target?.closest("[data-clear-document-filters]")) {
+    ["[data-document-search]", "[data-document-application-filter]", "[data-document-category-filter]", "[data-document-status-filter]", "[data-document-date-filter]"].forEach((selector) => {
+      const control = document.querySelector(selector);
+      if (control) control.value = "";
+    });
+    documentPage = 1;
+    renderDocuments();
+    return;
+  }
+  if (target?.closest("[data-apply-document-filters]")) {
+    documentPage = 1;
+    renderDocuments();
+    return;
+  }
   const permitButton = target?.closest("[data-view-permit]");
   if (permitButton) showPermitDetails(permitButton.dataset.viewPermit || "");
   const renewalButton = target?.closest("[data-renew-permit]");
   if (renewalButton) {
     await startPermitRenewal(renewalButton.dataset.renewPermit || "", renewalButton);
+    return;
+  }
+  const printApplicationButton = target?.closest("[data-print-saved-application]");
+  if (printApplicationButton) {
+    const applicationId = printApplicationButton.dataset.printSavedApplication || "";
+    if (applicationId) {
+      const printSession = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      window.location.href = `/applicant/application-print?applicationId=${encodeURIComponent(applicationId)}&printSession=${encodeURIComponent(printSession)}`;
+    }
     return;
   }
   const progressButton = target?.closest("[data-progress]");
@@ -672,7 +765,7 @@ document.addEventListener("click", async (event) => {
     const preview = document.querySelector("[data-profile-photo-preview]");
     if (preview) {
       preview.style.backgroundImage = "";
-      preview.textContent = "Photo";
+      preview.textContent = document.querySelector("[data-applicant-initials]")?.textContent || "A";
     }
   }
   const confirm = target?.closest("[data-confirm-save]");
@@ -734,10 +827,12 @@ document.addEventListener("input", (event) => {
 
 document.querySelector("[data-profile-form]")?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (profileSaveInProgress) return;
   try {
-    pendingProfilePayload = { ...formValues(event.currentTarget), profilePhotoUrl };
+    pendingProfilePayload = { ...formValues(event.currentTarget), profilePhotoUrl, updatedAt: currentProfileUpdatedAt };
     validateProfile(pendingProfilePayload);
     document.querySelector("[data-confirm-modal]").hidden = false;
+    document.querySelector("[data-confirm-save]")?.focus();
   } catch (error) {
     setStatus(error.message || "Please check your profile details.", true);
   }

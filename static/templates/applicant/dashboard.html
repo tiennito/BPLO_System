@@ -5,34 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Applicant Dashboard</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/applicant.css?v=21" />
+    <link rel="stylesheet" href="/styles/applicant.css?v=22" />
+    <link rel="stylesheet" href="/styles/applicant_dashboard.css?v=4" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/applicant.js?v=22"></script>
+    <script defer src="/features/applicant.js?v=26"></script>
   </head>
-  <body>
-    <main class="app-shell">
+  <body class="applicant-dashboard-page">
+    <main class="app-shell dashboard-shell">
       <header class="topbar">
         <a class="brand-mark" href="/applicant" aria-label="BPLO applicant home">
           <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span class="brand-copy">
+            <strong>BPLO Permit System</strong>
+            <small>Victoria, Laguna</small>
+          </span>
         </a>
 
         <nav class="topnav" aria-label="Applicant navigation">
-          <a href="/applicant">Home</a>
-          <a href="#">My Application</a>
-          <div class="profile-menu">
-            <button class="profile-button" type="button" data-profile-toggle>
-              Profile
-              <i data-lucide="chevron-down" aria-hidden="true"></i>
-            </button>
-            <div class="profile-dropdown" data-profile-dropdown>
-              <strong data-profile-name>Applicant</strong>
-              <button type="button" data-logout>Log out</button>
-            </div>
-          </div>
+          <a class="is-active" href="/applicant"><i data-lucide="house" aria-hidden="true"></i>Home</a>
+          <a href="/applicant/permits">My Application</a>
           <div class="notification-menu" data-notification-menu>
-            <button class="icon-button notification-button" type="button" aria-label="Notifications" data-notification-toggle>
+            <button class="icon-button notification-button" type="button" aria-label="Notifications" aria-expanded="false" data-notification-toggle>
               <i data-lucide="bell" aria-hidden="true"></i>
               <span class="notification-badge" data-notification-count hidden>0</span>
             </button>
@@ -46,55 +41,110 @@
               </div>
             </div>
           </div>
-          <span class="avatar" aria-hidden="true"></span>
+          <div class="profile-menu">
+            <button class="profile-button" type="button" aria-label="Open account menu" aria-haspopup="menu" aria-expanded="false" data-profile-toggle>
+              <span class="avatar" data-applicant-initials aria-label="Applicant initials">A</span>
+            </button>
+            <div class="profile-dropdown" role="menu" data-profile-dropdown>
+              <div class="profile-dropdown-identity">
+                <small>Signed in as</small>
+                <strong data-profile-name>Applicant</strong>
+              </div>
+              <a class="profile-dropdown-action" href="/applicant/profile" role="menuitem">
+                <i data-lucide="user-pen" aria-hidden="true"></i>
+                <span>View/Edit Profile</span>
+              </a>
+              <button class="profile-dropdown-action" type="button" role="menuitem" data-logout>
+                <i data-lucide="log-out" aria-hidden="true"></i>
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
         </nav>
       </header>
 
       <section class="dashboard">
         <section class="info-card" aria-labelledby="info-title">
-          <h1 id="info-title">YOUR INFORMATION</h1>
+          <header class="dashboard-card-heading">
+            <div class="dashboard-heading-copy">
+              <span class="dashboard-heading-icon" aria-hidden="true"><i data-lucide="circle-user-round"></i></span>
+              <div>
+                <h1 id="info-title">Your Information</h1>
+                <p>Manage your personal details and contact information.</p>
+              </div>
+            </div>
+            <a class="outline-dashboard-action" href="/applicant/profile"><i data-lucide="pencil" aria-hidden="true"></i>Edit Profile</a>
+          </header>
           <div class="info-grid">
-            <label>
-              <span>FULL NAME</span>
-              <input type="text" data-field="fullName" readonly />
+            <label class="info-field">
+              <i data-lucide="user-round" aria-hidden="true"></i>
+              <span><strong>Full Name</strong><input type="text" data-field="fullName" readonly /></span>
             </label>
-            <label>
-              <span>EMAIL</span>
-              <input type="email" data-field="email" readonly />
+            <label class="info-field">
+              <i data-lucide="mail" aria-hidden="true"></i>
+              <span><strong>Email</strong><input type="email" data-field="email" readonly /></span>
             </label>
-            <label>
-              <span>CONTACT NUMBER</span>
-              <input type="text" data-field="contact" readonly />
+            <label class="info-field">
+              <i data-lucide="phone" aria-hidden="true"></i>
+              <span><strong>Contact Number</strong><input type="text" data-field="contact" readonly /></span>
             </label>
-            <label>
-              <span>ADDRESS</span>
-              <input type="text" data-field="address" readonly />
+            <label class="info-field">
+              <i data-lucide="map-pin" aria-hidden="true"></i>
+              <span><strong>Address</strong><input type="text" data-field="address" readonly /></span>
             </label>
           </div>
         </section>
 
+        <section class="renewal-notice" data-renewal-notice hidden aria-labelledby="renewal-notice-title">
+          <div class="renewal-notice__icon" aria-hidden="true"><i data-lucide="refresh-cw"></i></div>
+          <div class="renewal-notice__content">
+            <div class="renewal-notice__heading">
+              <div>
+                <span>Business Permit Renewal</span>
+                <h2 id="renewal-notice-title" data-renewal-notice-business>Business Permit</h2>
+              </div>
+              <strong class="renewal-status-badge" data-renewal-notice-status>Draft</strong>
+            </div>
+            <dl class="renewal-notice__meta">
+              <div><dt>Permit No.</dt><dd data-renewal-notice-permit>-</dd></div>
+              <div><dt>Validity Year</dt><dd data-renewal-notice-year>-</dd></div>
+              <div><dt>Last Updated</dt><dd data-renewal-notice-updated>-</dd></div>
+            </dl>
+            <p data-renewal-notice-message>Check your latest renewal information.</p>
+          </div>
+          <button class="renewal-notice__action" type="button" data-open-renewal-details>View Details</button>
+        </section>
+
         <section class="quick-actions" aria-labelledby="quick-title">
-          <h2 id="quick-title">QUICK ACTIONS</h2>
+          <header class="section-heading-row">
+            <span class="section-heading-icon" aria-hidden="true"><i data-lucide="layout-grid"></i></span>
+            <div><h2 id="quick-title">Quick Actions</h2><p>What would you like to do today?</p></div>
+          </header>
           <div class="action-grid">
             <a class="action-button" href="/applicant/application-type">
-              <i data-lucide="briefcase-business" aria-hidden="true"></i>
-              <span>New Business Permit</span>
+              <span class="action-icon"><i data-lucide="briefcase-business" aria-hidden="true"></i></span>
+              <span class="action-copy"><strong>New Business Permit</strong><small>Apply for a new business permit</small></span>
+              <i class="action-arrow" data-lucide="arrow-right" aria-hidden="true"></i>
             </a>
             <a class="action-button" href="/applicant/permits">
-              <i data-lucide="list" aria-hidden="true"></i>
-              <span>View All Permits</span>
+              <span class="action-icon"><i data-lucide="list" aria-hidden="true"></i></span>
+              <span class="action-copy"><strong>View All Permits</strong><small>View all your permit applications</small></span>
+              <i class="action-arrow" data-lucide="arrow-right" aria-hidden="true"></i>
             </a>
             <a class="action-button" href="/applicant/documents">
-              <i data-lucide="files" aria-hidden="true"></i>
-              <span>My Documents</span>
+              <span class="action-icon"><i data-lucide="files" aria-hidden="true"></i></span>
+              <span class="action-copy"><strong>My Documents</strong><small>Manage your uploaded documents</small></span>
+              <i class="action-arrow" data-lucide="arrow-right" aria-hidden="true"></i>
             </a>
-            <button class="action-button" type="button" data-start-latest-renewal>
-              <i data-lucide="refresh-cw" aria-hidden="true"></i>
-              <span>Start Renewal</span>
+            <button class="action-button action-button--renewal" type="button" data-start-latest-renewal>
+              <span class="action-icon"><i data-lucide="refresh-cw" aria-hidden="true"></i></span>
+              <span class="action-copy"><strong>Start Renewal</strong><small>Renew your business permit</small></span>
+              <i class="action-arrow" data-lucide="arrow-right" aria-hidden="true"></i>
             </button>
             <a class="action-button" href="/applicant/profile">
-              <i data-lucide="user-pen" aria-hidden="true"></i>
-              <span>Edit profile</span>
+              <span class="action-icon"><i data-lucide="user-pen" aria-hidden="true"></i></span>
+              <span class="action-copy"><strong>Edit Profile</strong><small>Update your personal information</small></span>
+              <i class="action-arrow" data-lucide="arrow-right" aria-hidden="true"></i>
             </a>
           </div>
         </section>
@@ -114,7 +164,13 @@
         </section>
 
         <section class="permits-section" aria-labelledby="permits-title">
-          <h2 id="permits-title">RECENT BUSINESS PERMITS</h2>
+          <header class="permits-section-heading">
+            <div class="section-heading-row">
+              <span class="section-heading-icon" aria-hidden="true"><i data-lucide="file-text"></i></span>
+              <div><h2 id="permits-title">Recent Business Permits</h2><p>Your latest business permit applications.</p></div>
+            </div>
+            <a class="outline-dashboard-action" href="/applicant/permits">View All<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          </header>
           <div class="permits-table-wrap">
             <table>
               <thead>
@@ -137,9 +193,33 @@
         </section>
       </section>
 
+      <section class="renewal-drawer" data-renewal-drawer hidden aria-hidden="true">
+        <button class="renewal-drawer__backdrop" type="button" data-close-renewal-details aria-label="Close renewal details"></button>
+        <aside class="renewal-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="renewal-drawer-title" tabindex="-1">
+          <header class="renewal-drawer__header">
+            <div>
+              <span>Business Permit Renewal</span>
+              <h2 id="renewal-drawer-title">Renewal Details</h2>
+            </div>
+            <button type="button" data-close-renewal-details aria-label="Close renewal details"><i data-lucide="x" aria-hidden="true"></i></button>
+          </header>
+          <div class="renewal-drawer__body" data-renewal-drawer-body aria-live="polite">
+            <div class="renewal-drawer__skeleton" aria-label="Loading renewal details">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <footer class="renewal-drawer__footer">
+            <button class="renewal-drawer__primary" type="button" data-renewal-primary-action disabled>Continue Renewal</button>
+          </footer>
+        </aside>
+      </section>
+
       <footer class="site-footer">
-        <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
-        <p>For support, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+        <span class="footer-shield" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+        <div>
+          <p>&copy; 2024 BPLO Permit System. All rights reserved.</p>
+          <p>For assistance, contact: <a href="mailto:support@bplo.gov.ph">support@bplo.gov.ph</a></p>
+        </div>
       </footer>
     </main>
   </body>

@@ -4,14 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator</title>
-    <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <link rel="stylesheet" href="/styles/admin.css?v=13" />
     <script defer src="/config.js?v=8"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/staff_dashboard.js?v=1"></script>
+    <script defer src="/features/staff_shell.js?v=1"></script>
+    <script defer src="/features/staff_dashboard.js?v=2"></script>
   </head>
-  <body>
+  <body class="staff-console-body">
     <main class="staff-admin-shell">
       <aside class="staff-sidebar" aria-label="Staff administrator navigation">
         <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
@@ -33,9 +34,12 @@
 
       <section class="staff-main">
         <header class="staff-topbar">
-          <h1>Dashboard</h1>
+          <div class="staff-topbar-heading">
+            <button class="staff-menu-button" type="button" aria-label="Toggle navigation" aria-expanded="false" data-staff-menu><i data-lucide="menu" aria-hidden="true"></i></button>
+            <div><h1>Dashboard</h1><p>Your permit operations at a glance.</p></div>
+          </div>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
-            <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span>Welcome back,</span><strong>Staff Admin</strong><span class="staff-welcome-avatar"><i data-lucide="user-round" aria-hidden="true"></i></span><i class="staff-welcome-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
           </section>
         </header>
 
@@ -120,21 +124,6 @@
             </div>
           </section>
 
-          <section class="staff-panel staff-trends-panel" aria-labelledby="trends-title">
-            <header class="staff-panel-header">
-              <h2 id="trends-title">Application Trends</h2>
-              <span class="staff-chart-legend"><em></em> Applications</span>
-            </header>
-            <div class="staff-chart" data-dashboard-chart hidden>
-              <div class="staff-chart-scale" data-dashboard-chart-scale></div>
-              <div class="staff-chart-bars" data-dashboard-chart-bars></div>
-            </div>
-            <div class="staff-empty-state staff-empty-state--chart" data-dashboard-chart-empty>
-              <i data-lucide="bar-chart-3" aria-hidden="true"></i>
-              <strong>No trend data yet</strong>
-              <span>Application trends will appear after submissions are recorded.</span>
-            </div>
-          </section>
         </section>
       </section>
     </main>

@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Report</title>
     <script defer src="/config.js?v=3"></script>
-    <link rel="stylesheet" href="/styles/admin.css?v=11" />
+    <link rel="stylesheet" href="/styles/admin.css?v=13" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/staff_shell.js?v=1"></script>
     <script defer src="/features/staff_reports.js?v=1"></script>
   </head>
-  <body>
+  <body class="staff-console-body">
     <main class="staff-admin-shell">
       <aside class="staff-sidebar" aria-label="Staff administrator navigation">
         <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
@@ -22,6 +23,7 @@
           <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
           <a href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
           <a href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/business-classifications"><i data-lucide="list-tree" aria-hidden="true"></i><span>Business Lines</span></a>
           <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
           <a class="is-active" href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
         </nav>
@@ -30,9 +32,12 @@
 
       <section class="staff-main">
         <header class="staff-topbar">
-          <h1>Report</h1>
+          <div class="staff-topbar-heading">
+            <button class="staff-menu-button" type="button" aria-label="Toggle navigation" aria-expanded="false" data-staff-menu><i data-lucide="menu" aria-hidden="true"></i></button>
+            <div><h1>Report</h1><p>Monitor performance and generate permit reports.</p></div>
+          </div>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
-            <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span>Welcome back,</span><strong>Staff Admin</strong><span class="staff-welcome-avatar"><i data-lucide="user-round" aria-hidden="true"></i></span><i class="staff-welcome-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
           </section>
         </header>
 

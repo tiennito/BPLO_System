@@ -388,8 +388,21 @@ class AdminRoutesMixin:
                 message = response_body or "Supabase rejected the request."
 
             self.send_json({"error": message}, status=error.code)
-        except (json.JSONDecodeError, URLError, TimeoutError) as error:
-            self.send_json({"error": str(error) or "Unable to create user."}, status=500)
+        except (URLError, TimeoutError) as error:
+            print(
+                "[auth] user creation service unavailable",
+                json.dumps({"errorType": type(error).__name__, "reason": str(getattr(error, "reason", error))}),
+            )
+            self.send_json(
+                {"error": "The account service is temporarily unavailable. Please try again in a moment."},
+                status=503,
+            )
+        except json.JSONDecodeError as error:
+            print("[auth] invalid user creation response", json.dumps({"reason": str(error)}))
+            self.send_json(
+                {"error": "The account service returned an invalid response. Please try again."},
+                status=502,
+            )
         except RuntimeError as error:
             self.send_json({"error": str(error)}, status=500)
 
@@ -1421,7 +1434,7 @@ class AdminRoutesMixin:
             service_key,
             "applications",
             {
-                "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,business_classification_id,submitted_at,reviewed_at,initial_reviewed_by,initial_reviewed_at,finalized_by,finalized_at,created_at,updated_at,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date,filed_at,payment_completed_at,is_late",
+                "select": "id,permit_id,applicant_id,status,progress,payment_status,assessment_status,business_info,permit_snapshot,business_classification_id,submitted_at,reviewed_at,initial_reviewed_by,initial_reviewed_at,final_approved_by,final_approved_at,finalized_by,finalized_at,created_at,updated_at,application_type,permit_year,source_permit_id,renewal_due_date,original_renewal_due_date,effective_renewal_due_date,filed_at,payment_completed_at,is_late",
                 "id": f"eq.{application_id}",
                 "limit": 1,
             },
@@ -1464,6 +1477,47 @@ class AdminRoutesMixin:
                 "order": "assigned_at.asc",
             },
         ) or []
+        required_offices = []
+        office_rows = []
+        if application.get("permit_id"):
+            try:
+                office_rows = self.supabase_rest_request(
+                    supabase_url,
+                    service_key,
+                    "permit_required_offices",
+                    {
+                        "select": "id,permit_id,office_id,inspection_required,created_at,departments(id,name,status)",
+                        "permit_id": f"eq.{application.get('permit_id')}",
+                        "order": "created_at.asc",
+                    },
+                ) or []
+            except HTTPError:
+                office_rows = []
+            required_offices = [
+                {
+                    "id": row.get("id"),
+                    "permit_id": row.get("permit_id"),
+                    "office_id": row.get("office_id"),
+                    "inspection_required": bool(row.get("inspection_required")),
+                    "department": row.get("departments") or {},
+                    "department_key": department_key_from_name(((row.get("departments") or {}).get("name") or "")),
+                }
+                for row in office_rows
+            ]
+        try:
+            inspection_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "department_inspections",
+                {
+                    "select": "*",
+                    "application_id": f"eq.{application_id}",
+                    "deleted_at": "is.null",
+                    "order": "scheduled_date.desc,created_at.desc",
+                },
+            ) or []
+        except HTTPError:
+            inspection_rows = []
         assessment_rows = self.supabase_rest_request(
             supabase_url,
             service_key,
@@ -1502,12 +1556,20 @@ class AdminRoutesMixin:
             "official_receipts",
             {"select": "*", "application_id": f"eq.{application_id}", "order": "issued_at.desc", "limit": 5},
         ) or []
-        permit_rows = self.supabase_rest_request(
-            supabase_url,
-            service_key,
-            "business_permits",
-            {"select": "*", "application_id": f"eq.{application_id}", "limit": 1},
-        ) or []
+        try:
+            permit_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "business_permits",
+                {"select": "*", "application_id": f"eq.{application_id}", "is_current_version": "eq.true", "order": "version_number.desc,created_at.desc", "limit": 1},
+            ) or []
+        except HTTPError:
+            permit_rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "business_permits",
+                {"select": "*", "application_id": f"eq.{application_id}", "limit": 1},
+            ) or []
         renewal_change_rows = []
         previous_permit_rows = []
         previous_receipt_rows = []
@@ -1582,6 +1644,8 @@ class AdminRoutesMixin:
             "documents": documents,
             "documentReviews": doc_reviews,
             "departmentReviews": department_reviews,
+            "requiredOffices": required_offices,
+            "departmentInspections": inspection_rows,
             "assessment": assessment,
             "assessmentItems": assessment_items,
             "treasuryQueue": queue_rows[0] if queue_rows else None,
@@ -1613,7 +1677,12 @@ class AdminRoutesMixin:
                 entity_type="application",
                 entity_id=application_id,
             )
-            self.send_json({"application": self.format_admin_review_bundle(bundle)})
+            formatted = self.format_admin_review_bundle(bundle)
+            formatted["permitEligibility"] = self.permit_generation_eligibility(
+                {"supabase_url": supabase_url, "supabase_service_key": service_key},
+                bundle,
+            )
+            self.send_json({"application": formatted})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to load application review.")}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
@@ -1682,6 +1751,8 @@ class AdminRoutesMixin:
             "ocrResults": bundle.get("ocrResults") or [],
             "documentReviews": bundle.get("documentReviews") or [],
             "departmentReviews": bundle.get("departmentReviews") or [],
+            "requiredOffices": bundle.get("requiredOffices") or [],
+            "departmentInspections": bundle.get("departmentInspections") or [],
             "departmentEvidence": [
                 {
                     "id": evidence.get("id"),

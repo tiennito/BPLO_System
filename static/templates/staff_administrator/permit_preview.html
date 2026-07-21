@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BPLO Staff Administrator - Permit Preview</title>
+    <script defer src="/config.js?v=8"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=15" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/permit_preview.js?v=1"></script>
+  </head>
+  <body class="review-body permit-preview-body">
+    <main class="staff-admin-shell review-admin-shell">
+      <aside class="staff-sidebar" aria-label="Staff administrator navigation">
+        <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
+          <img src="/assets/Victoria.png" alt="Municipality of Victoria, Laguna seal" />
+          <span><strong>BPLO</strong><small>Staff Administrator</small></span>
+        </a>
+
+        <nav class="staff-nav">
+          <a href="/admin/staff-administrator"><i data-lucide="layout-grid" aria-hidden="true"></i><span>Dashboard</span></a>
+          <a class="is-active" href="/admin/staff-administrator/applications"><i data-lucide="user-round" aria-hidden="true"></i><span>Applications</span></a>
+          <a href="/admin/staff-administrator/renewal-application"><i data-lucide="clipboard" aria-hidden="true"></i><span>Re-Newal Application</span></a>
+          <a href="/admin/staff-administrator/business-classifications"><i data-lucide="list-tree" aria-hidden="true"></i><span>Business Lines</span></a>
+          <a href="/admin/staff-administrator/notifications"><i data-lucide="bell" aria-hidden="true"></i><span>Notification</span></a>
+          <a href="/admin/staff-administrator/reports"><i data-lucide="bar-chart-3" aria-hidden="true"></i><span>Report</span></a>
+        </nav>
+
+        <a class="staff-logout" href="/login" data-logout-modal-only><i data-lucide="log-out" aria-hidden="true"></i><span>Log out</span></a>
+      </aside>
+
+      <section class="review-shell permit-preview-shell">
+        <header class="review-topbar permit-preview-topbar">
+          <div class="review-title-group">
+            <a class="review-back-pill" data-back-to-review href="#">
+              <i data-lucide="arrow-left" aria-hidden="true"></i>
+              <span>Back to Review</span>
+            </a>
+            <h1>Official Business Permit</h1>
+          </div>
+          <div class="review-ready" aria-live="polite">
+            <i data-lucide="file-check-2" aria-hidden="true"></i>
+            <span data-permit-message>Loading permit preview...</span>
+            <b aria-hidden="true"></b>
+          </div>
+        </header>
+
+        <section class="permit-preview-layout">
+          <aside class="permit-preview-panel">
+            <header>
+              <strong data-permit-number>Permit preview</strong>
+              <span data-permit-status>Checking status...</span>
+            </header>
+            <div class="permit-preview-actions">
+              <button class="review-action review-action--primary" type="button" data-print-permit-preview>
+                <i data-lucide="printer" aria-hidden="true"></i>
+                Print
+              </button>
+              <button class="review-action review-action--neutral" type="button" data-download-permit-preview>
+                <i data-lucide="download" aria-hidden="true"></i>
+                Download PDF
+              </button>
+              <button class="review-action review-action--primary" type="button" data-release-permit-preview>
+                <i data-lucide="handshake" aria-hidden="true"></i>
+                Confirm Release
+              </button>
+            </div>
+            <ul class="permit-eligibility-list" data-permit-eligibility></ul>
+          </aside>
+
+          <section class="permit-preview-canvas" aria-label="A4 official permit preview">
+            <div class="permit-page" data-permit-page></div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

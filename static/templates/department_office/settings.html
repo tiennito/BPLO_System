@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Department Settings</title>
     <script defer src="/config.js?v=3"></script>
-    <link rel="stylesheet" href="/styles/department_office.css?v=6" />
+    <link rel="stylesheet" href="/styles/department_office.css?v=10" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/department_shell.js?v=1"></script>
     <script defer src="/features/department_office.js?v=6"></script>
   </head>
-  <body data-page="settings">
+  <body class="department-console-body" data-page="settings">
     <main class="department-shell">
       <aside class="department-sidebar">
         <a class="department-brand" href="/department/dashboard">
@@ -31,8 +32,15 @@
 
       <section class="department-content">
         <header class="department-header">
-          <div><h1>Settings</h1><p data-department-name>Department office preferences</p></div>
-          <section class="welcome-card"><span>Welcome,</span><strong data-user-name>Staff name</strong></section>
+          <button class="department-menu-button" type="button" data-department-menu aria-label="Open navigation" aria-expanded="false">
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="department-title-block"><h1>Settings</h1><p data-department-name>Municipal Engineering Office</p></div>
+          <section class="welcome-card">
+            <span class="welcome-card-icon"><i data-lucide="user-round"></i></span>
+            <span class="welcome-card-copy"><span>Welcome,</span><strong data-user-name>Staff name</strong></span>
+            <i data-lucide="chevron-down"></i>
+          </section>
         </header>
 
         <section class="department-page settings-page">

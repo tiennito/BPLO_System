@@ -4,14 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Renewal Monitoring</title>
-    <link rel="stylesheet" href="/styles/admin.css?v=12" />
+    <link rel="stylesheet" href="/styles/admin.css?v=13" />
     <script defer src="/config.js?v=8"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/staff_renewals.js?v=1"></script>
+    <script defer src="/features/staff_shell.js?v=1"></script>
+    <script defer src="/features/staff_renewals.js?v=2"></script>
   </head>
-  <body>
+  <body class="staff-console-body">
     <main class="staff-admin-shell">
       <aside class="staff-sidebar" aria-label="Staff administrator navigation">
         <a class="staff-brand" href="/admin/staff-administrator" aria-label="BPLO staff administrator dashboard">
@@ -31,22 +32,25 @@
 
       <section class="staff-main">
         <header class="staff-topbar">
-          <h1>Renewal Monitoring</h1>
+          <div class="staff-topbar-heading">
+            <button class="staff-menu-button" type="button" aria-label="Toggle navigation" aria-expanded="false" data-staff-menu><i data-lucide="menu" aria-hidden="true"></i></button>
+            <div><h1>Renewal Monitoring</h1><p>Track and manage permit renewal activities.</p></div>
+          </div>
           <section class="staff-welcome" aria-label="Signed in staff administrator">
-            <span>Welcome back,</span><strong>Staff Admin</strong><i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span>Welcome back,</span><strong>Staff Admin</strong><span class="staff-welcome-avatar"><i data-lucide="user-round" aria-hidden="true"></i></span><i class="staff-welcome-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
           </section>
         </header>
 
         <section class="staff-renewal-page" aria-label="Annual business permit renewals">
           <section class="renewal-summary-grid" data-renewal-summary>
-            <button type="button" data-summary-filter="upcoming"><span>Upcoming</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="open"><span>Open</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="submitted"><span>Submitted</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="late"><span>Late</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="for_payment"><span>For Payment</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="renewed"><span>Renewed</span><strong>0</strong></button>
-            <button type="button" data-summary-filter="unrenewed"><span>Unrenewed</span><strong>0</strong></button>
-            <button type="button" data-run-renewal-job><span>Daily Check</span><strong><i data-lucide="refresh-cw" aria-hidden="true"></i></strong></button>
+            <button type="button" data-summary-filter="upcoming"><i data-lucide="calendar-days" aria-hidden="true"></i><span>Upcoming</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="open"><i data-lucide="folder-open" aria-hidden="true"></i><span>Open</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="submitted"><i data-lucide="send" aria-hidden="true"></i><span>Submitted</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="late"><i data-lucide="triangle-alert" aria-hidden="true"></i><span>Late</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="for_payment"><i data-lucide="wallet-cards" aria-hidden="true"></i><span>For Payment</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="renewed"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>Renewed</span><strong>0</strong></button>
+            <button type="button" data-summary-filter="unrenewed"><i data-lucide="circle-slash-2" aria-hidden="true"></i><span>Unrenewed</span><strong>0</strong></button>
+            <button type="button" data-run-renewal-job><i data-lucide="refresh-cw" aria-hidden="true"></i><span>Daily Check</span><strong class="renewal-run-label">Run</strong></button>
           </section>
 
           <section class="staff-panel staff-renewal-search" aria-labelledby="renewal-filter-title">

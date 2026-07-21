@@ -14,8 +14,13 @@ create table if not exists public.applicants (
   address_city text,
   address_barangay text,
   address_street text,
+  house_number text,
   postal_code text,
   contact_number text,
+  birthdate date,
+  sex text,
+  civil_status text,
+  profile_photo_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -87,20 +92,27 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_applicant();
 
+drop policy if exists "Applicants can read their own row" on public.applicants;
 create policy "Applicants can read their own row"
   on public.applicants
   for select
-  using (auth.uid() = user_id);
+  to authenticated
+  using ((select auth.uid()) = user_id);
 
+drop policy if exists "Applicants can insert their own row" on public.applicants;
 create policy "Applicants can insert their own row"
   on public.applicants
   for insert
-  with check (auth.uid() = user_id);
+  to authenticated
+  with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Applicants can update their own row" on public.applicants;
 create policy "Applicants can update their own row"
   on public.applicants
   for update
-  using (auth.uid() = user_id);
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 create table if not exists public.business_permit_applications (
   id uuid primary key default gen_random_uuid(),
@@ -121,21 +133,27 @@ create index if not exists business_permit_applications_user_created_idx
 
 alter table public.business_permit_applications enable row level security;
 
+drop policy if exists "Applicants can read their own permit applications" on public.business_permit_applications;
 create policy "Applicants can read their own permit applications"
   on public.business_permit_applications
   for select
-  using (auth.uid() = user_id);
+  to authenticated
+  using ((select auth.uid()) = user_id);
 
+drop policy if exists "Applicants can insert their own permit applications" on public.business_permit_applications;
 create policy "Applicants can insert their own permit applications"
   on public.business_permit_applications
   for insert
-  with check (auth.uid() = user_id);
+  to authenticated
+  with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Applicants can update their own permit applications" on public.business_permit_applications;
 create policy "Applicants can update their own permit applications"
   on public.business_permit_applications
   for update
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 create table if not exists public.departments (
   id uuid primary key default gen_random_uuid(),

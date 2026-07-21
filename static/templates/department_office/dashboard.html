@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Department Office Dashboard</title>
     <script defer src="/config.js?v=3"></script>
-    <link rel="stylesheet" href="/styles/department_office.css?v=1" />
+    <link rel="stylesheet" href="/styles/department_office.css?v=10" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
+    <script defer src="/features/department_shell.js?v=1"></script>
     <script defer src="/features/department_office.js?v=4"></script>
   </head>
-  <body data-page="dashboard">
+  <body class="department-console-body" data-page="dashboard">
     <main class="department-shell">
       <aside class="department-sidebar" aria-label="Department navigation">
         <a class="department-brand" href="/department/dashboard">
@@ -30,11 +31,18 @@
       </aside>
       <section class="department-content">
         <header class="department-header">
-          <div>
+          <button class="department-menu-button" type="button" data-department-menu aria-label="Open navigation" aria-expanded="false">
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="department-title-block">
             <h1>Dashboard</h1>
-            <p data-department-name>System overview and application management</p>
+            <p data-department-name>Municipal Engineering Office</p>
           </div>
-          <section class="welcome-card"><span>Welcome back,</span><strong data-user-name>Staff name</strong></section>
+          <section class="welcome-card">
+            <span class="welcome-card-icon"><i data-lucide="building-2"></i></span>
+            <span class="welcome-card-copy"><span>Welcome back,</span><strong data-user-name>Staff name</strong></span>
+            <i data-lucide="chevron-down"></i>
+          </section>
         </header>
         <section class="department-page">
           <p class="status-line" data-status>Loading dashboard...</p>
@@ -42,10 +50,13 @@
             <article class="stat-card"><header><h3>Pending</h3><i data-lucide="hourglass"></i></header><strong data-count="pending">0</strong></article>
             <article class="stat-card"><header><h3>Approved</h3><i data-lucide="circle-check"></i></header><strong data-count="approved">0</strong></article>
             <article class="stat-card"><header><h3>Rejected</h3><i data-lucide="circle-x"></i></header><strong data-count="rejected">0</strong></article>
-            <article class="stat-card"><header><h3>Total Applicants</h3><i data-lucide="clipboard-check"></i></header><strong data-count="totalApplicants">0</strong></article>
+            <article class="stat-card"><header><h3>Total Applicants</h3><i data-lucide="users"></i></header><strong data-count="totalApplicants">0</strong></article>
           </section>
           <section class="panel">
-            <header class="panel-header"><h2>All Applications</h2><a class="btn" href="/department/applications">View all</a></header>
+            <header class="panel-header">
+              <div class="panel-title-group"><span class="panel-title-icon"><i data-lucide="clipboard-list"></i></span><h2>All Applications</h2></div>
+              <a class="btn" href="/department/applications">View all <i data-lucide="arrow-up-right"></i></a>
+            </header>
             <div class="table-wrap">
               <table class="department-table">
                 <thead><tr><th>Ref No.</th><th>Business Name</th><th>Status</th><th>Actions</th></tr></thead>

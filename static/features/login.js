@@ -27,6 +27,14 @@ function setStatus(message, isError = false) {
   statusNode.style.color = isError ? "#b42318" : "#0c8c36";
 }
 
+function friendlyLoginError(error) {
+  const message = error instanceof Error ? error.message : String(error || "Login failed.");
+  if (/urlopen error|winerror|socket|failed to fetch|networkerror/i.test(message)) {
+    return "The account service is temporarily unavailable. Please try again in a moment.";
+  }
+  return message;
+}
+
 function normalizeRole(value) {
   const role = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
   const aliases = {
@@ -151,7 +159,7 @@ form?.addEventListener("submit", async (event) => {
     await recordAuditEvent(session, "login", { redirectPath });
     window.location.assign(redirectPath);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Login failed.", true);
+    setStatus(friendlyLoginError(error), true);
     if (submitButton) {
       submitButton.disabled = false;
     }

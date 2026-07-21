@@ -295,8 +295,21 @@ class AuthMixin:
             if error.code in {401, 403} and "profiles" not in message:
                 message = "Invalid or expired session."
             self.send_json({"error": message}, status=401 if error.code in {401, 403} else error.code)
-        except (json.JSONDecodeError, URLError, TimeoutError) as error:
-            self.send_json({"error": str(error) or "Unable to load user profile."}, status=500)
+        except (URLError, TimeoutError) as error:
+            print(
+                "[auth] profile service unavailable",
+                json.dumps({"errorType": type(error).__name__, "reason": str(getattr(error, "reason", error))}),
+            )
+            self.send_json(
+                {"error": "The account service is temporarily unavailable. Please try again in a moment."},
+                status=503,
+            )
+        except json.JSONDecodeError as error:
+            print("[auth] invalid profile service response", json.dumps({"reason": str(error)}))
+            self.send_json(
+                {"error": "The account service returned an invalid response. Please try again."},
+                status=502,
+            )
 
     def get_admin_api_config(self):
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
@@ -363,6 +376,20 @@ class AuthMixin:
             actor = self.get_session_user(access_token, supabase_url, supabase_client_key)
         except HTTPError:
             self.send_json({"error": "Invalid or expired session."}, status=401)
+            return None
+        except (URLError, TimeoutError) as error:
+            print(
+                "[auth] session verification unavailable",
+                json.dumps({"errorType": type(error).__name__, "reason": str(getattr(error, "reason", error))}),
+            )
+            self.send_json(
+                {"error": "The account service is temporarily unavailable. Please try again in a moment."},
+                status=503,
+            )
+            return None
+        except json.JSONDecodeError as error:
+            print("[auth] invalid session response", json.dumps({"reason": str(error)}))
+            self.send_json({"error": "The account service returned an invalid response. Please try again."}, status=502)
             return None
 
         return supabase_url, supabase_service_key, actor

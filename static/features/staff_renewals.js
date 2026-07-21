@@ -295,6 +295,10 @@ extensionForm?.addEventListener("submit", async (event) => {
   }
 });
 
+window.addEventListener("DOMContentLoaded", () => {
+  window.lucide?.createIcons();
+});
+
 (async function bootRenewals() {
   try {
     await refreshAll();

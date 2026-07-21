@@ -25,7 +25,7 @@ from .utils import (
 
 
 class ApplicantRoutesMixin:
-    APPLICANT_DRAFT_STATUSES = {"Draft"}
+    APPLICANT_DRAFT_STATUSES = {"Draft", "For Revision"}
     APPLICANT_UNFINISHED_STATUSES = {
         "Draft",
         "Submitted",
@@ -447,7 +447,7 @@ class ApplicantRoutesMixin:
                 supabase_service_key,
                 "application_documents",
                 {
-                    "select": "id,application_id,document_snapshot,file_name,file_url,applications(id,applicant_id)",
+                    "select": "id,application_id,document_snapshot,file_name,file_url,upload_status,applications(id,applicant_id,status,application_type)",
                     "id": f"eq.{document_id}",
                     "limit": 1,
                 },
@@ -459,6 +459,9 @@ class ApplicantRoutesMixin:
             application = document.get("applications") or {}
             if application.get("applicant_id") != user.get("id"):
                 self.send_json({"error": "You are not allowed to update this document."}, status=403)
+                return
+            if application.get("status") not in self.APPLICANT_DRAFT_STATUSES:
+                self.send_json({"error": "Documents are locked while this renewal is being processed."}, status=409)
                 return
 
             duplicate_rows = self.supabase_rest_request(
@@ -497,11 +500,16 @@ class ApplicantRoutesMixin:
             self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
-                "document_replaced",
+                "renewal_document_replaced" if application.get("application_type") == "renewal" else "document_replaced",
                 actor=user,
                 entity_type="application_document",
                 entity_id=document_id,
-                details={"applicationId": document.get("application_id"), "fileName": file_name},
+                details={
+                    "applicationId": document.get("application_id"),
+                    "fileName": file_name,
+                    "previousStatus": document.get("upload_status") or "Pending",
+                    "newStatus": "Uploaded",
+                },
             )
             self.send_json({"message": "Replacement uploaded.", "document": updated[0] if updated else {}})
         except HTTPError as error:
@@ -522,7 +530,6 @@ class ApplicantRoutesMixin:
             return {}
 
     def format_applicant_profile_settings(self, user, profile=None, applicant=None):
-        metadata = user.get("user_metadata") or {}
         profile = profile or {}
         applicant = applicant or {}
         def pick(*values):
@@ -536,24 +543,26 @@ class ApplicantRoutesMixin:
             "role": normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role")),
             "accountStatus": profile_status(profile.get("status")),
             "verifiedEmail": bool(user.get("email_confirmed_at") or user.get("confirmed_at")),
-            "firstName": pick(applicant.get("first_name_raw"), applicant.get("first_name"), profile.get("first_name"), metadata.get("first_name")),
-            "middleName": pick(applicant.get("middle_name"), profile.get("middle_name"), metadata.get("middle_name")),
-            "lastName": pick(applicant.get("last_name"), profile.get("last_name"), metadata.get("last_name")),
-            "suffix": pick(applicant.get("suffix"), profile.get("suffix"), metadata.get("suffix")),
-            "email": pick(profile.get("email"), applicant.get("email"), user.get("email")),
-            "contactNumber": pick(applicant.get("contact_number"), profile.get("contact_number"), metadata.get("contact_number")),
-            "birthdate": pick(applicant.get("birthdate"), applicant.get("birth_date"), metadata.get("birthdate")),
-            "sex": pick(applicant.get("sex"), applicant.get("gender"), metadata.get("sex")),
-            "civilStatus": pick(applicant.get("civil_status"), metadata.get("civil_status")),
-            "houseNumber": pick(applicant.get("house_number"), metadata.get("house_number")),
-            "street": pick(applicant.get("address_street"), applicant.get("street"), metadata.get("address_street")),
-            "barangay": pick(applicant.get("address_barangay"), applicant.get("barangay"), metadata.get("address_barangay")),
-            "municipalityCity": pick(applicant.get("address_city"), applicant.get("city"), metadata.get("address_city")),
-            "province": pick(applicant.get("address_province"), applicant.get("province"), metadata.get("address_province")),
-            "postalCode": pick(applicant.get("postal_code"), metadata.get("postal_code")),
-            "profilePhotoUrl": pick(applicant.get("profile_photo_url"), profile.get("profile_photo_url"), metadata.get("profile_photo_url")),
-            "createdAt": pick(applicant.get("created_at"), profile.get("created_at"), user.get("created_at")),
-            "updatedAt": pick(applicant.get("updated_at"), profile.get("updated_at"), user.get("updated_at")),
+            # Applicant-facing fields deliberately come from one canonical row.
+            # Falling back to auth metadata or profiles can resurrect stale values.
+            "firstName": pick(applicant.get("first_name_raw"), applicant.get("first_name")),
+            "middleName": pick(applicant.get("middle_name")),
+            "lastName": pick(applicant.get("last_name")),
+            "suffix": pick(applicant.get("suffix")),
+            "email": pick(applicant.get("email")),
+            "contactNumber": pick(applicant.get("contact_number")),
+            "birthdate": pick(applicant.get("birthdate")),
+            "sex": pick(applicant.get("sex")),
+            "civilStatus": pick(applicant.get("civil_status")),
+            "houseNumber": pick(applicant.get("house_number")),
+            "street": pick(applicant.get("address_street")),
+            "barangay": pick(applicant.get("address_barangay")),
+            "municipalityCity": pick(applicant.get("address_city")),
+            "province": pick(applicant.get("address_province")),
+            "postalCode": pick(applicant.get("postal_code")),
+            "profilePhotoUrl": pick(applicant.get("profile_photo_url")),
+            "createdAt": pick(applicant.get("created_at")),
+            "updatedAt": pick(applicant.get("updated_at")),
         }
 
     def get_applicant_profile_settings(self):
@@ -567,48 +576,102 @@ class ApplicantRoutesMixin:
                 self.send_json({"error": "This profile page is only for applicant accounts."}, status=403)
                 return
             applicant = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
-            self.send_json({"profile": self.format_applicant_profile_settings(user, profile, applicant)})
+            if not applicant.get("id"):
+                self.send_json({"error": "Your applicant profile could not be found."}, status=404)
+                return
+            self.send_json({"profile": self.format_applicant_profile_settings(user, profile, applicant), "source": "applicants"})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to load profile.")}, status=error.code)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
             self.send_json({"error": str(error) or "Unable to load profile."}, status=500)
 
-    def validate_applicant_profile_payload(self, payload):
+    def validate_applicant_profile_payload(self, payload, current_profile=None):
+        current_profile = current_profile or {}
+        editable_fields = {
+            "firstName", "middleName", "lastName", "suffix", "email", "contactNumber",
+            "birthdate", "sex", "civilStatus", "houseNumber", "street", "barangay",
+            "municipalityCity", "province", "postalCode", "profilePhotoUrl",
+        }
+        read_only_fields = {"userId", "role", "accountStatus", "verifiedEmail", "updatedAt"}
+        unexpected = sorted(set(payload) - editable_fields - read_only_fields)
+        if unexpected:
+            raise ValueError("The profile request contains unsupported fields.")
+
+        merged = {
+            key: payload[key] if key in payload else current_profile.get(key, "")
+            for key in editable_fields
+        }
         required = {
             "firstName": "First name",
             "lastName": "Last name",
             "email": "Email address",
             "contactNumber": "Contact number",
         }
-        missing = [label for key, label in required.items() if not str(payload.get(key) or "").strip()]
+        missing = [label for key, label in required.items() if not str(merged.get(key) or "").strip()]
         if missing:
             raise ValueError(f"Please complete: {', '.join(missing)}.")
 
-        email = str(payload.get("email") or "").strip().lower()
+        cleaned = {key: str(value or "").strip() for key, value in merged.items()}
+        length_limits = {
+            "firstName": 80, "middleName": 80, "lastName": 80, "suffix": 20,
+            "email": 254, "contactNumber": 20, "houseNumber": 30, "street": 160,
+            "barangay": 100, "municipalityCity": 100, "province": 100,
+            "postalCode": 10, "profilePhotoUrl": 1000,
+        }
+        too_long = [key for key, limit in length_limits.items() if len(cleaned.get(key, "")) > limit]
+        if too_long:
+            raise ValueError("One or more profile fields exceed the allowed length.")
+
+        for key, label in (("firstName", "First name"), ("middleName", "Middle name"), ("lastName", "Last name")):
+            value = cleaned.get(key, "")
+            if value and not re.fullmatch(r"[^\d<>]{1,80}", value):
+                raise ValueError(f"{label} contains unsupported characters.")
+
+        email = cleaned["email"].lower()
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             raise ValueError("Enter a valid email address.")
 
-        contact = re.sub(r"[\s()-]+", "", str(payload.get("contactNumber") or "").strip())
+        contact = re.sub(r"[\s()-]+", "", cleaned["contactNumber"])
         if not re.fullmatch(r"(\+639|09)\d{9}", contact):
             raise ValueError("Enter a valid Philippine mobile number, for example 09XXXXXXXXX or +639XXXXXXXXX.")
 
+        postal_code = cleaned.get("postalCode", "")
+        if postal_code and not re.fullmatch(r"\d{4}", postal_code):
+            raise ValueError("Postal code must contain exactly four digits.")
+
+        birthdate = cleaned.get("birthdate", "")
+        if birthdate:
+            try:
+                parsed_birthdate = datetime.strptime(birthdate, "%Y-%m-%d").date()
+            except ValueError as error:
+                raise ValueError("Enter a valid birthdate.") from error
+            if parsed_birthdate >= datetime.now(timezone.utc).date():
+                raise ValueError("Birthdate must be earlier than today.")
+
+        sex = cleaned.get("sex", "")
+        if sex and sex not in {"Female", "Male", "Other"}:
+            raise ValueError("Select a valid sex value.")
+        civil_status = cleaned.get("civilStatus", "")
+        if civil_status and civil_status not in {"Single", "Married", "Widowed", "Separated"}:
+            raise ValueError("Select a valid civil status.")
+
         return {
-            "firstName": str(payload.get("firstName") or "").strip(),
-            "middleName": str(payload.get("middleName") or "").strip(),
-            "lastName": str(payload.get("lastName") or "").strip(),
-            "suffix": str(payload.get("suffix") or "").strip(),
+            "firstName": cleaned["firstName"],
+            "middleName": cleaned["middleName"],
+            "lastName": cleaned["lastName"],
+            "suffix": cleaned["suffix"],
             "email": email,
             "contactNumber": contact,
-            "birthdate": str(payload.get("birthdate") or "").strip(),
-            "sex": str(payload.get("sex") or "").strip(),
-            "civilStatus": str(payload.get("civilStatus") or "").strip(),
-            "houseNumber": str(payload.get("houseNumber") or "").strip(),
-            "street": str(payload.get("street") or "").strip(),
-            "barangay": str(payload.get("barangay") or "").strip(),
-            "municipalityCity": str(payload.get("municipalityCity") or "").strip(),
-            "province": str(payload.get("province") or "").strip(),
-            "postalCode": str(payload.get("postalCode") or "").strip(),
-            "profilePhotoUrl": str(payload.get("profilePhotoUrl") or "").strip(),
+            "birthdate": birthdate,
+            "sex": sex,
+            "civilStatus": civil_status,
+            "houseNumber": cleaned["houseNumber"],
+            "street": cleaned["street"],
+            "barangay": cleaned["barangay"],
+            "municipalityCity": cleaned["municipalityCity"],
+            "province": cleaned["province"],
+            "postalCode": postal_code,
+            "profilePhotoUrl": cleaned["profilePhotoUrl"],
         }
 
     def update_applicant_profile_settings(self):
@@ -618,31 +681,56 @@ class ApplicantRoutesMixin:
 
         supabase_url, supabase_service_key, user = config
         try:
-            payload = self.validate_applicant_profile_payload(self.read_json_body())
+            request_payload = self.read_json_body()
             profile = self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id")) or {}
             if normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role")) != "applicant":
-                self.send_json({"error": "Only applicant accounts can update this profile."}, status=403)
+                self.send_json({"error": "You are not authorized to update this profile."}, status=403)
+                return
+            if not profile.get("id"):
+                self.send_json({"error": "Your applicant profile could not be found."}, status=404)
                 return
 
-            current_email = (profile.get("email") or user.get("email") or "").lower()
+            existing = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
+            if not existing.get("id"):
+                self.send_json({"error": "Your applicant profile could not be found."}, status=404)
+                return
+
+            current_settings = self.format_applicant_profile_settings(user, profile, existing)
+            request_version = str(request_payload.get("updatedAt") or "").strip()
+            current_version = str(current_settings.get("updatedAt") or "").strip()
+            if request_version and current_version and request_version != current_version:
+                self.send_json(
+                    {"error": "Your profile was updated elsewhere. Refresh the latest information before saving again."},
+                    status=409,
+                )
+                return
+
+            payload = self.validate_applicant_profile_payload(request_payload, current_settings)
+            changed_fields = [
+                key for key, value in payload.items()
+                if str(value or "").strip() != str(current_settings.get(key) or "").strip()
+            ]
+            if not changed_fields:
+                self.send_json(
+                    {
+                        "success": True,
+                        "message": "Your profile information is already up to date.",
+                        "changedFields": [],
+                        "emailVerificationRequired": False,
+                        "profile": current_settings,
+                        "source": "applicants",
+                    }
+                )
+                return
+
+            current_email = (current_settings.get("email") or user.get("email") or "").lower()
             if payload["email"] != current_email:
                 duplicate = self.get_profile_by_email(supabase_url, supabase_service_key, payload["email"])
                 if duplicate and duplicate.get("auth_user_id") != user.get("id"):
                     self.send_json({"error": "That email address is already used by another account."}, status=409)
                     return
 
-            profile_payload = {
-                "first_name": payload["firstName"],
-                "middle_name": payload["middleName"],
-                "last_name": payload["lastName"],
-                "suffix": payload["suffix"],
-                "email": payload["email"],
-                "contact_number": payload["contactNumber"],
-            }
-            updated_profile = self.update_profile_record(supabase_url, supabase_service_key, profile.get("id"), profile_payload)
-
             applicant_payload = {
-                "user_id": user.get("id"),
                 "first_name": payload["firstName"],
                 "first_name_raw": payload["firstName"],
                 "middle_name": payload["middleName"],
@@ -662,39 +750,94 @@ class ApplicantRoutesMixin:
                 "profile_photo_url": payload["profilePhotoUrl"] or None,
                 "updated_at": utc_now_iso(),
             }
+
+            previous_applicant_payload = {
+                "first_name": existing.get("first_name"),
+                "first_name_raw": existing.get("first_name_raw"),
+                "middle_name": existing.get("middle_name"),
+                "last_name": existing.get("last_name"),
+                "suffix": existing.get("suffix"),
+                "email": existing.get("email"),
+                "contact_number": existing.get("contact_number"),
+                "birthdate": existing.get("birthdate"),
+                "sex": existing.get("sex"),
+                "civil_status": existing.get("civil_status"),
+                "house_number": existing.get("house_number"),
+                "address_street": existing.get("address_street"),
+                "address_barangay": existing.get("address_barangay"),
+                "address_city": existing.get("address_city"),
+                "address_province": existing.get("address_province"),
+                "postal_code": existing.get("postal_code"),
+                "profile_photo_url": existing.get("profile_photo_url"),
+                "updated_at": existing.get("updated_at"),
+            }
+
+            updated_applicants = self.supabase_rest_request(
+                supabase_url,
+                supabase_service_key,
+                "applicants",
+                {"id": f"eq.{existing.get('id')}", "user_id": f"eq.{user.get('id')}"},
+                method="PATCH",
+                payload=applicant_payload,
+                prefer="return=representation",
+            ) or []
+            if len(updated_applicants) != 1:
+                self.send_json({"error": "Your profile changes could not be saved. Please try again."}, status=500)
+                return
+
+            profile_payload = {
+                "first_name": payload["firstName"],
+                "middle_name": payload["middleName"],
+                "last_name": payload["lastName"],
+                "suffix": payload["suffix"],
+                "email": payload["email"],
+                "contact_number": payload["contactNumber"],
+            }
+
             try:
-                existing = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
-                if existing.get("id"):
-                    self.supabase_rest_request(
-                        supabase_url,
-                        supabase_service_key,
-                        "applicants",
-                        {"id": f"eq.{existing.get('id')}"},
-                        method="PATCH",
-                        payload=applicant_payload,
-                        prefer="return=minimal",
-                    )
-                else:
-                    self.supabase_rest_request(
-                        supabase_url,
-                        supabase_service_key,
-                        "applicants",
-                        method="POST",
-                        payload=applicant_payload,
-                        prefer="return=minimal",
-                    )
-            except HTTPError:
-                # Some deployments only use the centralized profiles table.
-                pass
+                updated_profile = self.update_profile_record(
+                    supabase_url,
+                    supabase_service_key,
+                    profile.get("id"),
+                    profile_payload,
+                )
+            except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "applicants",
+                    {"id": f"eq.{existing.get('id')}", "user_id": f"eq.{user.get('id')}"},
+                    method="PATCH",
+                    payload=previous_applicant_payload,
+                    prefer="return=minimal",
+                )
+                raise
+
+            if not updated_profile:
+                self.supabase_rest_request(
+                    supabase_url,
+                    supabase_service_key,
+                    "applicants",
+                    {"id": f"eq.{existing.get('id')}", "user_id": f"eq.{user.get('id')}"},
+                    method="PATCH",
+                    payload=previous_applicant_payload,
+                    prefer="return=minimal",
+                )
+                self.send_json({"error": "Your profile changes could not be saved. Please try again."}, status=500)
+                return
 
             self.create_service_audit_log(
                 supabase_url,
                 supabase_service_key,
-                "profile_updated",
+                "APPLICANT_PROFILE_UPDATED",
                 actor=user,
-                entity_type="profile",
-                entity_id=profile.get("id"),
-                details={"emailChanged": payload["email"] != current_email},
+                entity_type="applicant_profile",
+                entity_id=existing.get("id"),
+                details={
+                    "changedFields": changed_fields,
+                    "emailChanged": payload["email"] != current_email,
+                    "userRole": "applicant",
+                },
             )
             if payload["email"] != current_email:
                 self.create_notification(
@@ -707,21 +850,25 @@ class ApplicantRoutesMixin:
                     source_role="System",
                 )
 
-            refreshed_profile = updated_profile or self.get_profile_by_auth_user_id(supabase_url, supabase_service_key, user.get("id")) or {}
-            refreshed_applicant = self.load_optional_applicant_profile(supabase_url, supabase_service_key, user.get("id"))
+            refreshed_applicant = updated_applicants[0]
             self.send_json(
                 {
-                    "message": "Profile updated successfully.",
+                    "success": True,
+                    "message": "Your profile information has been updated successfully.",
+                    "changedFields": changed_fields,
                     "emailVerificationRequired": payload["email"] != current_email,
-                    "profile": self.format_applicant_profile_settings(user, refreshed_profile, refreshed_applicant),
+                    "profile": self.format_applicant_profile_settings(user, updated_profile, refreshed_applicant),
+                    "source": "applicants",
                 }
             )
         except ValueError as error:
             self.send_json({"error": str(error)}, status=400)
         except HTTPError as error:
-            self.send_json({"error": self.handle_rest_error(error, "Unable to update profile.")}, status=error.code)
+            print("[profile] applicant update failed", json.dumps({"status": error.code, "userId": user.get("id")}))
+            self.send_json({"error": "Your profile changes could not be saved. Please try again."}, status=409 if error.code == 409 else 500)
         except (json.JSONDecodeError, URLError, TimeoutError) as error:
-            self.send_json({"error": str(error) or "Unable to update profile."}, status=500)
+            print("[profile] applicant update unavailable", json.dumps({"errorType": type(error).__name__, "userId": user.get("id")}))
+            self.send_json({"error": "Your profile changes could not be saved. Please try again."}, status=503)
 
     def load_owned_applicant_application(self, supabase_url, service_key, user_id, application_id, select="*"):
         rows = self.supabase_rest_request(
@@ -736,6 +883,102 @@ class ApplicantRoutesMixin:
             },
         )
         return rows[0] if rows else None
+
+    def get_application_print_data(self, application_id):
+        config = self.ensure_authenticated_request()
+        if not config:
+            return
+
+        supabase_url, service_key, user = config
+        try:
+            profile = self.get_profile_by_auth_user_id(supabase_url, service_key, user.get("id")) or {}
+            role = normalize_role(profile.get("role") or (user.get("app_metadata") or {}).get("role") or "applicant")
+            if profile and profile_status(profile.get("status")) != "active":
+                self.send_json({"error": "You are not authorized to print this application."}, status=403)
+                return
+
+            rows = self.supabase_rest_request(
+                supabase_url,
+                service_key,
+                "applications",
+                {"select": "*", "id": f"eq.{application_id}", "limit": 1},
+            ) or []
+            if not rows:
+                self.send_json({"error": "The application form could not be found."}, status=404)
+                return
+
+            application = rows[0]
+            is_owner = application.get("applicant_id") == user.get("id")
+            is_authorized_staff = role in {"super_admin", "bplo_admin"}
+            if not is_owner and not is_authorized_staff:
+                self.send_json({"error": "You are not authorized to print this application."}, status=403)
+                return
+
+            business_info = application.get("business_info") or {}
+            permit_snapshot = application.get("permit_snapshot") or {}
+            application_date = (
+                business_info.get("date_of_application")
+                or business_info.get("application_date")
+                or application.get("created_at")
+                or ""
+            )
+            reference_number = (
+                application.get("application_reference_number")
+                or application.get("reference_number")
+                or application.get("reference_no")
+                or application.get("renewal_application_number")
+                or ""
+            )
+            permit_year = application.get("permit_year") or (str(application_date)[:4] if application_date else "")
+            applicant_profile = self.load_optional_applicant_profile(supabase_url, service_key, application.get("applicant_id"))
+
+            if self.headers.get("X-Print-Audit", "1") != "0":
+                self.create_service_audit_log(
+                    supabase_url,
+                    service_key,
+                    "APPLICATION_FORM_PRINTED",
+                    actor=user,
+                    entity_type="application",
+                    entity_id=application_id,
+                    details={
+                        "applicationStatus": application.get("status") or "Draft",
+                        "userRole": role,
+                        "printSession": self.headers.get("X-Print-Session") or "",
+                    },
+                )
+            self.send_json({
+                "application": {
+                    "status": application.get("status") or "Draft",
+                    "progress": application.get("progress") or "Draft",
+                    "applicationType": application.get("application_type") or business_info.get("application_type") or "new",
+                    "referenceNumber": reference_number,
+                    "applicationYear": permit_year,
+                    "createdAt": application.get("created_at") or "",
+                    "updatedAt": application.get("updated_at") or "",
+                    "submittedAt": application.get("submitted_at") or "",
+                    "approvedAt": application.get("approved_at") or application.get("finalized_at") or "",
+                    "permitName": permit_snapshot.get("permitName") or permit_snapshot.get("permit_name") or "Business Permit",
+                    "permitCode": permit_snapshot.get("permitCode") or permit_snapshot.get("permit_code") or "BPLO 01",
+                    "businessInfo": business_info,
+                },
+                "applicantProfile": {
+                    "citizenship": applicant_profile.get("citizenship") or "",
+                    "civilStatus": applicant_profile.get("civil_status") or "",
+                    "municipalityCity": applicant_profile.get("address_city") or applicant_profile.get("city") or "",
+                    "province": applicant_profile.get("address_province") or applicant_profile.get("province") or "",
+                    "postalCode": applicant_profile.get("postal_code") or "",
+                },
+                "lgu": {
+                    "name": os.getenv("LGU_NAME", "Municipality of Victoria"),
+                    "province": os.getenv("LGU_PROVINCE", "Province of Laguna"),
+                    "officeName": os.getenv("LICENSING_OFFICE_NAME", "Business Permits and Licensing Office"),
+                },
+                "viewerRole": role,
+            })
+        except HTTPError as error:
+            self.send_json({"error": self.handle_rest_error(error, "The latest application data could not be retrieved.")}, status=error.code)
+        except (json.JSONDecodeError, URLError, TimeoutError) as error:
+            self.send_json({"error": str(error) or "The latest application data could not be retrieved."}, status=500)
 
     def list_applicant_drafts(self):
         config = self.ensure_applicant_request("draft listing")
@@ -779,7 +1022,8 @@ class ApplicantRoutesMixin:
             if not application:
                 self.send_json({"error": "Draft application not found."}, status=404)
                 return
-            if application.get("status") not in self.APPLICANT_DRAFT_STATUSES:
+            can_edit = application.get("status") in self.APPLICANT_DRAFT_STATUSES
+            if not can_edit and application.get("application_type") != "renewal":
                 self.send_json({"error": "This application has already been submitted and can no longer be edited as a draft."}, status=409)
                 return
 
@@ -809,6 +1053,7 @@ class ApplicantRoutesMixin:
             self.send_json(
                 {
                     "draft": self.format_applicant_application_summary(application),
+                    "canEdit": can_edit,
                     "businessInfo": application.get("business_info") or {},
                     "documents": [self.format_applicant_document_summary(document) for document in documents],
                     "renewal": {
@@ -1299,19 +1544,22 @@ class ApplicantRoutesMixin:
                 supabase_url,
                 supabase_service_key,
                 "applications",
-                {"select": "id,permit_id", "id": f"eq.{application_id}", "applicant_id": f"eq.{user.get('id')}", "limit": 1},
+                {"select": "id,permit_id,status,application_type", "id": f"eq.{application_id}", "applicant_id": f"eq.{user.get('id')}", "limit": 1},
             )
             if not owned:
                 self.send_json({"error": "Application not found."}, status=404)
                 return
             application = owned[0]
+            if application.get("status") not in self.APPLICANT_DRAFT_STATUSES:
+                self.send_json({"error": "Documents are locked while this renewal is being processed."}, status=409)
+                return
 
             rows = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,
                 "application_documents",
                 {
-                    "select": "id",
+                    "select": "id,upload_status",
                     "application_id": f"eq.{application_id}",
                     "permit_document_id": f"eq.{permit_document_id}",
                     "limit": 1,
@@ -1392,6 +1640,25 @@ class ApplicantRoutesMixin:
                     source_role="System",
                     application_id=application_id,
                 )
+            self.create_service_audit_log(
+                supabase_url,
+                supabase_service_key,
+                (
+                    "renewal_document_uploaded" if upload_status == "Uploaded" else "renewal_document_deleted"
+                ) if application.get("application_type") == "renewal" else (
+                    "document_uploaded" if upload_status == "Uploaded" else "document_deleted"
+                ),
+                actor=user,
+                entity_type="application_document",
+                entity_id=(updated[0] if updated else rows[0]).get("id"),
+                details={
+                    "applicationId": application_id,
+                    "previousStatus": rows[0].get("upload_status") or "Pending",
+                    "newStatus": upload_status,
+                    "fileName": file_name,
+                    "applicationType": application.get("application_type"),
+                },
+            )
             self.send_json({"message": "Document updated.", "document": updated[0] if updated else {}})
         except HTTPError as error:
             self.send_json({"error": self.handle_rest_error(error, "Unable to update document.")}, status=error.code)
@@ -1843,6 +2110,9 @@ class ApplicantRoutesMixin:
                 return
 
             application = application_rows[0]
+            if application.get("status") not in self.APPLICANT_DRAFT_STATUSES:
+                self.send_json({"error": "This application is locked and cannot be submitted from its current status."}, status=409)
+                return
             document_rows = self.supabase_rest_request(
                 supabase_url,
                 supabase_service_key,

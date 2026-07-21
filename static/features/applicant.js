@@ -9,6 +9,7 @@ const fields = {
   address: document.querySelector('[data-field="address"]'),
 };
 const profileName = document.querySelector("[data-profile-name]");
+const applicantInitials = document.querySelector("[data-applicant-initials]");
 const profileToggle = document.querySelector("[data-profile-toggle]");
 const profileDropdown = document.querySelector("[data-profile-dropdown]");
 const logoutButton = document.querySelector("[data-logout]");
@@ -48,12 +49,19 @@ const departmentProgressList = document.querySelector("[data-department-progress
 const progressSummary = document.querySelector("[data-progress-summary]");
 const autosaveStatus = document.querySelector("[data-autosave-status]");
 const startLatestRenewalButton = document.querySelector("[data-start-latest-renewal]");
-const renewalContext = document.querySelector("[data-renewal-context]");
-const renewalTitle = document.querySelector("[data-renewal-title]");
-const renewalStatusBadge = document.querySelector("[data-renewal-status-badge]");
-const renewalContextGrid = document.querySelector("[data-renewal-context-grid]");
-const renewalPreviousRecords = document.querySelector("[data-renewal-previous-records]");
-const renewalRequirements = document.querySelector("[data-renewal-requirements]");
+const printApplicationFormButton = document.querySelector("[data-print-application-form]");
+const renewalNotice = document.querySelector("[data-renewal-notice]");
+const renewalNoticeBusiness = document.querySelector("[data-renewal-notice-business]");
+const renewalNoticeStatus = document.querySelector("[data-renewal-notice-status]");
+const renewalNoticePermit = document.querySelector("[data-renewal-notice-permit]");
+const renewalNoticeYear = document.querySelector("[data-renewal-notice-year]");
+const renewalNoticeUpdated = document.querySelector("[data-renewal-notice-updated]");
+const renewalNoticeMessage = document.querySelector("[data-renewal-notice-message]");
+const openRenewalDetailsButton = document.querySelector("[data-open-renewal-details]");
+const renewalDrawer = document.querySelector("[data-renewal-drawer]");
+const renewalDrawerPanel = document.querySelector(".renewal-drawer__panel");
+const renewalDrawerBody = document.querySelector("[data-renewal-drawer-body]");
+const renewalPrimaryAction = document.querySelector("[data-renewal-primary-action]");
 const renewalChangeReview = document.querySelector("[data-renewal-change-review]");
 const renewalChangeList = document.querySelector("[data-renewal-change-list]");
 const renewalChangeConfirm = document.querySelector("[data-renewal-change-confirm]");
@@ -63,6 +71,7 @@ const SELECTED_PERMIT_KEY = "bplo_selected_permit_id";
 const CURRENT_APPLICATION_KEY = "bplo_current_application_id";
 const OCR_FIELDS_KEY = "bplo_current_ocr_fields";
 const OCR_SKIP_KEY = "bplo_skip_ocr_fields";
+const PROFILE_UPDATE_SIGNAL_KEY = "bplo_applicant_profile_updated";
 const DRAFT_BACKUP_PREFIX = "bplo_draft_backup_";
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const OCR_FORM_FIELD_MAP = {
@@ -109,6 +118,10 @@ let isRestoringDraft = false;
 let isApplyingBusinessDefaults = false;
 let currentRenewalContext = null;
 let currentRenewalChanges = [];
+let currentRenewalDashboard = null;
+let currentApplicationCanEdit = true;
+let renewalDrawerLastFocus = null;
+let hasUnsavedBusinessChanges = false;
 const editedBusinessFields = new Set();
 const businessClassificationState = {
   activeIndex: -1,
@@ -631,6 +644,247 @@ async function markAllNotificationsRead() {
   }
 }
 
+function renewalStatusClass(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function renderRenewalDashboardSummary(payload = {}) {
+  if (!renewalNotice) {
+    return;
+  }
+  if (!payload.hasRenewal && !payload.eligible) {
+    renewalNotice.hidden = true;
+    currentRenewalDashboard = null;
+    return;
+  }
+
+  currentRenewalDashboard = payload;
+  renewalNotice.hidden = false;
+  renewalNoticeBusiness.textContent = payload.businessName || "Business Permit Renewal Available";
+  renewalNoticePermit.textContent = payload.previousPermitNumber || "Not yet assigned";
+  renewalNoticeYear.textContent = payload.permitYear || "-";
+  renewalNoticeUpdated.textContent = payload.lastUpdatedAt ? formatApplicantDate(payload.lastUpdatedAt) : "Not started";
+  renewalNoticeMessage.textContent = payload.message || "Check your latest renewal information.";
+  renewalNoticeStatus.textContent = payload.status || (payload.hasRenewal ? "Draft" : "For Renewal");
+  renewalNoticeStatus.className = `renewal-status-badge renewal-status-badge--${renewalStatusClass(renewalNoticeStatus.textContent)}`;
+  openRenewalDetailsButton.textContent = payload.hasRenewal ? "View Details" : "Start Renewal";
+  window.lucide?.createIcons();
+}
+
+async function loadRenewalDashboardSummary() {
+  if (!renewalNotice) {
+    return;
+  }
+  try {
+    const payload = await applicantApi("/applicant/api/renewals/dashboard");
+    renderRenewalDashboardSummary(payload);
+  } catch (error) {
+    if (currentRenewalDashboard) {
+      renewalNotice.hidden = false;
+      renewalNoticeMessage.textContent = error.message || "Unable to load renewal information. Please try again.";
+    } else {
+      renewalNotice.hidden = true;
+    }
+  }
+}
+
+function renewalDrawerSkeleton() {
+  return `
+    <div class="renewal-drawer__skeleton" aria-label="Loading renewal details">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  `;
+}
+
+function renewalDetailValue(label, value) {
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`;
+}
+
+function renderRenewalDrawerDetails(details = {}) {
+  if (!renewalDrawerBody || !renewalPrimaryAction) {
+    return;
+  }
+  currentRenewalDashboard = { ...(currentRenewalDashboard || {}), ...details };
+  const permit = details.previousPermit || {};
+  const requirements = Array.isArray(details.requirements) ? details.requirements : [];
+  const progress = details.progress || {};
+  const steps = Array.isArray(progress.steps) ? progress.steps : [];
+  const revisionMarkup = progress.revisionRemarks
+    ? `<div class="renewal-drawer__remarks"><strong>Revision remarks</strong><p>${escapeHtml(progress.revisionRemarks)}</p></div>`
+    : "";
+
+  renewalDrawerBody.innerHTML = `
+    <section class="renewal-drawer__summary">
+      <div>
+        <span>Current status</span>
+        <strong class="renewal-status-badge renewal-status-badge--${escapeHtml(renewalStatusClass(details.status))}">${escapeHtml(details.status || "Draft")}</strong>
+      </div>
+      <h3>${escapeHtml(details.businessName || permit.businessName || "Business Permit")}</h3>
+      <p>${escapeHtml(details.message || "Review the latest information for this renewal.")}</p>
+    </section>
+
+    <section class="renewal-drawer__section" aria-labelledby="previous-permit-heading">
+      <header><i data-lucide="badge-check" aria-hidden="true"></i><div><span>Previous year</span><h3 id="previous-permit-heading">Previous Permit Record</h3></div></header>
+      <dl class="renewal-drawer__details-grid">
+        ${renewalDetailValue("Permit number", permit.permitNumber)}
+        ${renewalDetailValue("Business name", permit.businessName)}
+        ${renewalDetailValue("Owner", permit.ownerName)}
+        ${renewalDetailValue("Business address", permit.businessAddress)}
+        ${renewalDetailValue("Permit type", permit.permitType)}
+        ${renewalDetailValue("Date issued", formatApplicantDate(permit.dateIssued))}
+        ${renewalDetailValue("Expiration date", formatApplicantDate(permit.expirationDate))}
+        ${renewalDetailValue("Permit status", permit.status)}
+      </dl>
+    </section>
+
+    <section class="renewal-drawer__section" aria-labelledby="renewal-requirements-heading">
+      <header><i data-lucide="files" aria-hidden="true"></i><div><span>Current renewal year</span><h3 id="renewal-requirements-heading">Renewal Requirements</h3></div></header>
+      <div class="renewal-requirements-list">
+        ${requirements.length ? requirements.map((item) => `
+          <article class="renewal-requirement-item">
+            <div class="renewal-requirement-item__heading">
+              <strong>${escapeHtml(item.name || "Renewal requirement")}</strong>
+              <span>${escapeHtml(item.required ? "Required" : "Optional")}</span>
+            </div>
+            ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
+            <div class="renewal-requirement-item__statuses">
+              <span>Upload: <strong>${escapeHtml(item.uploadStatus || "Not Uploaded")}</strong></span>
+              <span>Verification: <strong>${escapeHtml(item.verificationStatus || "Not Available")}</strong></span>
+            </div>
+            ${item.adminRemarks ? `<small><b>Admin remarks:</b> ${escapeHtml(item.adminRemarks)}</small>` : ""}
+          </article>
+        `).join("") : '<p class="renewal-drawer__empty">No current renewal requirements are configured.</p>'}
+      </div>
+    </section>
+
+    <section class="renewal-drawer__section" aria-labelledby="renewal-progress-heading">
+      <header><i data-lucide="route" aria-hidden="true"></i><div><span>Application workflow</span><h3 id="renewal-progress-heading">Renewal Status</h3></div></header>
+      <dl class="renewal-drawer__details-grid renewal-drawer__details-grid--compact">
+        ${renewalDetailValue("Started", formatApplicantDate(progress.startedAt))}
+        ${renewalDetailValue("Last updated", formatApplicantDate(progress.lastUpdatedAt))}
+        ${renewalDetailValue("Submitted", formatApplicantDate(progress.submittedAt))}
+        ${renewalDetailValue("Responsible office", progress.responsibleOffice)}
+        ${renewalDetailValue("Payment", progress.paymentStatus)}
+        ${renewalDetailValue("Release", progress.releaseStatus)}
+      </dl>
+      ${revisionMarkup}
+      <ol class="renewal-progress-tracker" aria-label="Renewal progress">
+        ${steps.map((step) => {
+          const state = renewalStatusClass(step.state || "Locked");
+          const label = step.label === "Department Review" ? "Department Evaluation" : step.label;
+          return `<li class="renewal-progress-tracker__item renewal-progress-tracker__item--${escapeHtml(state)}"><span aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(step.state || "Pending")}</small></div></li>`;
+        }).join("")}
+      </ol>
+    </section>
+  `;
+  renewalPrimaryAction.textContent = details.actionLabel || "Continue Renewal";
+  renewalPrimaryAction.disabled = false;
+  window.lucide?.createIcons();
+}
+
+function renderRenewalDrawerError(message) {
+  if (!renewalDrawerBody || !renewalPrimaryAction) {
+    return;
+  }
+  renewalDrawerBody.innerHTML = `
+    <div class="renewal-drawer__error" role="alert">
+      <i data-lucide="circle-alert" aria-hidden="true"></i>
+      <h3>Unable to load renewal details</h3>
+      <p>${escapeHtml(message || "Please refresh the page or try again.")}</p>
+      <button type="button" data-retry-renewal-details>Try Again</button>
+    </div>
+  `;
+  renewalPrimaryAction.disabled = true;
+  window.lucide?.createIcons();
+}
+
+async function openRenewalDetails() {
+  if (!currentRenewalDashboard?.hasRenewal) {
+    await startLatestRenewal(openRenewalDetailsButton);
+    return;
+  }
+  if (!renewalDrawer || !renewalDrawerPanel || !renewalDrawerBody || !renewalPrimaryAction) {
+    return;
+  }
+  renewalDrawerLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  renewalDrawer.hidden = false;
+  renewalDrawer.setAttribute("aria-hidden", "false");
+  document.body.classList.add("renewal-drawer-open");
+  window.requestAnimationFrame(() => renewalDrawer.classList.add("is-open"));
+  renewalDrawerBody.innerHTML = renewalDrawerSkeleton();
+  renewalPrimaryAction.disabled = true;
+  renewalDrawerPanel.focus();
+  try {
+    const details = await applicantApi(`/applicant/api/renewals/${encodeURIComponent(currentRenewalDashboard.renewalId)}/details`);
+    renderRenewalDrawerDetails(details);
+  } catch (error) {
+    renderRenewalDrawerError(error.message || "Unable to load your renewal details. Please refresh the page or try again.");
+  }
+}
+
+function closeRenewalDetails() {
+  if (!renewalDrawer || renewalDrawer.hidden) {
+    return;
+  }
+  renewalDrawer.classList.remove("is-open");
+  renewalDrawer.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("renewal-drawer-open");
+  window.setTimeout(() => {
+    renewalDrawer.hidden = true;
+    renewalDrawerLastFocus?.focus();
+  }, 220);
+}
+
+async function continueRenewalFromDrawer() {
+  const renewalId = currentRenewalDashboard?.renewalId;
+  if (!renewalId || !renewalPrimaryAction) {
+    return;
+  }
+  const originalLabel = renewalPrimaryAction.textContent;
+  renewalPrimaryAction.disabled = true;
+  renewalPrimaryAction.textContent = "Opening...";
+  try {
+    const payload = await applicantApi(`/applicant/api/renewals/${encodeURIComponent(renewalId)}/continue`, {
+      method: "POST",
+      body: "{}",
+    });
+    setCurrentApplicationId(renewalId);
+    window.location.href = payload.nextUrl || `/applicant/business-information?applicationId=${encodeURIComponent(renewalId)}`;
+  } catch (error) {
+    renderRenewalDrawerError(error.message || "Unable to open this renewal.");
+    renewalPrimaryAction.textContent = originalLabel;
+  }
+}
+
+function trapRenewalDrawerFocus(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeRenewalDetails();
+    return;
+  }
+  if (event.key !== "Tab" || !renewalDrawer?.classList.contains("is-open")) {
+    return;
+  }
+  const focusable = [...renewalDrawer.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) {
+    event.preventDefault();
+    renewalDrawerPanel?.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function setField(name, value) {
   if (fields[name]) {
     fields[name].value = value || "";
@@ -639,22 +893,29 @@ function setField(name, value) {
 
 function formatFullName(profile, user) {
   const metadata = user?.user_metadata || {};
-  const firstName = profile?.first_name_raw || metadata.first_name || "";
-  const middleName = profile?.middle_name || metadata.middle_name || "";
-  const lastName = profile?.last_name || metadata.last_name || "";
+  const firstName = profile?.firstName || profile?.first_name_raw || profile?.first_name || metadata.first_name || "";
+  const middleName = profile?.middleName || profile?.middle_name || metadata.middle_name || "";
+  const lastName = profile?.lastName || profile?.last_name || metadata.last_name || "";
   const suffix = profile?.suffix || metadata.suffix || "";
 
   return [firstName, middleName, lastName, suffix].filter(Boolean).join(" ");
 }
 
+function formatDashboardInitials(fullName) {
+  const parts = String(fullName || "Applicant").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "A";
+  return `${parts[0][0] || ""}${parts.length > 1 ? parts[parts.length - 1][0] || "" : ""}`.toUpperCase();
+}
+
 function formatAddress(profile, user) {
   const metadata = user?.user_metadata || {};
   const parts = [
-    profile?.address_street || metadata.address_street,
-    profile?.address_barangay || metadata.address_barangay,
-    profile?.address_city || metadata.address_city,
-    profile?.address_province || metadata.address_province,
-    profile?.postal_code || metadata.postal_code,
+    profile?.houseNumber || profile?.house_number,
+    profile?.street || profile?.address_street || metadata.address_street,
+    profile?.barangay || profile?.address_barangay || metadata.address_barangay,
+    profile?.municipalityCity || profile?.address_city || metadata.address_city,
+    profile?.province || profile?.address_province || metadata.address_province,
+    profile?.postalCode || profile?.postal_code || metadata.postal_code,
   ];
 
   return parts.filter(Boolean).join(", ");
@@ -705,30 +966,31 @@ function setProfilePrefillStatus(message, state = "") {
   profilePrefillStatus.classList.toggle("is-error", state === "error");
 }
 
-function collectProfileBusinessDefaults(applicantProfile = currentApplicantProfile, accessProfile = currentAccessProfile, user = currentUser) {
-  const metadata = user?.user_metadata || {};
-  const address = formatAddress(applicantProfile, user);
+function collectProfileBusinessDefaults(applicantProfile = currentApplicantProfile) {
+  if (!applicantProfile) {
+    return {
+      last_name: "", first_name: "", middle_name: "", suffix: "", email: "",
+      contact_number: "", owner_contact_number: "", home_address: "", gender: "", government_id: "",
+    };
+  }
+  const address = formatAddress(applicantProfile, null);
   const governmentId = firstPresentValue(
     applicantProfile?.government_id,
     applicantProfile?.government_id_number,
     applicantProfile?.id_number,
-    applicantProfile?.valid_id,
-    metadata.government_id,
-    metadata.government_id_number,
-    metadata.id_number,
-    metadata.valid_id
+    applicantProfile?.valid_id
   );
 
   return {
-    last_name: firstPresentValue(applicantProfile?.last_name, accessProfile?.lastName, metadata.last_name),
-    first_name: firstPresentValue(applicantProfile?.first_name_raw, applicantProfile?.first_name, accessProfile?.firstName, metadata.first_name),
-    middle_name: firstPresentValue(applicantProfile?.middle_name, accessProfile?.middleName, metadata.middle_name),
-    suffix: firstPresentValue(applicantProfile?.suffix, accessProfile?.suffix, metadata.suffix),
-    email: firstPresentValue(applicantProfile?.email, accessProfile?.email, user?.email),
-    contact_number: firstPresentValue(applicantProfile?.contact_number, accessProfile?.contactNumber, metadata.contact_number),
-    owner_contact_number: firstPresentValue(applicantProfile?.contact_number, accessProfile?.contactNumber, metadata.contact_number),
+    last_name: firstPresentValue(applicantProfile?.lastName, applicantProfile?.last_name),
+    first_name: firstPresentValue(applicantProfile?.firstName, applicantProfile?.first_name_raw, applicantProfile?.first_name),
+    middle_name: firstPresentValue(applicantProfile?.middleName, applicantProfile?.middle_name),
+    suffix: firstPresentValue(applicantProfile?.suffix),
+    email: firstPresentValue(applicantProfile?.email),
+    contact_number: firstPresentValue(applicantProfile?.contactNumber, applicantProfile?.contact_number),
+    owner_contact_number: firstPresentValue(applicantProfile?.contactNumber, applicantProfile?.contact_number),
     home_address: address,
-    gender: normalizeGender(firstPresentValue(applicantProfile?.gender, applicantProfile?.sex, metadata.gender, metadata.sex)),
+    gender: normalizeGender(firstPresentValue(applicantProfile?.sex, applicantProfile?.gender)),
     government_id: governmentId,
   };
 }
@@ -992,30 +1254,10 @@ async function startLatestRenewal(button = null) {
 
 function renderRenewalContext(renewal = {}) {
   currentRenewalContext = renewal?.isRenewal ? renewal : null;
-  if (!renewalContext || !currentRenewalContext) {
-    if (renewalContext) renewalContext.hidden = true;
+  renderRenewalChanges(currentRenewalContext?.changes || []);
+  if (!currentRenewalContext) {
     return;
   }
-  const baseline = currentRenewalContext.baseline || {};
-  const previousPermit = baseline.previousPermit || {};
-  renewalContext.hidden = false;
-  if (renewalTitle) {
-    renewalTitle.textContent = `Renewal ${currentRenewalContext.renewalApplicationNumber || ""}`.trim() || "Renewal Application";
-  }
-  if (renewalStatusBadge) {
-    renewalStatusBadge.textContent = "Draft";
-  }
-  if (renewalContextGrid) {
-    renewalContextGrid.innerHTML = [
-      ["Renewal Year", currentRenewalContext.renewalYear],
-      ["Previous Permit No.", previousPermit.permitNumber],
-      ["Previous Permit Year", previousPermit.permitYear],
-      ["Previous Issue Date", formatApplicantDate(previousPermit.issuedDate)],
-      ["Previous Expiration", formatApplicantDate(previousPermit.expirationDate)],
-      ["Renewal Deadline", formatApplicantDate(currentRenewalContext.dueDate)],
-    ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`).join("");
-  }
-  renderRenewalChanges(currentRenewalContext.changes || []);
 }
 
 function renderRenewalChanges(changes = []) {
@@ -1036,40 +1278,7 @@ function renderRenewalChanges(changes = []) {
 }
 
 async function loadRenewalReferencePanels(applicationId) {
-  if (!currentRenewalContext || !applicationId) return;
-  try {
-    const [previousPayload, requirementsPayload] = await Promise.all([
-      applicantApi(`/applicant/api/renewals/${encodeURIComponent(applicationId)}/previous-records`),
-      applicantApi(`/applicant/api/renewals/${encodeURIComponent(applicationId)}/requirements`),
-    ]);
-    if (renewalPreviousRecords) {
-      const permit = previousPayload.previousPermit || {};
-      const receipts = previousPayload.receipts || [];
-      renewalPreviousRecords.innerHTML = `
-        <dl class="renewal-context-grid">
-          <div><dt>Permit No.</dt><dd>${escapeHtml(permit.permit_number || "-")}</dd></div>
-          <div><dt>Validity</dt><dd>${escapeHtml(formatApplicantDate(permit.issue_date || permit.issued_date))} - ${escapeHtml(formatApplicantDate(permit.expiration_date || permit.valid_until))}</dd></div>
-          <div><dt>Application Ref.</dt><dd>${escapeHtml(previousPayload.previousApplicationReference || "-")}</dd></div>
-          <div><dt>Receipts</dt><dd>${escapeHtml(String(receipts.length))}</dd></div>
-        </dl>
-        ${(previousPayload.documents || []).length ? `<ul>${previousPayload.documents.map((doc) => `<li><strong>${escapeHtml(doc.name)}</strong><span>${escapeHtml(doc.fileName || "Previous record")} - Previous Year - For Reference Only</span></li>`).join("")}</ul>` : '<p class="empty-state">No previous documents were found.</p>'}
-      `;
-    }
-    if (renewalRequirements) {
-      const requirements = requirementsPayload.requirements || [];
-      renewalRequirements.innerHTML = requirements.length
-        ? requirements.map((item) => `
-          <article class="renewal-requirement-row">
-            <strong>${escapeHtml(item.name)}</strong>
-            <span>${escapeHtml(item.required ? "Required" : "Optional")} - ${escapeHtml(item.status || "Pending")}</span>
-            <small>${escapeHtml(item.description || "Upload or review this current-year renewal requirement.")}</small>
-          </article>
-        `).join("")
-        : '<p class="empty-state">No renewal requirements are configured for this permit yet.</p>';
-    }
-  } catch (error) {
-    if (renewalPreviousRecords) renewalPreviousRecords.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "Unable to load renewal reference data.")}</p>`;
-  }
+  return Boolean(currentRenewalContext && applicationId);
 }
 
 async function loadApplicantDrafts() {
@@ -2448,6 +2657,25 @@ function restoreDraftDocuments(documents = []) {
   updateRequirementsNextState();
 }
 
+function setBusinessFormEditability(canEdit, status = "") {
+  if (!businessFormShell) {
+    return;
+  }
+  businessFormShell.classList.toggle("is-read-only", !canEdit);
+  businessFormShell.querySelectorAll("input, select, textarea").forEach((control) => {
+    control.disabled = !canEdit;
+  });
+  if (businessContinueButton) {
+    businessContinueButton.disabled = !canEdit;
+  }
+  if (finishApplicationButton) {
+    finishApplicationButton.disabled = !canEdit;
+    finishApplicationButton.hidden = !canEdit;
+  }
+  businessFormShell.setAttribute("data-editable", String(Boolean(canEdit)));
+  businessFormShell.setAttribute("aria-label", canEdit ? "Business permit form" : `Business permit form, read-only: ${status || "locked"}`);
+}
+
 async function loadDraftIntoBusinessForm() {
   if (!businessFormShell && !dynamicDocumentGrid) {
     return;
@@ -2470,16 +2698,25 @@ async function loadDraftIntoBusinessForm() {
       applyBusinessInfoToForm(payload.businessInfo || {});
     }
     renderRenewalContext(payload.renewal || {});
-    await loadRenewalReferencePanels(applicationId);
+    currentApplicationCanEdit = payload.canEdit !== false;
+    setBusinessFormEditability(currentApplicationCanEdit, payload.draft?.status || "");
+    hasUnsavedBusinessChanges = false;
+    if (printApplicationFormButton) {
+      printApplicationFormButton.disabled = false;
+    }
     restoreDraftDocuments(payload.documents || []);
     const localBackup = readDraftBackup(applicationId);
-    if (businessFormShell && localBackup?.businessInfo) {
+    if (currentApplicationCanEdit && businessFormShell && localBackup?.businessInfo) {
       applyBusinessInfoToForm(localBackup.businessInfo);
       setAutosaveStatus(`Restored a local backup from ${formatApplicantTime(localBackup.savedAt)}. Auto-save will retry.`, "warning");
       return;
     }
     const savedTime = formatApplicantTime(payload.draft?.updatedAt);
-    setAutosaveStatus(savedTime ? `Last saved at ${savedTime}` : "Draft loaded. Auto-save is ready.", "saved");
+    if (currentApplicationCanEdit) {
+      setAutosaveStatus(savedTime ? `Last saved at ${savedTime}` : "Draft loaded. Auto-save is ready.", "saved");
+    } else {
+      setAutosaveStatus(`This renewal is ${payload.draft?.status || "being processed"} and is available in read-only mode.`, "warning");
+    }
   } catch (error) {
     const localBackup = readDraftBackup(applicationId);
     if (businessFormShell && localBackup?.businessInfo) {
@@ -2492,7 +2729,7 @@ async function loadDraftIntoBusinessForm() {
 }
 
 function scheduleBusinessDraftAutosave() {
-  if (!businessFormShell || isRestoringDraft) {
+  if (!businessFormShell || isRestoringDraft || !currentApplicationCanEdit) {
     return;
   }
   const applicationId = getCurrentApplicationId();
@@ -2506,9 +2743,9 @@ function scheduleBusinessDraftAutosave() {
   }, AUTOSAVE_DEBOUNCE_MS);
 }
 
-async function saveBusinessDraft() {
+async function saveBusinessDraft({ throwOnError = false } = {}) {
   const applicationId = getCurrentApplicationId();
-  if (!businessFormShell || !applicationId) {
+  if (!businessFormShell || !applicationId || !currentApplicationCanEdit) {
     return;
   }
 
@@ -2525,10 +2762,54 @@ async function saveBusinessDraft() {
     if (Array.isArray(payload.renewalChanges)) {
       renderRenewalChanges(payload.renewalChanges);
     }
+    hasUnsavedBusinessChanges = false;
     setAutosaveStatus(`Auto-saved at ${formatApplicantTime(payload.savedAt || new Date().toISOString())}`, "saved");
+    return payload;
   } catch (error) {
     writeDraftBackup(applicationId, businessInfo);
     setAutosaveStatus("Unable to auto-save. A temporary backup is stored on this device.", "error");
+    if (throwOnError) {
+      throw error;
+    }
+    return null;
+  }
+}
+
+async function prepareApplicationPrint() {
+  const applicationId = getCurrentApplicationId();
+  if (!applicationId || !printApplicationFormButton) {
+    await showApplicantMessageModal({
+      title: "Application not found",
+      message: "The application form could not be found.",
+      tone: "error",
+    });
+    return;
+  }
+
+  const originalMarkup = printApplicationFormButton.innerHTML;
+  printApplicationFormButton.disabled = true;
+  printApplicationFormButton.innerHTML = '<span>Preparing application form...</span>';
+  window.clearTimeout(autosaveTimer);
+  try {
+    if (currentApplicationCanEdit && hasUnsavedBusinessChanges) {
+      await saveBusinessDraft({ throwOnError: true });
+    }
+    const printSession = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    await showApplicantMessageModal({
+      title: "Application form ready",
+      message: "Your application form is ready for printing.",
+      tone: "success",
+    });
+    window.location.href = `/applicant/application-print?applicationId=${encodeURIComponent(applicationId)}&printSession=${encodeURIComponent(printSession)}`;
+  } catch {
+    await showApplicantMessageModal({
+      title: "Unable to prepare form",
+      message: "Your latest changes could not be saved. Please try again before printing.",
+      tone: "error",
+    });
+    printApplicationFormButton.disabled = false;
+    printApplicationFormButton.innerHTML = originalMarkup;
+    window.lucide?.createIcons();
   }
 }
 
@@ -2576,19 +2857,43 @@ async function renderRecentPermits() {
     const referenceNumber = permit.permit_id || permit.permitId || permitSnapshot.permitCode || permitSnapshot.permit_code || permit.id || "-";
     const submittedId = permit.submitted_id || permit.submittedId || (permit.id ? permit.id.slice(0, 8) : "-");
     const status = permit.status || "Draft";
+    const progress = permit.progress || "Draft";
+    const progressText = `${status} ${progress}`.toLowerCase();
+    const progressPercent = progressText.includes("released") || progressText.includes("approved")
+      ? 100
+      : progressText.includes("pickup") || progressText.includes("ready for release")
+      ? 92
+      : progressText.includes("payment") || progressText.includes("paid")
+      ? 84
+      : progressText.includes("assessment")
+      ? 72
+      : progressText.includes("review") || progressText.includes("evaluation")
+      ? 60
+      : progressText.includes("submitted")
+      ? 48
+      : progressText.includes("business information")
+      ? 32
+      : 18;
+    const statusClass = String(status).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const pickupOnlyStatuses = ["Permit Ready for Release", "For Pickup", "Released"];
-    const actionMarkup = status === "Draft"
+    const primaryActionMarkup = status === "Draft"
       ? `<button class="table-link-button" type="button" data-continue-draft="${escapeHtml(applicationId)}" data-draft-permit="${escapeHtml(permit.permit_id || permit.permitId || "")}">Continue</button>`
       : pickupOnlyStatuses.includes(status)
-      ? '<span style="color: var(--green); font-weight: 700;">Claim at BPLO Office</span>'
+      ? '<span class="permit-claim-note">Claim at BPLO Office</span>'
       : `<button class="table-link-button" type="button" data-view-progress="${escapeHtml(applicationId)}" ${applicationId ? "" : "disabled"}>View Status</button>`;
+    const actionMarkup = `<div class="permit-row-actions">${primaryActionMarkup}${applicationId ? `<button class="table-link-button" type="button" data-print-saved-application="${escapeHtml(applicationId)}">Print Form</button>` : ""}</div>`;
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${referenceNumber}</td>
-      <td>${businessInfo.business_name || businessInfo.businessName || permit.business_name || permit.businessName || "-"}</td>
-      <td>${status}</td>
-      <td>${permit.progress || "Draft"}</td>
-      <td>${submittedId}</td>
+      <td><strong class="permit-reference">${escapeHtml(referenceNumber)}</strong></td>
+      <td>${escapeHtml(businessInfo.business_name || businessInfo.businessName || permit.business_name || permit.businessName || "-")}</td>
+      <td><span class="permit-status permit-status--${escapeHtml(statusClass)}">${escapeHtml(status)}</span></td>
+      <td>
+        <div class="permit-progress-cell" style="--permit-progress: ${progressPercent}%">
+          <span class="permit-progress-label">${escapeHtml(progress)}</span>
+          <span class="permit-progress-track" aria-hidden="true"><span></span></span>
+        </div>
+      </td>
+      <td><span class="submitted-reference">${escapeHtml(submittedId)}</span></td>
       <td>${actionMarkup}</td>
     `;
     recentPermitsTableBody.appendChild(row);
@@ -2639,6 +2944,14 @@ function handleBusinessContinue() {
 }
 
 async function handleFinishApplication() {
+  if (!currentApplicationCanEdit) {
+    await showApplicantMessageModal({
+      title: "Renewal is read-only",
+      message: "This renewal is already being processed and cannot be edited or submitted again.",
+      tone: "info",
+    });
+    return;
+  }
   const application = collectBusinessApplication();
   const businessInfo = createBusinessInfoPayload(application);
   const missingFields = getMissingBusinessFields(application);
@@ -2737,26 +3050,33 @@ async function loadApplicantDashboard() {
 
   currentUser = user;
 
-  const { data: profile, error: applicantProfileError } = await client
-    .from("applicants")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  let profile = null;
+  try {
+    const applicantProfilePayload = await applicantApi("/applicant/api/profile");
+    profile = applicantProfilePayload.profile || null;
+    applicantProfileLoadError = "";
+  } catch (error) {
+    applicantProfileLoadError = error.message || "Unable to load applicant profile.";
+  }
 
-  currentApplicantProfile = profile || null;
-  applicantProfileLoadError = applicantProfileError?.message || "";
+  currentApplicantProfile = profile;
 
-  const fullName = formatFullName(profile, user) || "Applicant";
+  const fullName = formatFullName(profile, null) || "Applicant";
   setField("fullName", fullName);
-  setField("email", profile?.email || user.email || "");
-  setField("contact", profile?.contact_number || user.user_metadata?.contact_number || "");
-  setField("address", formatAddress(profile, user));
+  setField("email", profile?.email || "");
+  setField("contact", profile?.contactNumber || "");
+  setField("address", formatAddress(profile, null));
 
   if (profileName) {
     profileName.textContent = fullName;
   }
+  if (applicantInitials) {
+    applicantInitials.textContent = formatDashboardInitials(fullName);
+    applicantInitials.setAttribute("aria-label", `${fullName} initials`);
+  }
 
   await renderRecentPermits();
+  await loadRenewalDashboardSummary();
   await recordApplicantAudit(
     "page_view",
     { path: window.location.pathname, title: document.title },
@@ -2765,14 +3085,24 @@ async function loadApplicantDashboard() {
   );
 }
 
+function setProfileMenuOpen(isOpen) {
+  profileDropdown?.classList.toggle("is-open", isOpen);
+  profileToggle?.setAttribute("aria-expanded", String(isOpen));
+}
+
+function setNotificationMenuOpen(isOpen) {
+  notificationDropdown?.classList.toggle("is-open", isOpen);
+  notificationToggle?.setAttribute("aria-expanded", String(isOpen));
+}
+
 profileToggle?.addEventListener("click", () => {
-  profileDropdown?.classList.toggle("is-open");
-  notificationDropdown?.classList.remove("is-open");
+  setProfileMenuOpen(!profileDropdown?.classList.contains("is-open"));
+  setNotificationMenuOpen(false);
 });
 
 notificationToggle?.addEventListener("click", () => {
-  notificationDropdown?.classList.toggle("is-open");
-  profileDropdown?.classList.remove("is-open");
+  setNotificationMenuOpen(!notificationDropdown?.classList.contains("is-open"));
+  setProfileMenuOpen(false);
   void loadApplicantNotifications();
 });
 
@@ -2783,6 +3113,21 @@ markAllNotificationsReadButton?.addEventListener("click", (event) => {
 
 document.addEventListener("click", (event) => {
   const clickedElement = event.target instanceof HTMLElement ? event.target : null;
+
+  if (clickedElement?.closest("[data-open-renewal-details]")) {
+    void openRenewalDetails();
+    return;
+  }
+
+  if (clickedElement?.closest("[data-close-renewal-details]")) {
+    closeRenewalDetails();
+    return;
+  }
+
+  if (clickedElement?.closest("[data-retry-renewal-details]")) {
+    void openRenewalDetails();
+    return;
+  }
 
   const latestRenewalButton = clickedElement?.closest("[data-start-latest-renewal]");
   if (latestRenewalButton instanceof HTMLElement) {
@@ -2820,6 +3165,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const printSavedApplicationButton = clickedElement?.closest("[data-print-saved-application]");
+  if (printSavedApplicationButton instanceof HTMLElement) {
+    const applicationId = printSavedApplicationButton.dataset.printSavedApplication || "";
+    if (applicationId) {
+      const printSession = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      window.location.href = `/applicant/application-print?applicationId=${encodeURIComponent(applicationId)}&printSession=${encodeURIComponent(printSession)}`;
+    }
+    return;
+  }
+
   const uploadTrigger = clickedElement?.closest("[data-upload-trigger]");
   if (uploadTrigger instanceof HTMLElement) {
     const documentId = uploadTrigger.dataset.uploadTrigger || "";
@@ -2843,7 +3198,7 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Node) {
     if (profileDropdown?.classList.contains("is-open") && !profileDropdown.contains(target) && !profileToggle?.contains(target)) {
-      profileDropdown.classList.remove("is-open");
+      setProfileMenuOpen(false);
     }
 
     if (
@@ -2851,7 +3206,7 @@ document.addEventListener("click", (event) => {
       !notificationDropdown.contains(target) &&
       !notificationToggle?.contains(target)
     ) {
-      notificationDropdown.classList.remove("is-open");
+      setNotificationMenuOpen(false);
     }
   }
 });
@@ -2881,17 +3236,26 @@ businessContinueButton?.addEventListener("click", handleBusinessContinue);
 finishApplicationButton?.addEventListener("click", () => {
   void handleFinishApplication();
 });
+renewalPrimaryAction?.addEventListener("click", () => {
+  void continueRenewalFromDrawer();
+});
+printApplicationFormButton?.addEventListener("click", () => {
+  void prepareApplicationPrint();
+});
+document.addEventListener("keydown", trapRenewalDrawerFocus);
 document.querySelectorAll("[data-history-back]").forEach((link) => {
   link.addEventListener("click", handleHistoryBack);
 });
 
 businessFormShell?.addEventListener("input", (event) => {
   markBusinessFieldTouched(event.target);
+  hasUnsavedBusinessChanges = true;
   scheduleBusinessDraftAutosave();
 });
 
 businessFormShell?.addEventListener("change", (event) => {
   markBusinessFieldTouched(event.target);
+  hasUnsavedBusinessChanges = true;
   scheduleBusinessDraftAutosave();
 });
 
@@ -2918,6 +3282,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (notificationMenu) {
       window.setInterval(() => {
         void loadApplicantNotifications();
+        void loadRenewalDashboardSummary();
       }, 60000);
     }
     applyTodayApplicationDate();
@@ -2926,4 +3291,10 @@ window.addEventListener("DOMContentLoaded", () => {
     await loadOcrFieldsIntoBusinessForm(getCurrentApplicationId());
     await loadDraftIntoBusinessForm();
   });
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === PROFILE_UPDATE_SIGNAL_KEY && document.querySelector(".applicant-dashboard-page")) {
+    void loadApplicantDashboard();
+  }
 });

@@ -1,0 +1,533 @@
+.applicant-self-service-page {
+  --records-green: #079455;
+  --records-green-dark: #006b42;
+  --records-ink: #263b34;
+  --records-muted: #697a74;
+  --records-line: #dfe7e3;
+  background: #f6f8f7;
+}
+
+.applicant-self-service-page .dashboard-shell {
+  min-height: 100vh;
+}
+
+.applicant-self-service-page .topnav .profile-button.is-active {
+  position: relative;
+  font-weight: 800;
+}
+
+.applicant-self-service-page .topnav .profile-button.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 7px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #65e99f;
+}
+
+.applicant-self-service-page .profile-dropdown a {
+  color: #243c33;
+  font-size: 11px;
+}
+
+.applicant-self-service-page .profile-dropdown a:hover {
+  color: var(--records-green);
+}
+
+.applicant-self-service-page .applicant-records-page {
+  flex: 1;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 18px 28px 34px;
+}
+
+.applicant-self-service-page .records-card {
+  min-height: 0;
+  margin-top: 0;
+  padding: 18px;
+  border: 1px solid #e1e8e4;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 5px 15px rgba(27, 65, 50, .10);
+}
+
+.applicant-self-service-page .records-header {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.applicant-self-service-page .records-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.applicant-self-service-page .records-heading-icon {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f8ee;
+  color: var(--records-green);
+}
+
+.applicant-self-service-page .records-heading-icon svg {
+  width: 23px;
+  height: 23px;
+}
+
+.applicant-self-service-page .records-card .records-header h2 {
+  margin: 0;
+  padding: 0;
+  color: #154b35;
+  font-size: 16px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.applicant-self-service-page .records-card .records-header h2::before {
+  display: none;
+}
+
+.applicant-self-service-page .records-header p {
+  margin-top: 5px;
+  color: var(--records-muted);
+  font-size: 10px;
+}
+
+.applicant-self-service-page .records-toolbar {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.55fr) repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--records-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.applicant-self-service-page .records-toolbar--documents {
+  grid-template-columns: minmax(210px, 1.35fr) repeat(4, minmax(130px, .9fr)) auto;
+}
+
+.applicant-self-service-page .records-control {
+  min-width: 0;
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #d6e0db;
+  border-radius: 6px;
+  background: #fff;
+  color: #16915a;
+}
+
+.applicant-self-service-page .records-control:focus-within {
+  border-color: #36aa73;
+  box-shadow: 0 0 0 3px rgba(7, 148, 85, .10);
+}
+
+.applicant-self-service-page .records-control > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.applicant-self-service-page .records-control input,
+.applicant-self-service-page .records-control select {
+  width: 100%;
+  min-width: 0;
+  min-height: 37px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #33463f;
+  font-size: 10px;
+}
+
+.applicant-self-service-page .records-control--search input::placeholder {
+  color: #7a8984;
+}
+
+.applicant-self-service-page .records-filter-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.applicant-self-service-page .records-outline-button,
+.applicant-self-service-page .records-primary-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid #38ad76;
+  border-radius: 5px;
+  background: #fff;
+  color: #087647;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.applicant-self-service-page .records-primary-button {
+  border-color: var(--records-green);
+  background: var(--records-green);
+  color: #fff;
+}
+
+.applicant-self-service-page .records-outline-button svg,
+.applicant-self-service-page .records-primary-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.applicant-self-service-page .renewal-card-grid:empty {
+  display: none;
+}
+
+.applicant-self-service-page .permits-table-wrap {
+  border: 1px solid var(--records-line);
+  border-left: 1px solid var(--records-line);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 3px 9px rgba(37, 65, 54, .06);
+}
+
+.applicant-self-service-page .permits-table-wrap table {
+  min-width: 900px;
+  color: var(--records-ink);
+  font-size: 9px;
+}
+
+.applicant-self-service-page .permits-table-wrap th,
+.applicant-self-service-page .permits-table-wrap td {
+  height: 45px;
+  padding: 7px 14px;
+  border-bottom-color: #e3e9e6;
+  vertical-align: middle;
+}
+
+.applicant-self-service-page .permits-table-wrap th {
+  height: 38px;
+  background: linear-gradient(90deg, #edf8f2, #f5faf7);
+  color: #31483f;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.applicant-self-service-page .permits-table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.applicant-self-service-page .document-cell {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.applicant-self-service-page .document-cell > svg {
+  width: 16px;
+  color: var(--records-green);
+}
+
+.applicant-self-service-page .document-cell strong,
+.applicant-self-service-page .document-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.applicant-self-service-page .document-cell small {
+  max-width: 300px;
+  white-space: nowrap;
+}
+
+.applicant-self-service-page .record-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 21px;
+  padding: 2px 8px;
+  border: 1px solid #f3d594;
+  border-radius: 5px;
+  background: #fff7e7;
+  color: #a96500;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.applicant-self-service-page .record-status-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.applicant-self-service-page .record-status-badge--approved,
+.applicant-self-service-page .record-status-badge--released,
+.applicant-self-service-page .record-status-badge--verified {
+  border-color: #a9ddbf;
+  background: #eaf8ef;
+  color: #087647;
+}
+
+.applicant-self-service-page .record-status-badge--rejected,
+.applicant-self-service-page .record-status-badge--cancelled {
+  border-color: #f1b9b5;
+  background: #fff0ef;
+  color: #b42318;
+}
+
+.applicant-self-service-page .record-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.applicant-self-service-page .table-link-button {
+  min-height: 27px;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #2eb979;
+  border-radius: 5px;
+  background: #fff;
+  color: #087647;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.applicant-self-service-page .table-link-button::after {
+  content: none;
+}
+
+.applicant-self-service-page .table-link-button svg {
+  width: 12px;
+  height: 12px;
+}
+
+.applicant-self-service-page .table-link-button--primary {
+  background: var(--records-green);
+  color: #fff;
+}
+
+.applicant-self-service-page .records-pagination {
+  min-height: 48px;
+  margin-top: 12px;
+  gap: 14px;
+  color: #4f625b;
+  font-size: 9px;
+}
+
+.applicant-self-service-page .records-pagination button {
+  min-width: 72px;
+  min-height: 34px;
+  border-color: #dbe4df;
+  border-radius: 5px;
+  color: #4f625b;
+  font-size: 9px;
+}
+
+.applicant-self-service-page .profile-settings-form {
+  gap: 0;
+}
+
+.applicant-self-service-page .profile-photo-row {
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 4px 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--records-line);
+}
+
+.applicant-self-service-page .profile-photo-preview {
+  width: 72px;
+  height: 72px;
+  border: 0;
+  background-color: #e8f6ed;
+  color: #116f47;
+  font-size: 19px;
+}
+
+.applicant-self-service-page .profile-photo-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.applicant-self-service-page .profile-photo-copy > strong {
+  color: #2b4038;
+  font-size: 10px;
+}
+
+.applicant-self-service-page .profile-photo-copy > small {
+  color: var(--records-muted);
+  font-size: 8px;
+}
+
+.applicant-self-service-page .profile-photo-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.applicant-self-service-page .profile-settings-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px 22px;
+}
+
+.applicant-self-service-page .profile-settings-grid label {
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: #40534c;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.applicant-self-service-page .profile-settings-grid input,
+.applicant-self-service-page .profile-settings-grid select {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d9e2dd;
+  border-radius: 5px;
+  color: #3b4e47;
+  font-size: 9px;
+}
+
+.applicant-self-service-page .profile-settings-grid input[readonly] {
+  background: #f3f5f4;
+  color: #7a8883;
+}
+
+.applicant-self-service-page .profile-save-button {
+  min-width: 120px;
+  min-height: 35px;
+  margin-top: 14px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 5px;
+  background: linear-gradient(100deg, #087849, #005f3e);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(5, 106, 65, .2);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.applicant-self-service-page .profile-save-button svg {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+.applicant-self-service-page .record-modal__card {
+  border-radius: 10px;
+  box-shadow: 0 20px 45px rgba(15, 54, 39, .2);
+}
+
+.applicant-self-service-page .guidelines-card {
+  width: min(520px, 100%);
+}
+
+.applicant-self-service-page .guidelines-card ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  color: #4f625b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1180px) {
+  .applicant-self-service-page .records-toolbar,
+  .applicant-self-service-page .records-toolbar--documents {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .applicant-self-service-page .records-control--search {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .applicant-self-service-page .applicant-records-page {
+    padding: 12px 10px 20px;
+  }
+
+  .applicant-self-service-page .records-card {
+    padding: 14px 10px;
+  }
+
+  .applicant-self-service-page .records-toolbar,
+  .applicant-self-service-page .records-toolbar--documents,
+  .applicant-self-service-page .profile-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .applicant-self-service-page .records-control--search {
+    grid-column: auto;
+  }
+
+  .applicant-self-service-page .records-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .applicant-self-service-page .records-outline-button {
+    width: 100%;
+  }
+
+  .applicant-self-service-page .records-filter-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .applicant-self-service-page .profile-photo-row {
+    align-items: center;
+    flex-direction: row;
+  }
+}
+
+@media (max-width: 520px) {
+  .applicant-self-service-page .brand-copy {
+    display: none;
+  }
+
+  .applicant-self-service-page .profile-photo-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .applicant-self-service-page .profile-photo-actions,
+  .applicant-self-service-page .records-filter-actions {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+}

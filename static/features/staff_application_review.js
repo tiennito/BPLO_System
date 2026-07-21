@@ -16,6 +16,7 @@ const assessmentSummary = document.querySelector("[data-assessment-summary]");
 const assessmentTotals = document.querySelector("[data-assessment-totals]");
 const paymentPermitInfo = document.querySelector("[data-payment-permit-info]");
 const finalSummary = document.querySelector("[data-final-summary]");
+const permitReadiness = document.querySelector("[data-permit-readiness]");
 const feeForm = document.querySelector("[data-fee-form]");
 const previewModal = document.querySelector("[data-preview-modal]");
 const previewContent = document.querySelector("[data-preview-content]");
@@ -32,6 +33,7 @@ const actionModalRemarksLabel = document.querySelector("[data-action-modal-remar
 const actionModalRemarksInput = document.querySelector("[data-action-modal-remarks-input]");
 const actionModalConfirm = document.querySelector("[data-confirm-action-modal]");
 const actionModalSecondary = document.querySelector("[data-action-modal-secondary]");
+const printApplicationFormStaffButton = document.querySelector("[data-print-application-form-staff]");
 
 let reviewClient = null;
 let reviewSession = null;
@@ -216,8 +218,8 @@ function ocrFieldLabel(value) {
 
 function syncPermitActionButtons(app, permit) {
   const hasPermit = Boolean(permit?.permit_number);
-  const canRelease = hasPermit && ["Permit Ready for Release", "For Pickup"].includes(app?.status || "");
-  const canPrint = hasPermit && ["For Pickup", "Released"].includes(app?.status || "");
+  const canRelease = hasPermit && ["Generated", "Ready for Release"].includes(permit?.status || "") && ["Permit Ready for Release", "For Pickup"].includes(app?.status || "");
+  const canPrint = hasPermit;
   if (releasePermitButton) {
     releasePermitButton.hidden = !canRelease;
     releasePermitButton.disabled = !canRelease;
@@ -226,6 +228,44 @@ function syncPermitActionButtons(app, permit) {
     printPermitButton.hidden = !canPrint;
     printPermitButton.disabled = !canPrint;
   }
+}
+
+function renderPermitReadiness(app, permit) {
+  if (!permitReadiness) {
+    return;
+  }
+  const eligibility = app.permitEligibility || {};
+  const missing = eligibility.missingRequirements || [];
+  const warnings = eligibility.warnings || [];
+  const hasPermit = Boolean(permit?.permit_number);
+  const previewUrl = `/admin/staff-administrator/applications/${encodeURIComponent(app.id)}/permit-preview`;
+  if (hasPermit) {
+    permitReadiness.innerHTML = `
+      <div class="review-empty-box review-empty-box--ready">
+        <i data-lucide="file-check-2" aria-hidden="true"></i>
+        <strong>Official permit ${escapeHtml(permit.permit_number)} is ${escapeHtml(permit.status || "generated")}.</strong>
+        <span>Preview the exact A4 permit before printing, downloading, or release.</span>
+        <a class="review-mini-button review-mini-button--green" href="${previewUrl}"><i data-lucide="eye" aria-hidden="true"></i>Open Official Preview</a>
+      </div>
+    `;
+    return;
+  }
+  if (eligibility.eligible) {
+    permitReadiness.innerHTML = `
+      <div class="review-empty-box review-empty-box--ready">
+        <i data-lucide="shield-check" aria-hidden="true"></i>
+        <strong>Ready to generate the final permit.</strong>
+        <span>All required reviews, inspections, assessment, payment, and receipt checks are complete.</span>
+      </div>
+    `;
+    return;
+  }
+  const rows = [...missing, ...warnings].map((item) => `<li><i data-lucide="alert-circle" aria-hidden="true"></i>${escapeHtml(item)}</li>`).join("");
+  permitReadiness.innerHTML = `
+    <ul class="permit-eligibility-list review-eligibility-list">
+      ${rows || '<li><i data-lucide="alert-circle" aria-hidden="true"></i>Eligibility could not be checked yet.</li>'}
+    </ul>
+  `;
 }
 
 function closeActionModal() {
@@ -296,15 +336,14 @@ function openActionModal(action) {
       confirm: "Complete Assessment",
     },
     "finalize": {
-      subtitle: "Finalize the application",
-      copy: "This will generate the business permit record for this application.",
-      confirm: "Finalize",
+      subtitle: "Generate the final permit",
+      copy: "This will reserve the official permit number, build the QR verification link, and prepare the A4 permit preview from approved source records.",
+      confirm: "Generate Permit",
     },
     "release-permit": {
       subtitle: "Release the business permit",
-      copy: "Print the business permit from this modal first. After printing, complete the release to mark it for pickup and notify the applicant.",
-      confirm: "Complete Release",
-      requiresPrint: true,
+      copy: "Open the official permit preview to print, download, or complete the release.",
+      confirm: "Open Preview",
     },
     "print-permit": {
       subtitle: "Print the business permit",
@@ -351,51 +390,7 @@ function printBusinessPermit() {
     setMessage("No business permit is available for printing yet.", true);
     return false;
   }
-  const printWindow = window.open("", "_blank", "width=960,height=780");
-  if (!printWindow) {
-    setMessage("Allow pop-ups to print the business permit.", true);
-    return false;
-  }
-  const html = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Business Permit</title>
-    <style>
-      body { font-family: Arial, Helvetica, sans-serif; margin: 28px; color: #0f1b3d; }
-      h1 { margin: 0 0 8px; }
-      .sheet { padding: 24px; border: 1px solid #d7deea; border-radius: 14px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
-      .card { padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafcff; }
-      .card span { display: block; margin-bottom: 6px; color: #667085; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-      .card strong, .card p { margin: 0; font-size: 15px; }
-      .wide { grid-column: 1 / -1; }
-      @media print { body { margin: 14px; } }
-    </style>
-  </head>
-  <body>
-    <section class="sheet">
-      <h1>Business Permit</h1>
-      <p>${escapeHtml(app.business?.name || "-")}</p>
-      <div class="grid">
-        <div class="card"><span>Permit Number</span><strong>${escapeHtml(permit.permit_number || "-")}</strong></div>
-        <div class="card"><span>Status</span><strong>${escapeHtml(permit.status || "-")}</strong></div>
-        <div class="card"><span>Control No.</span><strong>${escapeHtml(app.controlNumber || "-")}</strong></div>
-        <div class="card"><span>Owner</span><strong>${escapeHtml(app.applicant?.name || "-")}</strong></div>
-        <div class="card"><span>Business Address</span><strong>${escapeHtml(app.business?.address || "-")}</strong></div>
-        <div class="card"><span>Permit Type</span><strong>${escapeHtml(app.permitType || "-")}</strong></div>
-        <div class="card"><span>Issue Date</span><strong>${escapeHtml(permit.issue_date || "-")}</strong></div>
-        <div class="card"><span>Expiration Date</span><strong>${escapeHtml(permit.expiration_date || "-")}</strong></div>
-        <div class="card wide"><span>Verification Code</span><p>${escapeHtml(permit.verification_code || "-")}</p></div>
-      </div>
-    </section>
-  </body>
-</html>`;
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
+  window.open(`/admin/staff-administrator/applications/${encodeURIComponent(app.id)}/permit-preview?print=1`, "_blank", "noopener,noreferrer");
   return true;
 }
 
@@ -631,6 +626,7 @@ function render() {
   finalSummary.textContent = permit.permit_number
     ? `Permit ${permit.permit_number} is ${permit.status}.`
     : "Permit is generated after Treasury payment confirmation.";
+  renderPermitReadiness(app, permit);
   syncPermitActionButtons(app, permit);
 
   window.lucide?.createIcons();
@@ -656,8 +652,9 @@ async function runApplicationAction(action) {
     printBusinessPermit();
     return;
   }
-  if (action === "release-permit" && !releasePrintCompleted) {
-    throw new Error("Print the business permit before completing the release.");
+  if (action === "release-permit") {
+    window.location.href = `/admin/staff-administrator/applications/${encodeURIComponent(id)}/permit-preview`;
+    return;
   }
   if (action === "reject" || action === "request-revision") {
     const remarks = (actionModalRemarksInput?.value || "").trim();
@@ -673,6 +670,10 @@ async function runApplicationAction(action) {
       method: "POST",
       body: JSON.stringify(body),
     });
+    if (action === "finalize" && result.previewUrl) {
+      window.location.href = result.previewUrl;
+      return;
+    }
     await loadReview();
     setMessage(result.message || "Action completed successfully.");
     if (action === "approve-initial-review") {
@@ -883,6 +884,18 @@ feeForm?.addEventListener("submit", async (event) => {
 document.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.closest("[data-print-application-form-staff]")) {
+    const applicationId = applicationIdFromPath();
+    if (!applicationId) {
+      setMessage("The application form could not be found.", true);
+      return;
+    }
+    printApplicationFormStaffButton.disabled = true;
+    setMessage("Preparing application form...");
+    const printSession = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.location.href = `/applicant/application-print?applicationId=${encodeURIComponent(applicationId)}&printSession=${encodeURIComponent(printSession)}`;
     return;
   }
   const actionButton = target.closest("[data-action]");

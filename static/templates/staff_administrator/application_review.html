@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BPLO Staff Administrator - Application Review</title>
     <script defer src="/config.js?v=8"></script>
-    <link rel="stylesheet" href="/styles/admin.css?v=14" />
+    <link rel="stylesheet" href="/styles/admin.css?v=15" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="https://unpkg.com/lucide@latest"></script>
     <script defer src="/features/logout_modal.js?v=1"></script>
-    <script defer src="/features/staff_application_review.js?v=4"></script>
+    <script defer src="/features/staff_application_review.js?v=6"></script>
   </head>
   <body class="review-body">
     <main class="staff-admin-shell review-admin-shell">
@@ -201,9 +201,24 @@
           </header>
           <dl class="review-dl review-dl--compact" data-payment-permit-info></dl>
         </section>
+
+        <section class="review-card review-permit-readiness-card">
+          <header class="review-card-title">
+            <i data-lucide="shield-check" aria-hidden="true"></i>
+            <span>
+              <h2>Official Permit Readiness</h2>
+              <small>Generation is available only after all source records are complete.</small>
+            </span>
+          </header>
+          <div class="review-permit-readiness" data-permit-readiness></div>
+        </section>
       </section>
 
         <section class="review-action-bar review-action-bar--enhanced">
+          <button class="review-action review-action--primary" type="button" data-print-application-form-staff>
+            <i data-lucide="printer" aria-hidden="true"></i>
+            Print Application Form
+          </button>
           <button class="review-action review-action--primary" type="button" data-action="approve-initial-review">
             <i data-lucide="check" aria-hidden="true"></i>
             Approve Initial Review
@@ -221,8 +236,8 @@
             Complete Assessment
           </button>
           <button class="review-action review-action--primary" type="button" data-action="finalize">
-            <i data-lucide="download" aria-hidden="true"></i>
-            Finalize Application
+            <i data-lucide="file-check-2" aria-hidden="true"></i>
+            Generate Final Permit
           </button>
           <button class="review-action review-action--primary" type="button" data-action="release-permit" hidden>
             <i data-lucide="handshake" aria-hidden="true"></i>
